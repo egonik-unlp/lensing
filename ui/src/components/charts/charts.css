@@ -1,0 +1,248 @@
+.chart {
+  position: relative;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* Tooltip anchor: the plot only, so legends below don't skew positioning. */
+.chart-plot {
+  position: relative;
+}
+
+/* ---------- ramp legend (density scatter, sweep heatmaps) ---------- */
+
+.ramp-legend {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-1);
+  font-size: var(--text-label);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-secondary);
+}
+
+.ramp-legend-label {
+  font-family: var(--font-ui);
+}
+
+.ramp-legend-bar {
+  width: 96px;
+  height: 8px;
+  border-radius: 2px;
+  border: 1px solid var(--hairline);
+}
+
+.chart .axis-line {
+  stroke: var(--hairline-strong);
+  stroke-width: 1;
+}
+
+.chart .grid-line {
+  stroke: var(--hairline);
+  stroke-width: 1;
+}
+
+.chart .tick-label {
+  font-size: 10px;
+  fill: var(--ink-secondary);
+}
+
+.chart .axis-title {
+  font-size: 10px;
+  fill: var(--ink-secondary);
+  font-family: var(--font-ui);
+}
+
+.chart .series-label {
+  font-size: 10px;
+  font-family: var(--font-ui);
+  font-weight: 600;
+}
+
+.chart .identity-line {
+  stroke: var(--hairline-strong);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}
+
+/* The one thing on a finished bench allowed to blink: a live run's head. */
+.chart .live-head {
+  animation: pulse 1.6s var(--ease-out) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chart .live-head {
+    animation: none;
+  }
+}
+
+.chart-tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  padding: 4px 8px;
+  border-radius: var(--radius);
+  white-space: pre;
+  transform: translate(-50%, calc(-100% - 8px));
+  z-index: var(--z-dropdown);
+  line-height: 1.45;
+}
+
+.chart-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  min-height: 160px;
+  border: 1px dashed var(--hairline-strong);
+  border-radius: var(--radius);
+  color: var(--ink-secondary);
+  font-size: var(--text-dense);
+  font-family: var(--font-ui);
+  text-align: center;
+  padding: var(--sp-3);
+}
+
+/* The second line says *why* it's empty. */
+.chart-empty-why {
+  font-size: var(--text-label);
+  color: var(--ink-faint);
+}
+
+/* ---------- training dynamics (derivative small multiples) ---------- */
+
+.deriv-charts {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.scale-toggle {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  justify-self: end;
+  font-size: var(--text-label);
+}
+
+.scale-btn {
+  all: unset;
+  cursor: pointer;
+  font-size: var(--text-label);
+  color: var(--ink-secondary);
+  padding: 0 0.3rem;
+  border-radius: var(--radius);
+}
+
+.scale-btn:hover {
+  color: var(--ink);
+}
+
+.scale-btn.is-active {
+  color: var(--ink);
+  background: var(--select-tint);
+  box-shadow: inset 0 0 0 1px var(--select-border);
+}
+
+.scale-btn:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
+}
+
+/* ---------- category bars (HTML, keyboard-reachable) ---------- */
+
+.catbars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.catbar-row {
+  all: unset;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: minmax(7rem, 12rem) 1fr 4.5rem 3.5rem 7.5rem;
+  align-items: baseline;
+  gap: var(--sp-3);
+  width: 100%;
+  padding: 0.2rem var(--sp-2);
+  border-radius: var(--radius);
+  font-size: var(--text-dense);
+}
+
+button.catbar-row {
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+
+button.catbar-row:hover {
+  background: var(--surface);
+}
+
+button.catbar-row:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 1px;
+}
+
+button.catbar-row.is-selected {
+  background: var(--select-tint);
+  box-shadow: inset 2px 0 0 var(--select-border), inset -2px 0 0 var(--select-border);
+}
+
+.catbar-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catbar-track {
+  align-self: center;
+  height: 0.55rem;
+  background: var(--surface);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.catbar-fill {
+  display: block;
+  height: 100%;
+  background: var(--series-a);
+  opacity: 0.7;
+  border-radius: 2px;
+}
+
+.catbar-count,
+.catbar-share,
+.catbar-median {
+  text-align: right;
+  font-size: var(--text-label);
+}
+
+.catbar-share,
+.catbar-median {
+  color: var(--ink-secondary);
+}
+
+@media (max-width: 720px) {
+  .catbar-row {
+    grid-template-columns: minmax(6rem, 9rem) 1fr 4rem;
+  }
+
+  .catbar-share,
+  .catbar-median {
+    display: none;
+  }
+}

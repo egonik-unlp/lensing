@@ -1,0 +1,9 @@
+# Shared deps for the Python predictors that need more than the stdlib
+# (ridge, torch-cnn, xgboost, lightgbm, random-forest). Installed into
+# predictors/.venv by `zig build py-setup`, which pins the PyTorch CPU wheel
+# index. baseline-median stays stdlib-only on system python3.
+numpy>=1.26
+scikit-learn>=1.4
+torch>=2.2
+xgboost>=2.0
+lightgbm>=4.3

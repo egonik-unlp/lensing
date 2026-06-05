@@ -1,0 +1,54 @@
+/* Models list + model detail + predict playground. */
+
+.models-table {
+  width: 100%;
+}
+
+.models-table .notes-cell {
+  max-width: 28ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-kind {
+  font-size: var(--text-dense);
+  font-weight: 400;
+}
+
+.contract-line {
+  max-width: 70ch;
+}
+
+/* Tabs come from base.css; the orange budget belongs to the Predict button. */
+
+.playground-field {
+  max-width: 64ch;
+}
+
+.json-input {
+  width: 100%;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.playground-result {
+  margin-top: var(--sp-3);
+  max-width: 44ch;
+}
+
+.warning-list {
+  list-style: none;
+  padding: 0;
+  margin: var(--sp-3) 0 0;
+  font-size: var(--text-dense);
+  color: var(--ink-secondary);
+}
+
+.warning-list li + li {
+  margin-top: 0.25rem;
+}
+
+.warn-glyph {
+  color: var(--bad);
+}

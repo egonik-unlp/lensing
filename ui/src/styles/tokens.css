@@ -1,0 +1,118 @@
+/* Control Room — design tokens.
+   Deep slate chrome bands frame paper-white data surfaces.
+   One signal orange, reserved for what is live and what is primary.
+   Mono with tabular figures for every number. */
+
+:root {
+  /* Chrome: the slate bezel. Topbar, view bands, selection bars. ~30% of the
+     surface, chroma capped so it reads as ink-slate, never blue-brand. */
+  --chrome: oklch(0.27 0.025 250);
+  --chrome-raised: oklch(0.32 0.025 250); /* hover targets, chips on chrome */
+  --chrome-hover: oklch(0.36 0.027 250); /* pressed/hover step above raised */
+  --chrome-border: oklch(0.42 0.025 250); /* hairlines within chrome */
+  --on-chrome: oklch(0.96 0.008 250); /* ~12:1 on chrome */
+  --on-chrome-dim: oklch(0.78 0.015 250); /* ≥4.5:1 — meta, counts, breadcrumbs */
+  --on-chrome-faint: oklch(0.66 0.02 250); /* large labels on chrome only */
+
+  /* Paper: the readout. Data lives on near-zero-chroma light surfaces,
+     tinted (barely) toward the chrome's own hue. No cream. */
+  --bg: oklch(0.992 0 0);
+  --surface: oklch(0.972 0.002 250); /* panels, table header band, log pane */
+  --surface-sunken: oklch(0.95 0.003 250); /* row hover, one step down */
+  --surface-raised: oklch(1 0 0); /* inputs, menus over surface */
+  --surface-canvas: #fcfcfc; /* arch-viz <img> canvas */
+  --hairline: oklch(0.9 0.003 250);
+  --hairline-strong: oklch(0.82 0.005 250);
+  --skeleton-sheen: oklch(1 0 0 / 0.6);
+
+  /* Ink */
+  --ink: oklch(0.24 0.01 250); /* ~13:1 on bg */
+  --ink-secondary: oklch(0.45 0.012 250); /* ≥ 5.5:1 on bg */
+  --ink-faint: oklch(0.56 0.01 250); /* large/meta text only */
+
+  /* Signal orange: the one accent. Live runs and the single primary action.
+     If two things on a screen are orange and neither is live, one is wrong. */
+  --accent: oklch(0.68 0.18 47); /* fills: primary action, live indicators */
+  --accent-strong: oklch(0.62 0.17 45); /* hover/active fill */
+  --accent-text: oklch(0.5 0.155 42); /* orange as a word on paper, ≥ 4.5:1 */
+  --accent-soft: oklch(0.95 0.025 55); /* live-row tint only */
+  --accent-border: oklch(0.74 0.13 50);
+  --accent-ink: oklch(0.2 0.04 47); /* ink on orange fills */
+  --accent-on-chrome: oklch(0.78 0.16 55); /* orange legible on slate */
+
+  /* Links and selection: slate, not orange. Orange is spoken for. */
+  --link: oklch(0.42 0.05 250); /* ≥ 6:1 on bg */
+  --link-hover: oklch(0.3 0.045 250);
+  --select-tint: oklch(0.945 0.006 250); /* selected rows/options */
+  --select-border: oklch(0.6 0.04 250);
+
+  /* Series: A is graphite (the run under the lens), B is the comparator.
+     Never encoded by hue alone — pair with dash, position, or label. */
+  --series-a: oklch(0.35 0.012 250);
+  --series-a-soft: oklch(0.93 0.005 250);
+  --series-b: oklch(0.55 0.13 245);
+  --series-b-soft: oklch(0.94 0.02 245);
+
+  /* Heat ramp: quantitative color for data viz only (density scatter, sweep
+     heatmaps). Viridis-family adapted for paper — lightness descends
+     monotonically so the signal survives grayscale; hue never enters orange
+     (orange stays live/primary). Darkest = most / best. Stops mirror
+     ui/src/lib/heat.ts; change them together. */
+  --heat-0: oklch(0.92 0.13 110);
+  --heat-1: oklch(0.82 0.13 150);
+  --heat-2: oklch(0.7 0.11 185);
+  --heat-3: oklch(0.58 0.1 220);
+  --heat-4: oklch(0.46 0.12 250);
+  --heat-5: oklch(0.37 0.12 275);
+  --heat-6: oklch(0.28 0.1 290);
+  /* Ink on heat cells: paper-white once the ramp passes mid-lightness. */
+  --on-heat-dark: oklch(0.97 0.005 250);
+
+  /* Semantic (always paired with a glyph or word, never hue alone) */
+  --bad: oklch(0.5 0.17 27);
+  --bad-soft: oklch(0.95 0.022 27);
+  --good: oklch(0.5 0.105 155);
+  --good-soft: oklch(0.94 0.025 155);
+
+  /* Type — denser than before; this is an instrument for the hundredth visit */
+  --font-ui: 'Inter Variable', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --text-label: 0.71875rem; /* 11.5 — labels, units, axis ticks */
+  --text-dense: 0.78125rem; /* 12.5 — dense tables, logs */
+  --text-body: 0.8125rem; /* 13 */
+  --text-title: 0.9375rem; /* 15 — panel titles */
+  --text-section: 1.125rem; /* 18 */
+  --text-page: 1.375rem; /* 22 — page title in the band */
+  --metric-hero: 1.5rem; /* 24 — detail metric values still outrank the title */
+
+  /* Space */
+  --sp-1: 0.25rem;
+  --sp-2: 0.5rem;
+  --sp-3: 0.75rem;
+  --sp-4: 1rem;
+  --sp-5: 1.5rem;
+  --sp-6: 2rem;
+  --sp-7: 3rem;
+
+  /* Chrome geometry: sticky offsets derive from these, never hard-code */
+  --topbar-h: 44px;
+  --band-h: 52px;
+
+  /* Motion: state feedback only, ease-out, 150-250ms */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast: 150ms;
+  --dur-base: 200ms;
+
+  /* Elevation: flat at rest. Shadow only on things that float. */
+  --shadow-overlay: 0 4px 16px oklch(0.25 0.02 250 / 0.18);
+
+  /* Z scale */
+  --z-dropdown: 10;
+  --z-sticky: 20;
+  --z-dialog-backdrop: 30;
+  --z-dialog: 40;
+  --z-toast: 50;
+
+  --radius: 3px;
+  --content-max: 1320px;
+}

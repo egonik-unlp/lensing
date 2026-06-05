@@ -1,0 +1,45 @@
+# Infrastructure for price-guesser-models.
+#
+#   docker compose up -d postgres --wait     metadata database (zig build db-up)
+#   docker compose --profile qdrant up -d    + a local Qdrant for greenfield
+#                                            bootstraps (the existing corpus
+#                                            lives in an external Qdrant; the
+#                                            default -Dqdrant-url is unchanged)
+#
+# Postgres holds the server's metadata/parameter state (model definitions,
+# run metas + metrics, promoted-model records, dataset index, hp presets).
+# Binary artifacts (features.f32, model weights, …) stay under data/.
+# Host port 5433 avoids colliding with a system Postgres on 5432.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: lensing-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${LENSING_DB_USER:-pg}
+      POSTGRES_PASSWORD: ${LENSING_DB_PASSWORD:-pg}
+      POSTGRES_DB: ${LENSING_DB_NAME:-lensing}
+    ports:
+      - "${LENSING_DB_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${LENSING_DB_USER:-pg} -d ${LENSING_DB_NAME:-lensing}"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: lensing-qdrant
+    restart: unless-stopped
+    profiles: ["qdrant"]
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_storage:/qdrant/storage
+
+volumes:
+  pgdata:
+  qdrant_storage:

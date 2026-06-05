@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="Lensing mark">
+  <!--
+    Gravitational lensing: the central mass is YOUR DATA (signal orange);
+    the framework is the light — parallel rays enter flat, bend around the
+    mass, and converge behind it. The dashed circle is the Einstein ring.
+  -->
+  <g fill="none" stroke="#5b6678" stroke-width="3" stroke-linecap="round">
+    <!-- outer rays: gentle deflection -->
+    <path d="M6 26 C 48 26, 86 40, 122 58" opacity="0.65"/>
+    <path d="M6 102 C 48 102, 86 88, 122 70" opacity="0.65"/>
+    <!-- inner rays: strong deflection, crossing at the focus -->
+    <path d="M6 46 C 46 46, 78 55, 122 84"/>
+    <path d="M6 82 C 46 82, 78 73, 122 44"/>
+  </g>
+  <!-- Einstein ring -->
+  <circle cx="64" cy="64" r="16" fill="none" stroke="#5b6678" stroke-width="1.6"
+          stroke-dasharray="2.5 5" opacity="0.55"/>
+  <!-- the data: the mass that shapes everything around it -->
+  <circle cx="64" cy="64" r="6.5" fill="#c98a2b"/>
+</svg>

@@ -1,0 +1,82 @@
+/* Model definitions: list, detail, tag editing. */
+
+.def-hp-summary {
+  max-width: 36ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.def-form {
+  margin-top: var(--sp-3);
+  display: grid;
+  gap: var(--sp-3);
+}
+
+.def-form .hp-field {
+  max-width: 32ch;
+}
+
+/* Dataset tag chips: hairline like hp-chips, with a quiet remove control. */
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: var(--text-label);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  padding: 0.05rem 0.25rem 0.05rem 0.4rem;
+  color: var(--ink-secondary);
+}
+
+.tag-remove {
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 0 0.15rem;
+  font: inherit;
+  color: var(--ink-secondary);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.tag-remove:hover {
+  color: var(--bad);
+}
+
+.tag-remove:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 1px;
+}
+
+.tag-add-row {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: center;
+  margin-top: var(--sp-2);
+}
+
+.def-actions {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.def-inline-form {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: flex-end;
+  flex-wrap: wrap;
+  margin-top: var(--sp-2);
+}

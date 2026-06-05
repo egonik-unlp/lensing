@@ -1,0 +1,295 @@
+.run-header {
+  margin-bottom: var(--sp-5);
+}
+
+/* The id fragment inside a band title: dimmed against the slate. */
+.run-id-frag {
+  color: var(--on-chrome-dim);
+  font-size: 1.05rem;
+  font-weight: 400;
+}
+
+.run-hp dd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.panel-title {
+  margin-bottom: var(--sp-3);
+}
+
+.dynamics-title {
+  margin-top: var(--sp-4);
+}
+
+.reconnect {
+  font-size: var(--text-label);
+  color: var(--bad);
+  font-weight: 500;
+  margin-left: var(--sp-2);
+}
+
+/* ---------- live ---------- */
+
+.live-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: var(--sp-5);
+  align-items: start;
+}
+
+.log-pane {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  line-height: 1.6;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  padding: var(--sp-3);
+  height: 220px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+
+.log-pane-wrap {
+  position: relative;
+}
+
+/* Floating over the stream it returns to: chrome + shadow, hard to miss. */
+.log-pin {
+  position: absolute;
+  bottom: var(--sp-2);
+  right: var(--sp-3);
+  font-size: var(--text-label);
+  padding: 0.2rem 0.6rem;
+  box-shadow: var(--shadow-overlay);
+}
+
+/* ---------- metrics strip ---------- */
+
+.metrics-strip {
+  display: flex;
+  flex-wrap: wrap;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius);
+  margin-bottom: var(--sp-5);
+}
+
+.metric-cell {
+  all: unset;
+  box-sizing: border-box;
+  flex: 1 1 8rem;
+  display: grid;
+  gap: 0.1rem;
+  padding: var(--sp-2) var(--sp-4);
+  border-right: 1px solid var(--hairline);
+  border-bottom: 2px solid transparent;
+  transition: background var(--dur-fast) var(--ease-out),
+    border-bottom-color var(--dur-fast) var(--ease-out);
+}
+
+.metric-cell:last-child {
+  border-right: none;
+}
+
+/* Clickable cells drill into the predictions behind the number: a resting
+   underline names the affordance, the hover step confirms it. */
+.metric-cell-drill {
+  cursor: pointer;
+  border-bottom-color: var(--hairline-strong);
+}
+
+.metric-cell-drill:hover {
+  background: var(--surface);
+  border-bottom-color: var(--select-border);
+}
+
+.metric-cell-drill:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: -2px;
+}
+
+.metric-label {
+  font-size: var(--text-label);
+  font-weight: 560;
+  color: var(--ink-secondary);
+}
+
+/* The measurement is the loudest thing on the page — one tier above the
+   page title, mono, tight. */
+.metric-value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--metric-hero);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.05;
+}
+
+/* Hints rest quiet; they surface on intent. */
+.metric-hint {
+  font-size: var(--text-label);
+  color: var(--ink-faint);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+.metric-cell:hover .metric-hint,
+.metric-cell:focus-visible .metric-hint {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .metric-hint {
+    opacity: 1;
+  }
+}
+
+/* ---------- charts ---------- */
+
+.charts-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: var(--sp-5);
+  margin-bottom: var(--sp-6);
+  align-items: start;
+}
+
+.charts-col {
+  display: grid;
+  gap: var(--sp-5);
+}
+
+/* ---------- predictions ---------- */
+
+.pred-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+}
+
+.pred-row {
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+
+.pred-row:hover {
+  background: var(--surface-sunken);
+}
+
+.pred-row.is-selected {
+  background: var(--select-tint);
+  box-shadow: inset 2px 0 0 var(--select-border), inset -2px 0 0 var(--select-border);
+}
+
+.pct-large {
+  font-weight: 600;
+}
+
+.expand-cell {
+  color: var(--ink-faint);
+  width: 1.5rem;
+}
+
+.pred-detail td {
+  background: var(--surface);
+  padding: var(--sp-3) var(--sp-4);
+}
+
+.item-detail {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.item-content {
+  font-size: var(--text-dense);
+  max-width: 80ch;
+  text-wrap: pretty;
+}
+
+.show-more {
+  margin-top: var(--sp-3);
+}
+
+@media (max-width: 980px) {
+  .live-grid,
+  .charts-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---------------- suspicious predictions ---------------- */
+
+.suspicious-row {
+  margin: var(--sp-3) 0;
+}
+
+.suspicious-toggle {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6ch;
+  font-size: var(--text-dense);
+}
+
+.filtered-strip {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--text-dense);
+}
+
+.sus-glyph {
+  color: var(--bad);
+  font-size: 0.85em;
+}
+
+/* ---------------- promote to model ---------------- */
+
+.promote-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  margin: var(--sp-3) 0 var(--sp-4);
+  flex-wrap: wrap;
+}
+
+.promote-row .muted {
+  font-size: var(--text-dense);
+}
+
+.promote-form {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  padding: var(--sp-3);
+  border: 1px solid var(--hairline);
+  background: var(--surface);
+}
+
+.promote-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.promote-done {
+  margin: var(--sp-3) 0 var(--sp-4);
+  font-size: var(--text-dense);
+}
+
+/* "Save as definition" inline control next to the hyperparameter chips. */
+.save-def {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--text-label);
+  color: var(--ink-secondary);
+}
+
+.save-def .mono-input {
+  font-size: var(--text-label);
+  padding: 0.1rem 0.35rem;
+  width: 16ch;
+}

@@ -1,0 +1,3 @@
+# Model definitions registry (server-managed; the database is authoritative
+# and re-exports this file on every mutation). Empty on a fresh template —
+# create definitions via the UI or the model-definitions skill.

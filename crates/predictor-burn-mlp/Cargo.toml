@@ -1,0 +1,19 @@
+[package]
+name = "lensing-predictor-burn-mlp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Lensing MLP predictor (burn)"
+
+[dependencies]
+pg-core = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+clap = { workspace = true }
+burn = { version = "0.21", features = ["ndarray", "autodiff"] }
+
+[[bin]]
+name = "predictor-burn-mlp"
+path = "src/main.rs"

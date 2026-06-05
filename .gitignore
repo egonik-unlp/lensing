@@ -1,0 +1,12 @@
+.env
+data/
+target/
+node_modules/
+ui/dist/
+predictors/flux-mlp/Manifest.toml
+predictors/flux-cnn/Manifest.toml
+predictors/.venv/
+docs/figures/*.pdf
+docs/experiments.pdf
+docs/api.pdf
+dist/

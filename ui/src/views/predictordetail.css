@@ -1,0 +1,6 @@
+/* Predictor detail: registry card + runs. Leans on global panel/table idioms. */
+
+.params-table {
+  max-width: 46rem;
+  margin-top: var(--sp-3);
+}

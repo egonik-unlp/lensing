@@ -1,0 +1,22 @@
+[package]
+name = "lensing-pipeline"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Dataset pipeline for Lensing: Qdrant corpus to PCA+metadata feature artifacts"
+
+[dependencies]
+pg-core = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+clap = { workspace = true }
+nalgebra = "0.35"
+reqwest = { version = "0.13", features = ["blocking", "json"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+
+# The lib keeps its original identifier so the in-crate binary and the
+# dependency aliases stay source-compatible.
+[lib]
+name = "pg_pipeline"

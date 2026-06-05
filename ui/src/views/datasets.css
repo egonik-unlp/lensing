@@ -1,0 +1,28 @@
+/* Datasets list. Table idioms (run-row hover/selection) come from runs.css;
+ * all view CSS is bundled globally. */
+
+.datasets-table:focus-visible {
+  outline-offset: -2px;
+}
+
+.datasets-table:focus-within .run-row.is-focused {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+}
+
+.breakdown-cell,
+.split-cell {
+  color: var(--ink-secondary);
+  font-size: var(--text-label);
+}
+
+@media (max-width: 900px) {
+  .datasets-table th:nth-child(4),
+  .datasets-table td:nth-child(4), /* Breakdown */
+  .datasets-table th:nth-child(7),
+  .datasets-table td:nth-child(7), /* Target */
+  .datasets-table th:nth-child(11),
+  .datasets-table td:nth-child(11) /* Created */ {
+    display: none;
+  }
+}

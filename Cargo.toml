@@ -1,0 +1,33 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/lensing-core",
+    "crates/lensing-db",
+    "crates/lensing-pipeline",
+    "crates/lensing-server",
+    "crates/predictor-burn-mlp",
+    "crates/predictor-burn-cnn",
+    "crates/predictor-blend",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+# REVIEW BEFORE PUBLISHING: license + repository are placeholders.
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/snappler/lensing"
+
+[workspace.dependencies]
+pg-core = { package = "lensing-core", path = "crates/lensing-core", version = "0.1.0" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+toml = "0.9"
+
+[profile.release]
+lto = "thin"
+
+# Training is unusable in debug builds; make dev runs of math-heavy deps fast.
+[profile.dev.package."*"]
+opt-level = 2

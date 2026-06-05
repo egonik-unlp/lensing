@@ -1,0 +1,74 @@
+/* Runs list. Row idioms (.run-row hover/selection/focus) live in base.css. */
+
+.runs-table:focus-visible {
+  outline-offset: -2px;
+}
+
+.dataset-cell {
+  color: var(--ink-secondary);
+  font-size: var(--text-label);
+}
+
+.live-cell {
+  gap: 0.6ch;
+}
+
+/* Status column holds its width while live cells swap between "running"
+   and epoch-count + sparkline, so the table doesn't breathe. Only where
+   the column budget allows it. */
+@media (min-width: 1320px) {
+  .runs-table th:nth-child(5) {
+    min-width: 10rem;
+  }
+}
+
+/* The selection bar: a strip of chrome floating over the readout. The one
+   orange on this screen is its Compare action. */
+.compare-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: var(--z-sticky);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  margin-top: var(--sp-4);
+  padding: var(--sp-2) var(--sp-4);
+  background: var(--chrome);
+  color: var(--on-chrome);
+  border: 1px solid var(--chrome-border);
+  border-radius: var(--radius) var(--radius) 0 0;
+  box-shadow: var(--shadow-overlay); /* state-responsive: a floating bar */
+  animation: bar-in var(--dur-base) var(--ease-out);
+}
+
+.compare-bar-hint {
+  color: var(--on-chrome-dim);
+}
+
+.compare-bar :focus-visible {
+  outline-color: var(--accent-on-chrome);
+}
+
+@keyframes bar-in {
+  from {
+    transform: translateY(6px);
+    opacity: 0;
+  }
+}
+
+/* Laptop widths: RMSE and MAPE go first (MAE + R² + medAPE carry the story). */
+@media (max-width: 1319px) {
+  .runs-table th:nth-child(7),
+  .runs-table td:nth-child(7), /* RMSE */
+  .runs-table th:nth-child(9),
+  .runs-table td:nth-child(9) /* MAPE */ {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .runs-table th:nth-child(11),
+  .runs-table td:nth-child(11) /* Time */ {
+    display: none;
+  }
+}

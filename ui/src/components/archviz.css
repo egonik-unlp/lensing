@@ -1,0 +1,96 @@
+/* Architecture ribbon (ArchViz): layer height encodes activation count.
+   Quiet band + nodes; hover/focus highlights a layer and drives the readout. */
+
+.arch-viz {
+  margin-block: var(--sp-4);
+}
+
+.arch-canvas {
+  /* Deep models grow the canvas and scroll; they never shrink to fit. */
+  overflow-x: auto;
+}
+
+.arch-canvas svg {
+  display: block;
+}
+
+.arch-band {
+  fill: var(--surface-sunken);
+  stroke: var(--hairline-strong);
+  stroke-width: 1;
+}
+
+.arch-node {
+  fill: var(--hairline-strong);
+  transition: fill var(--dur-fast) var(--ease-out);
+}
+
+.arch-hit {
+  outline-offset: 2px;
+}
+
+.arch-hit:focus-visible {
+  outline: 2px solid var(--accent-strong);
+}
+
+/* Active layer: ink, not signal — inspection is selection, not liveness. */
+.arch-hit.is-active .arch-node {
+  fill: var(--ink);
+}
+
+.arch-hit.is-active .arch-units {
+  font-weight: 600;
+}
+
+.arch-name {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  fill: var(--ink-secondary);
+}
+
+.arch-units {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  fill: var(--ink);
+}
+
+.arch-meta-path {
+  fill: none;
+  stroke: var(--series-b);
+  stroke-width: 1.25;
+  stroke-dasharray: 4 3;
+}
+
+.arch-meta-label {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
+  fill: var(--series-b);
+}
+
+.arch-readout {
+  margin: var(--sp-2) 0 0;
+  min-height: 1.3em;
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-secondary);
+}
+
+/* Fallback: predictor-exported viz.svg via <img>. */
+.arch-viz img {
+  display: block;
+  width: 100%;
+  max-width: 640px;
+  height: auto;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--surface-canvas);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arch-node {
+    transition: none;
+  }
+}

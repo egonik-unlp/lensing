@@ -1,0 +1,111 @@
+/* A/B pickers live in the view band: controls on slate. */
+.ab-pickers {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  padding-block: var(--sp-1);
+}
+
+.side-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--text-dense);
+  color: var(--on-chrome);
+  font-weight: 550;
+}
+
+.side-tag,
+.series-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: var(--text-label);
+}
+
+/* A is the run under the lens (graphite, solid); B the comparator (blue,
+   dashed). Same encoding as the charts: fill vs dash, never hue alone. */
+.side-a .side-tag,
+.chip-a {
+  background: var(--series-a);
+  color: var(--on-chrome);
+}
+
+.side-b .side-tag,
+.chip-b {
+  background: var(--series-b-soft);
+  color: var(--series-b);
+  border: 1px dashed var(--series-b);
+}
+
+.metrics-table {
+  max-width: 46rem;
+}
+
+.metrics-table .winner {
+  font-weight: 650;
+}
+
+.metrics-table .col-a,
+.dis-table .col-a {
+  border-bottom-color: var(--series-a);
+}
+
+.metrics-table .col-b,
+.dis-table .col-b {
+  border-bottom-color: var(--series-b);
+}
+
+.delta-good {
+  color: var(--good);
+}
+
+.delta-bad {
+  color: var(--bad);
+}
+
+.delta-note {
+  font-size: var(--text-label);
+  margin-top: var(--sp-2);
+}
+
+.dataset-warning {
+  margin-top: var(--sp-4);
+  border: 1px solid var(--hairline-strong);
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: var(--sp-3) var(--sp-4);
+  font-size: var(--text-dense);
+  max-width: 60rem;
+}
+
+.cmp-section {
+  margin-top: var(--sp-6);
+}
+
+.cmp-scatters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--sp-5);
+  margin-top: var(--sp-6);
+  max-width: 70rem;
+}
+
+.cmp-scatters .panel-title {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* One legend speaks for both charts: same scale, same colors. */
+.cmp-scatter-legend {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: center;
+}

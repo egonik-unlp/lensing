@@ -1,0 +1,64 @@
+/* Entity references: mono links with a dimmed kind glyph. Deliberately not
+ * chips — no background, no border (side-stripes and pill chrome are banned);
+ * the glyph carries the entity kind, the link color carries "navigable". */
+
+.entity-ref {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.45ch;
+  color: var(--link);
+}
+
+.entity-ref .entity-glyph {
+  font-size: 0.78em;
+  font-weight: 600;
+  color: var(--ink-faint);
+  letter-spacing: 0.02em;
+  user-select: none;
+}
+
+.entity-ref:hover {
+  text-decoration: underline;
+}
+
+/* Keep the glyph out of the underline so hover reads as "the id is the link". */
+.entity-ref:hover .entity-glyph {
+  text-decoration: none;
+  display: inline-block;
+}
+
+/* The entity's own page: same anatomy, no link affordance. */
+.entity-ref-self {
+  color: var(--ink);
+  cursor: default;
+}
+
+.entity-ref-self:hover {
+  text-decoration: none;
+}
+
+.entity-ref-wrap {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.8ch;
+}
+
+/* Implementation badge trailing a predictor ref: dimmed mono text, no
+ * chrome (same no-chip rule as the refs themselves). */
+.impl-badge {
+  font-family: var(--font-mono);
+  font-size: 0.78em;
+  color: var(--ink-faint);
+  white-space: nowrap;
+  user-select: none;
+}
+
+/* Dataset reference leading with a display name, slug trailing. */
+.dataset-ref-named {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+.dataset-ref-id {
+  font-size: 0.85em;
+}

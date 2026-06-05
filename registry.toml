@@ -1,0 +1,882 @@
+# Predictor registry. Each entry is an executable implementing the contract
+# documented in README.md. {dataset}, {run_dir}, {hyperparams} are substituted
+# by lensing-server; commands run from the repository root.
+
+[[predictors]]
+name = "burn-mlp"
+display_name = "MLP (burn)"
+language = "Rust"
+framework = "burn"
+description = "Feed-forward net on PCA embeddings + metadata one-hots. Rust, CPU."
+command = "target/release/predictor-burn-mlp"
+args = ["train", "--dataset", "{dataset}", "--output", "{run_dir}", "--hyperparams", "{hyperparams}"]
+predict_args = ["predict", "--model", "{model}", "--input", "{input}", "--output", "{output}"]
+supports_stop = true
+visualization = true
+
+[[predictors.params]]
+name = "epochs"
+type = "int"
+default = 50
+min = 1
+max = 100000
+
+[[predictors.params]]
+name = "checkpoint_every"
+label = "checkpoint every N epochs"
+type = "int"
+default = 0
+min = 0
+max = 100000
+
+[[predictors.params]]
+name = "lr"
+label = "learning rate"
+type = "float"
+default = 0.001
+min = 0.000001
+max = 1.0
+
+[[predictors.params]]
+name = "batch_size"
+label = "batch size"
+type = "int"
+default = 256
+min = 8
+max = 8192
+
+[[predictors.params]]
+name = "hidden"
+label = "hidden layers"
+type = "ints"
+default = [256, 128]
+
+[[predictors.params]]
+name = "dropout"
+type = "float"
+default = 0.1
+min = 0.0
+max = 0.9
+
+[[predictors.params]]
+name = "activation"
+label = "hidden-layer activation"
+type = "enum"
+default = "relu"
+options = ["relu", "gelu", "silu", "mish", "tanh", "leaky_relu", "selu", "elu"]
+
+[[predictors.params]]
+name = "clamp_output"
+label = "clamp predictions at ~2x max train price"
+type = "bool"
+default = false
+
+[[predictors]]
+name = "flux-mlp"
+display_name = "MLP (Flux.jl)"
+language = "Julia"
+framework = "Flux.jl"
+description = "Feed-forward net on PCA embeddings + metadata one-hots. Julia, CPU."
+command = "julia"
+args = ["--project=predictors/flux-mlp", "--startup-file=no", "predictors/flux-mlp/train.jl", "train", "--dataset", "{dataset}", "--output", "{run_dir}", "--hyperparams", "{hyperparams}"]
+predict_args = ["--project=predictors/flux-mlp", "--startup-file=no", "predictors/flux-mlp/train.jl", "predict", "--model", "{model}", "--input", "{input}", "--output", "{output}"]
+supports_stop = true
+visualization = true
+
+[[predictors.params]]
+name = "epochs"
+type = "int"
+default = 50
+min = 1
+max = 100000
+
+[[predictors.params]]
+name = "checkpoint_every"
+label = "checkpoint every N epochs"
+type = "int"
+default = 0
+min = 0
+max = 100000
+
+[[predictors.params]]
+name = "lr"
+label = "learning rate"
+type = "float"
+default = 0.001
+min = 0.000001
+max = 1.0
+
+[[predictors.params]]
+name = "batch_size"
+label = "batch size"
+type = "int"
+default = 256
+min = 8
+max = 8192
+
+[[predictors.params]]
+name = "hidden"
+label = "hidden layers"
+type = "ints"
+default = [256, 128]
+
+[[predictors.params]]
+name = "dropout"
+type = "float"
+default = 0.1
+min = 0.0
+max = 0.9
+
+[[predictors]]
+name = "burn-cnn"
+display_name = "CNN (burn)"
+language = "Rust"
+framework = "burn"
+description = "1D conv net over PCA embeddings; metadata one-hots join the dense head. Rust, CPU."
+command = "target/release/predictor-burn-cnn"
+args = ["train", "--dataset", "{dataset}", "--output", "{run_dir}", "--hyperparams", "{hyperparams}"]
+predict_args = ["predict", "--model", "{model}", "--input", "{input}", "--output", "{output}"]
+supports_stop = true
+visualization = true
+
+[[predictors.params]]
+name = "epochs"
+type = "int"
+default = 50
+min = 1
+max = 100000
+
+[[predictors.params]]
+name = "checkpoint_every"
+label = "checkpoint every N epochs"
+type = "int"
+default = 0
+min = 0
+max = 100000
+
+[[predictors.params]]
+name = "lr"
+label = "learning rate"
+type = "float"
+default = 0.001
+min = 0.000001
+max = 1.0
+
+[[predictors.params]]
+name = "batch_size"
+label = "batch size"
+type = "int"
+default = 256
+min = 8
+max = 8192
+
+[[predictors.params]]
+name = "channels"
+label = "conv channels"
+type = "ints"
+default = [32, 64]
+
+[[predictors.params]]
+name = "kernel_size"
+label = "kernel size"
+type = "int"
+default = 3
+min = 1
+max = 15
+
+[[predictors.params]]
+name = "dense_hidden"
+label = "dense head units"
+type = "int"
+default = 64
+min = 1
+max = 4096
+
+[[predictors.params]]
+name = "dropout"
+type = "float"
+default = 0.1
+min = 0.0
+max = 0.9
+
+[[predictors]]
+name = "torch-cnn"
+display_name = "CNN (PyTorch)"
+language = "Python"
+framework = "PyTorch"
+description = "1D conv net over PCA embeddings; metadata one-hots join the dense head. Python, CPU."
+command = "predictors/.venv/bin/python"
+args = ["predictors/torch-cnn/train.py", "train", "--dataset", "{dataset}", "--output", "{run_dir}", "--hyperparams", "{hyperparams}"]
+predict_args = ["predictors/torch-cnn/train.py", "predict", "--model", "{model}", "--input", "{input}", "--output", "{output}"]
+supports_stop = true
+visualization = true
+
+[[predictors.params]]
+name = "epochs"
+type = "int"
+default = 50
+min = 1
+max = 100000
+
+[[predictors.params]]
+name = "checkpoint_every"
+label = "checkpoint every N epochs"
+type = "int"
+default = 0
+min = 0
+max = 100000
+
+[[predictors.params]]
+name = "lr"
+label = "learning rate"
+type = "float"
+default = 0.001
+min = 0.000001
+max = 1.0
+
+[[predictors.params]]
+name = "batch_size"
+label = "batch size"
+type = "int"
+default = 256
+min = 8
+max = 8192
+
+[[predictors.params]]
+name = "channels"
+label = "conv channels"
+type = "ints"
+default = [32, 64]
+
+[[predictors.params]]
+name = "kernel_size"
+label = "kernel size"
+type = "int"
+default = 3
+min = 1
+max = 15
+
+[[predictors.params]]
+name = "dense_hidden"
+label = "dense head units"
+type = "int"
+default = 64
+min = 1
+max = 4096
+
+[[predictors.params]]
+name = "dropout"
+type = "float"
+default = 0.1
+min = 0.0
+max = 0.9
+
+[[predictors]]
+name = "flux-cnn"
+display_name = "CNN (Flux.jl)"
+language = "Julia"
+framework = "Flux.jl"
+description = "1D conv net over PCA embeddings; metadata one-hots join the dense head. Julia, CPU."
+command = "julia"
+args = ["--project=predictors/flux-cnn", "--startup-file=no", "predictors/flux-cnn/train.jl", "train", "--dataset", "{dataset}", "--output", "{run_dir}", "--hyperparams", "{hyperparams}"]
+predict_args = ["--project=predictors/flux-cnn", "--startup-file=no", "predictors/flux-cnn/train.jl", "predict", "--model", "{model}", "--input", "{input}", "--output", "{output}"]
+supports_stop = true
+visualization = true
+
+[[predictors.params]]
+name = "epochs"
+type = "int"
+default = 50
+min = 1
+max = 100000
+
+[[predictors.params]]
+name = "checkpoint_every"
+label = "checkpoint every N epochs"
+type = "int"
+default = 0
+min = 0
+max = 100000
+
+[[predictors.params]]
+name = "lr"
+label = "learning rate"
+type = "float"
+default = 0.001
+min = 0.000001
+max = 1.0
+
+[[predictors.params]]
+name = "batch_size"
+label = "batch size"
+type = "int"
+default = 256
+min = 8
+max = 8192
+
+[[predictors.params]]
+name = "channels"
+label = "conv channels"
+type = "ints"
+default = [32, 64]
+
+[[predictors.params]]
+name = "kernel_size"
+label = "kernel size"
+type = "int"
+default = 3
+min = 1
+max = 15
+
+[[predictors.params]]
+name = "dense_hidden"
+label = "dense head units"
+type = "int"
+default = 64
+min = 1
+max = 4096
+
+[[predictors.params]]
+name = "dropout"
+type = "float"
+default = 0.1
+min = 0.0
+max = 0.9
+
+[[predictors]]
+name = "ridge"
+display_name = "Ridge (scikit-learn)"
+language = "Python"
+framework = "scikit-learn"
+description = "L2-regularized linear regression on PCA embeddings + metadata one-hots, adapted to this corpus: CV-selected alpha, optional price-proportional sample weights against tail compression bias, optional Huber loss. Python, CPU."
+command = "predictors/.venv/bin/python"
+args = ["predictors/ridge/ridge.py", "train", "--dataset", "{dataset}", "--output", "{run_dir}", "--hyperparams", "{hyperparams}"]
+predict_args = ["predictors/ridge/ridge.py", "predict", "--model", "{model}", "--input", "{input}", "--output", "{output}"]
+
+[[predictors.params]]
+name = "auto_alpha"
+label = "select alpha by CV"
+type = "bool"
+default = true
+
+[[predictors.params]]
+name = "alpha"
+label = "regularization strength (when CV off)"
+type = "float"
+default = 1.0
+min = 0.0
+max = 100000.0
+
+[[predictors.params]]
+name = "weight_gamma"
+label = "price weight exponent"
+type = "float"
+default = 0.0
+min = 0.0
+max = 2.0
+
+[[predictors.params]]
+name = "loss"
+label = "loss"
+type = "enum"
+default = "squared"
+options = ["squared", "huber"]
+
+[[predictors.params]]
+name = "huber_epsilon"
+label = "huber epsilon"
+type = "float"
+default = 1.35
+min = 1.0
+max = 5.0
+
+[[predictors]]
+name = "svm"
+display_name = "SVM (scikit-learn)"
+language = "Python"
+framework = "scikit-learn"
+description = "Support vector regression with selectable kernel on PCA embeddings + metadata one-hots. Python, CPU."
+command = "predictors/.venv/bin/python"
+args = ["predictors/svm/train.py", "train", "--dataset", "{dataset}", "--output", "{run_dir}", "--hyperparams", "{hyperparams}"]
+predict_args = ["predictors/svm/train.py", "predict", "--model", "{model}", "--input", "{input}", "--output", "{output}"]
+
+[[predictors.params]]
+name = "kernel"
+label = "kernel"
+type = "enum"
+default = "rbf"
+options = ["rbf", "linear", "poly", "sigmoid"]
+
+[[predictors.params]]
+name = "C"
+label = "regularization strength"
+type = "float"
+default = 1.0
+min = 0.001
+max = 100000.0
+
+[[predictors.params]]
+name = "epsilon"
+label = "epsilon-tube width"
+type = "float"
+default = 0.1
+min = 0.0
+max = 10.0
+
+[[predictors.params]]
+name = "gamma"
+label = "kernel coefficient (0 = scale)"
+type = "float"
+default = 0.0
+min = 0.0
+max = 100.0
+
+[[predictors.params]]
+name = "degree"
+label = "poly degree"
+type = "int"
+default = 3
+min = 1
+max = 10
+
+[[predictors.params]]
+name = "coef0"
+label = "independent term (poly/sigmoid)"
+type = "float"
+default = 0.0
+min = -10.0
+max = 10.0
+
+[[predictors]]
+name = "kernel-ridge"
+display_name = "Kernel ridge (scikit-learn)"
+language = "Python"
+framework = "scikit-learn"
+description = "Kernel ridge regression: the SVR's rbf kernel (same expm1 protection) with squared loss instead of the epsilon-insensitive loss — dense dual solution over all train rows. Python, CPU."
+command = "predictors/.venv/bin/python"
+args = ["predictors/kernel-ridge/train.py", "train", "--dataset", "{dataset}", "--output", "{run_dir}", "--hyperparams", "{hyperparams}"]
+predict_args = ["predictors/kernel-ridge/train.py", "predict", "--model", "{model}", "--input", "{input}", "--output", "{output}"]
+
+[[predictors.params]]
+name = "kernel"
+label = "kernel"
+type = "enum"
+default = "rbf"
+options = ["rbf", "linear", "poly", "sigmoid"]
+
+[[predictors.params]]
+name = "alpha"
+label = "ridge regularization"
+type = "float"
+default = 1.0
+min = 0.000001
+max = 1000000.0
+
+[[predictors.params]]
+name = "gamma"
+label = "kernel coefficient (0 = scale)"
+type = "float"
+default = 0.0
+min = 0.0
+max = 100.0
+
+[[predictors.params]]
+name = "degree"
+label = "poly degree"
+type = "int"
+default = 3
+min = 1
+max = 10
+
+[[predictors.params]]
+name = "coef0"
+label = "independent term (poly/sigmoid)"
+type = "float"
+default = 1.0
+min = -10.0
+max = 10.0
+
+[[predictors]]
+name = "svm-moe"
+display_name = "SVM mixture (GMM + SVR)"
+language = "Python"
+framework = "scikit-learn"
+description = "Gaussian-mixture soft clustering with one rbf SVR expert per component, responsibility-blended. Targets segment-specific pricing regimes. Python, CPU."
+command = "predictors/.venv/bin/python"
+args = ["predictors/svm-moe/train.py", "train", "--dataset", "{dataset}", "--output", "{run_dir}", "--hyperparams", "{hyperparams}"]
+predict_args = ["predictors/svm-moe/train.py", "predict", "--model", "{model}", "--input", "{input}", "--output", "{output}"]
+
+[[predictors.params]]
+name = "n_clusters"
+label = "mixture components"
+type = "int"
+default = 4
+min = 2
+max = 16
+
+[[predictors.params]]
+name = "covariance"
+label = "GMM covariance"
+type = "enum"
+default = "diag"
+options = ["diag", "spherical"]
+
+[[predictors.params]]
+name = "C"
+label = "regularization strength"
+type = "float"
+default = 7.0
+min = 0.001
+max = 100000.0
+
+[[predictors.params]]
+name = "epsilon"
+label = "epsilon-tube width"
+type = "float"
+default = 0.05
+min = 0.0
+max = 10.0
+
+[[predictors.params]]
+name = "gamma"
+label = "kernel coefficient (0 = scale per expert)"
+type = "float"
+default = 0.0
+min = 0.0
+max = 100.0
+
+[[predictors.params]]
+name = "seed"
+label = "GMM init seed"
+type = "int"
+default = 42
+min = 0
+max = 1000000
+
+[[predictors]]
+name = "svm-price-moe"
+display_name = "SVM price mixture (quantile experts)"
+language = "Python"
+framework = "scikit-learn"
+description = "Supervised regime split: quantile price bands with one rbf SVR expert per band, blended by a logistic gate's band probabilities. The direct test of the expensive-tail hypothesis. Python, CPU."
+command = "predictors/.venv/bin/python"
+args = ["predictors/svm-price-moe/train.py", "train", "--dataset", "{dataset}", "--output", "{run_dir}", "--hyperparams", "{hyperparams}"]
+predict_args = ["predictors/svm-price-moe/train.py", "predict", "--model", "{model}", "--input", "{input}", "--output", "{output}"]
+
+[[predictors.params]]
+name = "n_bands"
+label = "price quantile bands"
+type = "int"
+default = 4
+min = 2
+max = 8
+
+[[predictors.params]]
+name = "C"
+label = "regularization strength"
+type = "float"
+default = 7.0
+min = 0.001
+max = 100000.0
+
+[[predictors.params]]
+name = "epsilon"
+label = "epsilon-tube width"
+type = "float"
+default = 0.05
+min = 0.0
+max = 10.0
+
+[[predictors.params]]
+name = "gamma"
+label = "kernel coefficient (0 = scale per expert)"
+type = "float"
+default = 0.0
+min = 0.0
+max = 100.0
+
+[[predictors.params]]
+name = "gate_c"
+label = "gate inverse regularization"
+type = "float"
+default = 1.0
+min = 0.001
+max = 1000.0
+
+[[predictors.params]]
+name = "seed"
+label = "gate solver seed"
+type = "int"
+default = 42
+min = 0
+max = 1000000
+
+[[predictors]]
+name = "xgboost"
+display_name = "XGBoost"
+language = "Python"
+framework = "XGBoost"
+description = "Gradient-boosted trees on PCA embeddings + metadata one-hots. Python, CPU."
+command = "predictors/.venv/bin/python"
+args = ["predictors/xgboost/train.py", "train", "--dataset", "{dataset}", "--output", "{run_dir}", "--hyperparams", "{hyperparams}"]
+predict_args = ["predictors/xgboost/train.py", "predict", "--model", "{model}", "--input", "{input}", "--output", "{output}"]
+supports_stop = true
+
+[[predictors.params]]
+name = "n_estimators"
+label = "boosting rounds"
+type = "int"
+default = 500
+min = 10
+max = 10000
+
+[[predictors.params]]
+name = "max_depth"
+label = "tree depth"
+type = "int"
+default = 6
+min = 1
+max = 20
+
+[[predictors.params]]
+name = "learning_rate"
+label = "learning rate"
+type = "float"
+default = 0.05
+min = 0.001
+max = 1.0
+
+[[predictors.params]]
+name = "subsample"
+label = "row subsample"
+type = "float"
+default = 0.8
+min = 0.1
+max = 1.0
+
+[[predictors.params]]
+name = "colsample_bytree"
+label = "column subsample"
+type = "float"
+default = 0.8
+min = 0.1
+max = 1.0
+
+[[predictors.params]]
+name = "min_child_weight"
+label = "min child weight"
+type = "float"
+default = 1.0
+min = 0.0
+max = 1000.0
+
+[[predictors.params]]
+name = "reg_lambda"
+label = "L2 regularization"
+type = "float"
+default = 1.0
+min = 0.0
+max = 1000.0
+
+[[predictors.params]]
+name = "seed"
+type = "int"
+default = 42
+min = 0
+max = 1000000
+
+[[predictors.params]]
+name = "weight_gamma"
+label = "price weight exponent"
+type = "float"
+default = 0.0
+min = 0.0
+max = 2.0
+
+[[predictors]]
+name = "lightgbm"
+display_name = "LightGBM"
+language = "Python"
+framework = "LightGBM"
+description = "Gradient-boosted trees (leaf-wise growth) on PCA embeddings + metadata one-hots. Python, CPU."
+command = "predictors/.venv/bin/python"
+args = ["predictors/lightgbm/train.py", "train", "--dataset", "{dataset}", "--output", "{run_dir}", "--hyperparams", "{hyperparams}"]
+predict_args = ["predictors/lightgbm/train.py", "predict", "--model", "{model}", "--input", "{input}", "--output", "{output}"]
+supports_stop = true
+
+[[predictors.params]]
+name = "n_estimators"
+label = "boosting rounds"
+type = "int"
+default = 500
+min = 10
+max = 10000
+
+[[predictors.params]]
+name = "num_leaves"
+label = "leaves per tree"
+type = "int"
+default = 31
+min = 2
+max = 4096
+
+[[predictors.params]]
+name = "max_depth"
+label = "tree depth (0 = unlimited)"
+type = "int"
+default = 0
+min = 0
+max = 30
+
+[[predictors.params]]
+name = "learning_rate"
+label = "learning rate"
+type = "float"
+default = 0.05
+min = 0.001
+max = 1.0
+
+[[predictors.params]]
+name = "min_child_samples"
+label = "min samples per leaf"
+type = "int"
+default = 20
+min = 1
+max = 10000
+
+[[predictors.params]]
+name = "subsample"
+label = "row subsample"
+type = "float"
+default = 0.8
+min = 0.1
+max = 1.0
+
+[[predictors.params]]
+name = "colsample_bytree"
+label = "column subsample"
+type = "float"
+default = 0.8
+min = 0.1
+max = 1.0
+
+[[predictors.params]]
+name = "reg_lambda"
+label = "L2 regularization"
+type = "float"
+default = 0.0
+min = 0.0
+max = 1000.0
+
+[[predictors.params]]
+name = "seed"
+type = "int"
+default = 42
+min = 0
+max = 1000000
+
+[[predictors.params]]
+name = "weight_gamma"
+label = "price weight exponent"
+type = "float"
+default = 0.0
+min = 0.0
+max = 2.0
+
+[[predictors]]
+name = "random-forest"
+display_name = "Random forest"
+language = "Python"
+framework = "scikit-learn"
+description = "Bagged tree ensemble (scikit-learn) on PCA embeddings + metadata one-hots. Python, CPU."
+command = "predictors/.venv/bin/python"
+args = ["predictors/random-forest/train.py", "train", "--dataset", "{dataset}", "--output", "{run_dir}", "--hyperparams", "{hyperparams}"]
+predict_args = ["predictors/random-forest/train.py", "predict", "--model", "{model}", "--input", "{input}", "--output", "{output}"]
+
+[[predictors.params]]
+name = "n_estimators"
+label = "number of trees"
+type = "int"
+default = 300
+min = 10
+max = 5000
+
+[[predictors.params]]
+name = "max_depth"
+label = "tree depth (0 = unlimited)"
+type = "int"
+default = 0
+min = 0
+max = 50
+
+[[predictors.params]]
+name = "min_samples_leaf"
+label = "min samples per leaf"
+type = "int"
+default = 1
+min = 1
+max = 1000
+
+[[predictors.params]]
+name = "max_features"
+label = "feature fraction per split"
+type = "float"
+default = 1.0
+min = 0.01
+max = 1.0
+
+[[predictors.params]]
+name = "seed"
+type = "int"
+default = 42
+min = 0
+max = 1000000
+
+[[predictors]]
+name = "baseline-median"
+display_name = "Median baseline"
+language = "Python"
+description = "Predicts the train-split median price per property type. The floor every model must beat."
+command = "python3"
+args = ["predictors/baseline-median/predict.py", "train", "--dataset", "{dataset}", "--output", "{run_dir}", "--hyperparams", "{hyperparams}"]
+predict_args = ["predictors/baseline-median/predict.py", "predict", "--model", "{model}", "--input", "{input}", "--output", "{output}"]
+params = []
+
+[[predictors]]
+name = "blend"
+display_name = "Blend (ensemble)"
+language = "Rust"
+description = "Meta-predictor: combines member models' price-space predictions by weighted mean or median vote. Members are frozen promoted models ({\"model\": …}), models.toml definitions trained inside the run ({\"definition\": …}), or inline recipes ({\"predictor\": …, \"hyperparams\": …}); each takes an optional weight and exclude_blocks column mask."
+command = "target/release/predictor-blend"
+args = ["train", "--dataset", "{dataset}", "--output", "{run_dir}", "--hyperparams", "{hyperparams}"]
+predict_args = ["predict", "--model", "{model}", "--input", "{input}", "--output", "{output}"]
+supports_stop = true
+visualization = true
+
+[[predictors.params]]
+name = "members"
+label = "members (JSON array)"
+type = "json"
+default = []
+
+[[predictors.params]]
+name = "rule"
+label = "combination rule"
+type = "enum"
+default = "mean"
+options = ["mean", "median"]
+
+[[predictors.params]]
+name = "weight_fit"
+label = "weight fitting"
+type = "enum"
+default = "none"
+options = ["none", "grid"]
+
+[[predictors.params]]
+name = "val_fraction"
+label = "validation fraction (grid fit)"
+type = "float"
+default = 0.15
+min = 0.05
+max = 0.5

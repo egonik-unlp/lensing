@@ -1,0 +1,20 @@
+[package]
+name = "lensing-db"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "PostgreSQL state layer for Lensing: definitions, run queue, artifact transport"
+
+[dependencies]
+pg-core = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+tokio = { version = "1", features = ["sync", "rt", "macros", "time"] }
+# tokio-postgres instead of sqlx: sqlx 0.8's (even unactivated) sqlx-sqlite
+# optional dep carries links="sqlite3", which cargo's resolver rejects next
+# to burn-dataset's rusqlite; sqlx 0.9 fixes that but needs rustc >= 1.94.
+tokio-postgres = { version = "0.7", features = ["with-serde_json-1"] }
+deadpool-postgres = "0.14"

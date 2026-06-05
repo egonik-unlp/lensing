@@ -1,0 +1,13 @@
+[package]
+name = "lensing-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Shared types, artifact I/O and the domain configuration for the Lensing prediction framework"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+toml = { workspace = true }
