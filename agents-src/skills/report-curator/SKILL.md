@@ -1,22 +1,23 @@
 ---
 name: report-curator
-description: Maintain the single living scientific report (docs/experiments.tex + docs/figures/make_figures.py → docs/experiments.pdf) that consolidates the {{report_dir}}/*.md campaign reports. Spawns the report-curator agent. Use when the user wants to update or sync the experiment PDF, fold new experiment reports into the document, add a figure (heatmaps for parameter scans), add or extend the theory/background section, refresh the leaderboard, polish the prose, or rebuild the report.
+description: Maintain the living scientific report in both its registers (docs/experiments.tex technical + docs/experiments-v2.tex plain-language + docs/figures/make_figures.py → docs/experiments.pdf + docs/experiments-v2.pdf) consolidating the {{report_dir}}/*.md campaign reports. Spawns the report-curator agent. Use when the user wants to update or sync the experiment PDFs, fold new experiment reports into the documents, add a figure (heatmaps for parameter scans), add or extend the theory/background section, refresh the leaderboard, polish the prose, or rebuild the report.
 user-invocable: true
 argument-hint: "[sync|polish|rebuild] [extra instructions]"
 allowed-tools:
   - Task
 ---
 
-Maintain the **living experiment synthesis** — one scientific document,
-updated and improved over time, never regenerated per-experiment. All the
-real work is done by the `report-curator` agent; this skill just spawns and
-relays it.
+Maintain the **living experiment synthesis** — one scientific story in two
+registers (`docs/experiments.tex` technical, `docs/experiments-v2.tex`
+plain-language; both always covering the same campaigns), updated and
+improved over time, never regenerated per-experiment. All the real work is
+done by the `report-curator` agent; this skill just spawns and relays it.
 
 ## Modes
 
 | Mode | What it does | Gate |
 |---|---|---|
-| **sync** (default) | Detect `{{report_dir}}/*.md` reports not yet reflected in the document, fold each in additively (section + transcribed tables + figures + leaderboard/abstract refresh), rebuild the PDF | proceeds freely |
+| **sync** (default) | Detect `{{report_dir}}/*.md` reports not yet reflected in each document, fold each in additively into BOTH registers (section + transcribed tables + figures + leaderboard/abstract refresh), rebuild both PDFs | proceeds freely |
 | **polish** | Quality pass, no new source material: prose, captions, cross-references, missing figures (heatmaps for 2-D parameter scans) | proceeds freely |
 | **rebuild** | Full re-derivation of the document from the report corpus | always stops for approval |
 
