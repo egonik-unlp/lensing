@@ -34,6 +34,14 @@ SRC = ROOT / "agents-src"
 SKILL_TARGETS = [".claude/skills", ".agents/skills", ".gemini/skills"]
 AGENT_TARGETS = [".claude/agents"]
 
+# A blank template carries a bootstrap-pending CLAUDE.md stub instead of a
+# rendered copy (tools/package.py writes it and imports this sentinel; the
+# framework repo checks one in). Outputs bearing the sentinel are left in
+# place by BOTH modes — the instance simply hasn't bootstrapped yet. To
+# regenerate for real, delete the stub and re-render (what bootstrap does
+# once domain.toml describes the new domain).
+TEMPLATE_SENTINEL = "<!-- LENSING-TEMPLATE: bootstrap pending -->"
+
 
 def die(msg: str) -> None:
     print(f"render.py: error: {msg}", file=sys.stderr)
@@ -218,6 +226,12 @@ def main() -> None:
         rendered = with_marker(render_text(tpl.read_text(), ph, tpl), str(rel))
         current = out.read_text() if out.is_file() else None
         if rendered == current:
+            continue
+        if current is not None and TEMPLATE_SENTINEL in current:
+            # Pre-bootstrap stub: preserved in both modes. Delete the stub
+            # and re-render once domain.toml describes the real domain.
+            if not check:
+                print(f"kept {out.relative_to(ROOT)} (bootstrap-pending stub; delete it and re-render to regenerate)")
             continue
         if check:
             drift.append(str(out.relative_to(ROOT)))

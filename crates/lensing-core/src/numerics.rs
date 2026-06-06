@@ -41,8 +41,11 @@ pub struct NumericsReport {
 /// and copied into the promoted contract so predict imputes identically.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NumericImputation {
-    /// Categorical field whose value selects the median group. Pre-domain
-    /// contracts deserialize to the original grouping field.
+    /// Categorical field whose value selects the median group (the domain's
+    /// outlier group at build time). The serde default is a compat shim for
+    /// contracts frozen by the ORIGINAL (pre-domain) instance, which always
+    /// grouped by its property-type field; contracts written since record
+    /// the field explicitly.
     #[serde(default = "legacy_group_field")]
     pub group_field: String,
     /// Per-group medians over train rows with the field present. Groups with
@@ -75,7 +78,10 @@ impl NumericMedians {
 impl<'de> Deserialize<'de> for NumericMedians {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let raw = std::collections::BTreeMap::<String, f64>::deserialize(d)?;
-        // Legacy fixed-struct keys → original field names.
+        // Compat shim for contracts frozen by the ORIGINAL (pre-domain)
+        // instance, which stored a fixed snake_case struct: map its keys
+        // back to that domain's field names. Inert for any other domain
+        // (contracts written since key by field name directly).
         let map = raw
             .into_iter()
             .map(|(k, v)| {

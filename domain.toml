@@ -1,7 +1,10 @@
 # Domain configuration: everything that ties this framework to one concrete
 # prediction problem. Bootstrapping a new project = editing this file (see
-# BOOTSTRAP.md). This copy describes the original domain: sale prices of
-# Argentine real-estate listings, from a Qdrant corpus of embedded listings.
+# BOOTSTRAP.md). This copy is a NEUTRAL PLACEHOLDER — the template ships
+# unconfigured; run /bootstrap to interview your way to a real domain. A
+# complete worked example (the framework's original real-estate price
+# problem, exercising every lever including [currency], [coordinates] and
+# reconciled fields) lives at crates/lensing-core/src/example-domain.toml.
 #
 # Rules of the road:
 # - Field order is load-bearing: feature columns are emitted numerics-first
@@ -17,11 +20,11 @@
 schema_version = 1
 
 [project]
-name = "price-guesser-models"
-title = "Price Guesser Models"
-entity_noun = "listing"
-entity_noun_plural = "listings"
-target_noun = "price"
+name = "unconfigured"
+title = "Unconfigured Lensing Instance"
+entity_noun = "item"
+entity_noun_plural = "items"
+target_noun = "target"
 
 # Instance personality inside the lensing brand grammar. The velocity-map
 # mark (dark sphere + red/blue shifted trail swarm) and the Sora wordmark
@@ -36,8 +39,8 @@ mark_hue_shift = 0
 
 [corpus]
 qdrant_url = "http://localhost:6333"
-collection = "properties-tagged"
-manual_collection = "manual-listings"
+collection = "corpus"
+manual_collection = "manual-entries"
 embedding_dim = 1536
 # Payload key the metadata fields nest under ("" = payload root).
 metadata_root = "metadata"
@@ -45,26 +48,29 @@ metadata_root = "metadata"
 content_field = "content"
 
 # The corpus point filter (translated 1:1 into a Qdrant filter; field names
-# get the metadata_root prefix automatically).
+# get the metadata_root prefix automatically). Empty = take every point.
 [corpus.filter]
-desc = 'metadata.operation=="sale" && metadata.price!=0'
-must = [{ field = "operation", equals = "sale" }]
-must_not = [{ field = "price", equals = 0 }]
+desc = "all points"
+must = []
+must_not = []
 
 [target]
-field = "price"
-transform = "log1p"
+field = "target"
+# "log1p" trains on log(1+target) — right for heavy-tailed positive targets
+# like prices; "none" trains on the raw value.
+transform = "none"
 
 [target.format]
-style = "money"
-symbol = "$"
+style = "number" # "money" renders with the symbol + locale grouping
+symbol = ""
 locale = "en-US"
 
 [metrics]
 primary = "MAE"
-columns = ["MAE", "medAPE", "R²"]
-percent = ["MAPE", "medAPE"]
-value_unit = "USD"
+# Available metric names: MAE, RMSE, R², MAPE, medAPE.
+columns = ["MAE", "RMSE", "R²"]
+percent = []
+value_unit = "units"
 # Size cap of the auto-maintained best-models group (pins may exceed it).
 best_models_size = 12
 
@@ -77,136 +83,38 @@ best_models_size = 12
 # categorical options: vocab = "all" | { top_n = N }, critical (counted by
 #                      the missing-fields rule), path = "payload" for
 #                      payload-root fields
+#
+# The two *_example fields below are placeholders — replace them with your
+# corpus's real schema during /bootstrap.
 
 [[fields]]
-name = "price"
+name = "target"
 role = "target"
 
 [[fields]]
-name = "operation"
-role = "filter_only"
-
-[[fields]]
-name = "createdAt"
-label = "scraped at"
-role = "timestamp"
-
-[[fields]]
-name = "bedrooms"
+name = "numeric_example"
 role = "numeric"
 encode = "raw"
-zero_is_missing = true
 default_on = true
 
 [[fields]]
-name = "totalArea"
-label = "total area (m²)"
-role = "numeric"
-encode = "log1p"
-indicator = true
-zero_is_missing = true
-reconcile = true
-group = "raw_numerics"
-
-[[fields]]
-name = "coveredArea"
-label = "covered area (m²)"
-role = "numeric"
-encode = "log1p"
-indicator = true
-zero_is_missing = true
-reconcile = true
-group = "raw_numerics"
-
-[[fields]]
-name = "bathrooms"
-role = "numeric"
-encode = "raw"
-indicator = true
-zero_is_missing = true
-reconcile = true
-group = "raw_numerics"
-
-[[fields]]
-name = "garages"
-role = "numeric"
-encode = "raw"
-indicator = true
-zero_is_missing = true
-reconcile = true
-group = "raw_numerics"
-
-[[fields]]
-name = "rooms"
-label = "rooms (ambientes)"
-role = "numeric"
-encode = "raw"
-indicator = true
-zero_is_missing = true
-reconcile = true
-group = "raw_numerics"
-
-[[fields]]
-name = "coordinates"
-role = "coordinates"
-reconcile = true
-
-[[fields]]
-name = "propertyType"
-label = "property type"
+name = "category_example"
 role = "categorical"
 vocab = "all"
-critical = true
-default_on = true
-required = true
-suggestions = ["apartment", "house", "land", "ph", "commercial", "office", "warehouse", "other"]
-
-[[fields]]
-name = "neighborhood"
-role = "categorical"
-vocab = { top_n = 40 }
-critical = true
 default_on = true
 
-[[fields]]
-name = "city"
-role = "categorical"
-vocab = { top_n = 40 }
+# [coordinates] — only with a coordinates-role field; declares plausible
+# lat/lon bounds (out-of-bounds geocodes count as missing). See the worked
+# example for a full configuration.
 
-[[fields]]
-name = "province"
-role = "categorical"
-vocab = "all"
-
-[[fields]]
-name = "cluster"
-role = "categorical"
-path = "payload"
-vocab = "all"
-
-# Plausible bounds for the coordinates field (Argentina). The raw collection
-# carries mis-geocodes and web-mercator clamps; anything outside counts as
-# missing.
-[coordinates]
-field = "coordinates"
-lat_range = [-56.0, -21.0]
-lon_range = [-74.0, -53.0]
-
-# Currency handling: the corpus mixes ARS and USD prices; sale listings are
-# conventionally priced in USD. Single-currency domains delete this section.
-[currency]
-keep = "USD"
-currency_field = "currency"
-date_field = "createdAt"
-reconcile_collection = "properties"
-rate_source = "blue"
-rate_url_template = "https://api.argentinadatos.com/v1/cotizaciones/dolares/{source}"
-pair = ["ARS", "USD"]
+# [currency] — only for multi-currency corpora (kept currency, rate source,
+# reconcile collection). Single-currency domains omit the section entirely.
+# See the worked example for a full configuration.
 
 # Quality-rule bindings + display labels (rule keys are stable identifiers).
+# outlier_group / capped_numeric bind the grouped-outlier and capped-numeric
+# rules to your fields; unbound rules simply never flag anything.
 [quality]
-outlier_group = "propertyType"
-capped_numeric = "bedrooms"
 
 # Agentic-layer parameters, consumed by agents-src/render.py (NOT by the
 # Rust code) to render the skills/agents under .claude/, .agents/, .gemini/.
@@ -215,18 +123,18 @@ capped_numeric = "bedrooms"
 api_base_url = "http://localhost:8080"
 report_dir = "experiments"
 facts_file = "experiments/PROJECT-FACTS.md"
-definition_naming = "<predictor>-p<dims>-<slug>"
-definition_naming_example = "burn-mlp-p128-pyramid"
+definition_naming = "<predictor>-<slug>"
+definition_naming_example = ""
 # Render the ingestion agent (listing-generator)? Domains without a
 # scrape-from-the-web ingestion story set this to false.
 ingestion = true
 
 [quality.rule_labels]
-"nonpositive-price" = "price ≤ 0"
-"price-outlier" = "price outlier"
+"nonpositive-price" = "target ≤ 0"
+"price-outlier" = "target outlier"
 "missing-fields" = "missing fields"
-"price-range" = "price out of range"
-"bedrooms-outlier" = "bedrooms outlier"
-"duplicate-content" = "duplicate listing"
-"short-content" = "thin description"
+"price-range" = "target out of range"
+"bedrooms-outlier" = "capped-numeric outlier"
+"duplicate-content" = "duplicate content"
+"short-content" = "thin content"
 "foreign-currency" = "foreign currency"

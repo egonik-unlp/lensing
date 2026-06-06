@@ -83,6 +83,9 @@ struct NumericCol {
     name: String,
     /// Source payload field.
     field: String,
+    /// Feature block (the domain field's toggle group, or
+    /// [`COORDINATES_BLOCK`]); recorded in the emitted [`ColumnDesc`].
+    group: Option<String>,
     read: NumericRead,
 }
 
@@ -111,6 +114,11 @@ pub struct Encoder {
     vocabs: Vec<Vocab>,
 }
 
+/// Block name recorded on the lat/lon/missing column triple (the
+/// `FeatureConfig.coordinates` toggle's block, independent of the geo
+/// field's name).
+const COORDINATES_BLOCK: &str = "coordinates";
+
 /// Legacy coordinate column names (the original domain's coordinates field).
 /// Fields named "coordinates" keep emitting these so old and new artifacts
 /// agree; differently-named geo fields get `<name>_lat` / `<name>_lon` /
@@ -134,20 +142,26 @@ impl Encoder {
             if !domain.field_enabled(cfg, f) {
                 continue;
             }
+            // The domain field's toggle group, recorded on every emitted
+            // column so block-level masks resolve from the artifact alone.
+            let group = f.group.clone();
             match f.encode {
                 NumericEncode::Log1p => numeric.push(NumericCol {
                     name: format!("{}_log", f.name),
                     field: f.name.clone(),
+                    group: group.clone(),
                     read: NumericRead::Log1p,
                 }),
                 NumericEncode::Raw if f.indicator => numeric.push(NumericCol {
                     name: f.name.clone(),
                     field: f.name.clone(),
+                    group: group.clone(),
                     read: NumericRead::PresentRaw,
                 }),
                 NumericEncode::Raw => numeric.push(NumericCol {
                     name: f.name.clone(),
                     field: f.name.clone(),
+                    group: group.clone(),
                     read: NumericRead::Verbatim,
                 }),
             }
@@ -158,6 +172,7 @@ impl Encoder {
                 numeric.push(NumericCol {
                     name: format!("{}_missing", f.name),
                     field: f.name.clone(),
+                    group,
                     read: NumericRead::MissingFlag,
                 });
             }
@@ -165,19 +180,23 @@ impl Encoder {
         if let Some(f) = domain.coordinates_field() {
             if domain.field_enabled(cfg, f) {
                 let (lat, lon, miss) = coord_col_names(&f.name);
+                let group = Some(COORDINATES_BLOCK.to_string());
                 numeric.push(NumericCol {
                     name: lat,
                     field: f.name.clone(),
+                    group: group.clone(),
                     read: NumericRead::Lat(bounds),
                 });
                 numeric.push(NumericCol {
                     name: lon,
                     field: f.name.clone(),
+                    group: group.clone(),
                     read: NumericRead::Lon(bounds),
                 });
                 numeric.push(NumericCol {
                     name: miss,
                     field: f.name.clone(),
+                    group,
                     read: NumericRead::CoordsMissing(bounds),
                 });
             }
@@ -225,38 +244,46 @@ impl Encoder {
         for c in columns {
             match &c.kind {
                 ColumnKind::Pca { .. } => {}
-                ColumnKind::Numeric { field } => {
+                ColumnKind::Numeric { field, group } => {
                     let name = c.name.clone();
+                    // `group` passes through verbatim (None on pre-group
+                    // artifacts) so a rebuilt encoder re-emits the columns
+                    // exactly as frozen.
+                    let group = group.clone();
                     let read = if let Some(src) = coord_source(&name, &numeric_names) {
                         match coord_kind(&name) {
                             CoordPart::Lat => NumericRead::Lat(bounds),
                             CoordPart::Lon => NumericRead::Lon(bounds),
                             CoordPart::Missing => NumericRead::CoordsMissing(bounds),
                         }
-                        .with_field(&mut numeric, name.clone(), src);
+                        .with_field(&mut numeric, name.clone(), src, group);
                         continue;
                     } else if let Some(src) = name.strip_suffix("_log") {
                         NumericCol {
                             name: name.clone(),
                             field: src.to_string(),
+                            group,
                             read: NumericRead::Log1p,
                         }
                     } else if let Some(src) = name.strip_suffix("_missing") {
                         NumericCol {
                             name: name.clone(),
                             field: src.to_string(),
+                            group,
                             read: NumericRead::MissingFlag,
                         }
                     } else if has(&format!("{name}_missing")) {
                         NumericCol {
                             name: name.clone(),
                             field: field.clone(),
+                            group,
                             read: NumericRead::PresentRaw,
                         }
                     } else {
                         NumericCol {
                             name: name.clone(),
                             field: field.clone(),
+                            group,
                             read: NumericRead::Verbatim,
                         }
                     };
@@ -306,7 +333,7 @@ impl Encoder {
             .iter()
             .map(|c| ColumnDesc {
                 name: c.name.clone(),
-                kind: ColumnKind::Numeric { field: c.field.clone() },
+                kind: ColumnKind::Numeric { field: c.field.clone(), group: c.group.clone() },
             })
             .collect();
         for v in &self.vocabs {
@@ -414,8 +441,14 @@ enum CoordPart {
 }
 
 impl NumericRead {
-    fn with_field(self, numeric: &mut Vec<NumericCol>, name: String, field: String) {
-        numeric.push(NumericCol { name, field, read: self });
+    fn with_field(
+        self,
+        numeric: &mut Vec<NumericCol>,
+        name: String,
+        field: String,
+        group: Option<String>,
+    ) {
+        numeric.push(NumericCol { name, field, group, read: self });
     }
 }
 
@@ -497,7 +530,7 @@ mod tests {
 
     #[test]
     fn raw_numerics_encoding_and_contract_roundtrip() {
-        let domain = Domain::default();
+        let domain = Domain::example();
         let cfg = raw_numerics_cfg(false);
         let points = vec![pt(Some(120.0), Some(2.0)), pt(None, Some(0.0))];
         let enc = Encoder::build(&points, &domain, &cfg);
@@ -551,7 +584,7 @@ mod tests {
 
     #[test]
     fn imputed_numerics_drop_indicator_columns() {
-        let domain = Domain::default();
+        let domain = Domain::example();
         let cfg = raw_numerics_cfg(true);
         // Build-time imputation fills the metadata before encoding.
         let points = vec![pt(Some(120.0), Some(2.0))];
@@ -573,7 +606,7 @@ mod tests {
 
     #[test]
     fn coordinates_encoding() {
-        let domain = Domain::default();
+        let domain = Domain::example();
         let cfg = FeatureConfig {
             neighborhood_top_n: 0,
             coordinates: true,
@@ -615,7 +648,7 @@ mod tests {
     /// The generic `fields` map drives the encoder for alien domains.
     #[test]
     fn generic_fields_map_controls_encoder() {
-        let domain = Domain::default();
+        let domain = Domain::example();
         let mut cfg = FeatureConfig::default();
         cfg.fields.insert("bedrooms".into(), false);
         cfg.fields.insert("propertyType".into(), true);
@@ -629,13 +662,13 @@ mod tests {
                 "metadata",
             ),
         };
-        let points = vec![mk("la plata"), mk("la plata"), mk("tolosa"), mk("ensenada")];
+        let points = vec![mk("city-a"), mk("city-a"), mk("city-b"), mk("city-c")];
         let enc = Encoder::build(&points, &domain, &cfg);
         let names: Vec<String> = enc.columns().iter().map(|c| c.name.clone()).collect();
         assert!(!names.contains(&"bedrooms".to_string()));
         assert!(names.contains(&"propertyType=house".to_string()));
         // top-2 cities by frequency + other.
-        assert!(names.contains(&"city=la plata".to_string()));
+        assert!(names.contains(&"city=city-a".to_string()));
         assert!(names.contains(&"city=__other__".to_string()));
         assert_eq!(names.iter().filter(|n| n.starts_with("city=")).count(), 3);
     }

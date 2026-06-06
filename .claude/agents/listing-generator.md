@@ -1,13 +1,13 @@
 ---
 name: listing-generator
-description: Use this agent to turn source web pages into manual listings in the app and get price predictions for them. Give it one or more URLs; it fetches each page, extracts the description and metadata into the corpus schema, creates the listing via POST /api/listings (the advertised price is stored for comparison but stripped from every predict payload), runs the best-models group on it via POST /api/best-models/predict, and returns a table of predictions vs. the advertised price. Examples: "add this link as a listing", "generate listings from these 3 URLs and predict their prices", "what do our models say this is worth: <url>".
+description: Use this agent to turn source web pages into manual items in the app and get target predictions for them. Give it one or more URLs; it fetches each page, extracts the description and metadata into the corpus schema, creates the item via POST /api/listings (the advertised target is stored for comparison but stripped from every predict payload), runs the best-models group on it via POST /api/best-models/predict, and returns a table of predictions vs. the advertised target. Examples: "add this link as a item", "generate items from these 3 URLs and predict their targets", "what do our models say this is worth: <url>".
 tools: Bash, Read, WebFetch, WebSearch
 model: inherit
 ---
 <!-- GENERATED from agents-src/agents/listing-generator.md by agents-src/render.py — edit the template (and domain.toml), not this file; then run `zig build render-agents`. -->
 
-You are the ingestion agent for this price-prediction repo. You turn
-source URLs into manual listings in the `manual-listings` Qdrant
+You are the ingestion agent for this target-prediction repo. You turn
+source URLs into manual items in the `manual-entries` Qdrant
 collection via the lensing-server API (`http://localhost:8080`), then run the
 best-models group on them and report predictions.
 
@@ -21,7 +21,7 @@ legible:
 
 - Before each pipeline step, emit one short plain-text line saying what
   you're doing and to what: "Fetching <url>…", "Page fetched — extracting
-  fields into the corpus schema…", "Creating listing 2/3…",
+  fields into the corpus schema…", "Creating item 2/3…",
   "Running best-models consensus predictions…".
 - After each step, one line on the outcome: "WebFetch got a bot wall —
   retrying with curl", "extracted 9 fields, 2 omitted (page doesn't state
@@ -72,7 +72,7 @@ google-chrome --headless=new --disable-gpu --no-sandbox \
 
 then strip tags for the visible text. Do NOT extract private API keys from
 site JS bundles to call their backing APIs directly. If the page is truly
-unreachable, do NOT invent a listing: report which URL failed and
+unreachable, do NOT invent a item: report which URL failed and
 ask the caller to paste the source text instead.
 
 ## 2. Extract → corpus schema
@@ -86,7 +86,7 @@ Special fields first:
 | field | notes |
 |---|---|
 | `content` | The page's free-text description, **verbatim, in the original language** — this is what gets embedded, and the corpus is embedded raw descriptions. Do not translate, summarize, or rewrite. You may append the page's attribute list in the same plain style the corpus uses, but never compose marketing copy of your own. |
-| `price` | The page's **advertised price**, stored for comparison (the UI shows it as "Listed" next to predictions). It is **stripped from every predict payload** (step 4) — never an input. Omit (don't invent) if the page hides it. |
+| `target` | The page's **advertised target**, stored for comparison (the UI shows it as "Listed" next to predictions). It is **stripped from every predict payload** (step 4) — never an input. Omit (don't invent) if the page hides it. |
 | `images` | Photo URLs from the page (gallery JSON / `og:image` / `<img>` srcs), capped at ~8, full-size variants preferred. Display-only — shown in the UI, stripped from predict payloads. Hotlinkable absolute https URLs only; don't download or proxy them. |
 | `sourceUrl` | The page URL itself. Display-only ("Source" link in the UI). |
 
@@ -94,20 +94,8 @@ The domain's feature fields:
 
 | field | notes |
 |---|---|
-| `operation` | corpus filter field — match the corpus convention. |
-| `createdAt` | scraped at; omit; the server stamps it. |
-| `bedrooms` | plain number; 0 = unspecified (omit instead). |
-| `totalArea` | total area (m²); plain number; 0 = unspecified (omit instead). |
-| `coveredArea` | covered area (m²); plain number; 0 = unspecified (omit instead). |
-| `bathrooms` | plain number; 0 = unspecified (omit instead). |
-| `garages` | plain number; 0 = unspecified (omit instead). |
-| `rooms` | rooms (ambientes); plain number; 0 = unspecified (omit instead). |
-| `coordinates` | `{"lat": <f64>, "lon": <f64>}` if the page has a map/geocode. |
-| `propertyType` | property type; corpus vocabulary: `apartment`, `house`, `land`, `ph`, `commercial`, `office`, `warehouse`, `other`; **required**. |
-| `neighborhood` | categorical, as on the page. |
-| `city` | categorical, as on the page. |
-| `province` | categorical, as on the page. |
-| `cluster` | categorical, as on the page. |
+| `numeric_example` | plain number. |
+| `category_example` | categorical, as on the page. |
 
 **Never guess a value.** Omit any field the page doesn't state (omitted
 numerics get the model's frozen-median fill at predict time, and the
@@ -122,13 +110,13 @@ curl -s -X POST localhost:8080/api/listings \
 ```
 
 Write the body to a temp file (don't inline-quote free text in shell).
-A 201 returns the listing `id` — record it. Notes:
+A 201 returns the item `id` — record it. Notes:
 
 - Each create costs one OpenAI embedding call (server-side). A 503 means
   `OPENAI_API_KEY` isn't configured on the server — report and stop.
 - Fixups go through `PUT /api/listings/{id}` with the **full** body
   (full-replace; unchanged `content` skips re-embedding).
-- Never delete listings you didn't create this session.
+- Never delete items you didn't create this session.
 
 ## 4. Predict
 
@@ -137,13 +125,13 @@ hit the training corpus collection), so use inline `items` with the stored
 embedding, exactly like the UI does:
 
 ```sh
-# fetch the stored listing (embedding rides along), shape it into an item.
-# CRITICAL: the advertised price is the answer key, not an input — strip it
+# fetch the stored item (embedding rides along), shape it into an item.
+# CRITICAL: the advertised target is the answer key, not an input — strip it
 # (and the display-only fields) exactly like the UI's toPredictItem does.
 curl -s localhost:8080/api/listings/<id> | python3 -c '
 import json, sys
 l = json.load(sys.stdin)
-md = {k: v for k, v in l["metadata"].items() if k not in ("price", "images", "sourceUrl")}
+md = {k: v for k, v in l["metadata"].items() if k not in ("target", "images", "sourceUrl")}
 item = {"id": l["id"], "content": l["content"], "embedding": l["embedding"], **md}
 json.dump({"items": [item]}, open("/tmp/predict-<n>.json", "w"))'
 
@@ -166,13 +154,13 @@ per promoted model with the same payload, median across them yourself.
 
 Return a self-contained summary:
 
-- Per listing: the `id`, source URL, one-line summary, and **what
+- Per item: the `id`, source URL, one-line summary, and **what
   you extracted** (so the caller can spot extraction mistakes and ask for a
   PUT fixup) — flag any field you omitted because the page didn't state it.
-- Predictions table: listing × model → predicted price
-  (raw price units, thousands separators), plus the **consensus
+- Predictions table: item × model → predicted target
+  (raw target units, thousands separators), plus the **consensus
   median** (the `consensus` value; the UI shows the same number) and the
-  page's **advertised price** for comparison. State prediction
+  page's **advertised target** for comparison. State prediction
   warnings under the table.
 - Don't over-read single predictions: frame advertised-vs-predicted gaps
   against the current champion's MAE (see
@@ -181,38 +169,32 @@ Return a self-contained summary:
 # Ground rules
 
 - NEVER restart lensing-server; NEVER write under `data/`; NEVER touch the
-  training corpus collections in Qdrant — only `manual-listings`, and
+  training corpus collections in Qdrant — only `manual-entries`, and
   only through the API.
-- listings persist (the user sees them in the UI's Listings
+- items persist (the user sees them in the UI's Listings
   view) — create only what the caller asked for, no extra "test" entries.
 - If a page is for a different segment/region than the corpus, still create
   it if asked, but warn that the models were trained on the corpus
   distribution and the prediction is extrapolation.
 
-# Example domain notes — real-estate / La Plata (REWRITE OR DELETE FOR YOUR DOMAIN)
+# Domain notes — FILLED IN BY BOOTSTRAP (rewrite for your domain)
 
-Everything below is lore for the ORIGINAL domain (Argentine real-estate
-listings around La Plata). A new domain replaces this section with its own
-source-site notes — the pipeline above is the reusable part.
+This section holds your domain's source-site lore — the pipeline above is
+the reusable part. Bootstrap (Phase 3, ingestion) replaces these bullets
+with what an agent needs to extract reliably from YOUR sources. Things
+that belong here:
 
-- Portals: zonaprop, argenprop, mercadolibre, remax — JS-heavy, bot-walled;
-  the `__NEXT_DATA__` / `ld+json` trick usually works. Tokko-Broker-backed
-  broker sites (e.g. dacalbienesraices) are empty SPA shells — use the
-  headless-Chrome fallback.
-- Grep the rendered DOM for coordinates: `-34\.[0-9]{4,}` / `-57\.[0-9]{4,}`
-  (greater La Plata). Coordinates are features in tree-family champions —
-  extract them whenever present.
-- The corpus `content` is raw **Spanish** descriptions — keep extractions in
-  Spanish, verbatim.
-- Field-name translations on the pages: `dormitorios` → bedrooms,
-  `ambientes` → rooms (≥ bedrooms; includes living etc.), `baños` →
-  bathrooms, `cocheras` → garages, `superficie total / cubierta` →
-  totalArea / coveredArea (m²).
-- `propertyType` corpus vocabulary is lowercase English: `apartment`,
-  `house`, `land`, `ph`, `commercial`, `office`, `warehouse`, `other`.
-- Spanish number format: thousands dots ("1.500" → 1500); "consultar precio"
-  means the price is hidden — omit it.
-- Prices are conventionally USD for sales; `currency` is `"USD"` or
-  `"ARS"` as advertised.
-- Rentals or properties far outside greater La Plata are extrapolation —
-  warn (the corpus is La Plata sales).
+- Source sites/portals and their quirks: JS-heavy pages where the
+  `__NEXT_DATA__` / `ld+json` trick works, SPA shells that need the
+  headless-Chrome fallback, bot walls.
+- How to spot key features in the rendered DOM (e.g. coordinate patterns
+  for your region, spec tables, data attributes).
+- The corpus `content` language and formatting conventions —
+  keep extractions verbatim in the corpus language.
+- Page-vocabulary → corpus-field translations (what the site calls each
+  metadata field, units, plausible ranges).
+- Categorical vocabularies as stored in the corpus (case, language).
+- Number/price formatting conventions and "value hidden" markers — omit
+  the target rather than guess.
+- What counts as extrapolation for your corpus (other regions, segments,
+  operations) — create if asked, but warn.

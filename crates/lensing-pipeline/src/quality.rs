@@ -65,7 +65,7 @@ pub fn evaluate(
                     p.payload
                         .get(&dc.currency_field)
                         .as_str()
-                        .is_some_and(|c| c != currency.keep)
+                        .is_some_and(|c| c != currency.effective_keep(dc))
                 })
                 .map(|(i, _)| i)
                 .collect(),
@@ -335,7 +335,7 @@ mod tests {
 
     #[test]
     fn rules_flag_and_exclude() {
-        let domain = Domain::default();
+        let domain = Domain::example();
         // A tight cluster of normal prices + one absurd outlier + one free
         // + one missing propertyType.
         let mut points: Vec<RawPoint> =
@@ -378,7 +378,7 @@ mod tests {
 
     #[test]
     fn extended_rules_flag() {
-        let domain = Domain::default();
+        let domain = Domain::example();
         let long_a = "a".repeat(100);
         let long_b = "b".repeat(100);
         let points = vec![
@@ -424,7 +424,7 @@ mod tests {
 
     #[test]
     fn foreign_currency_rule() {
-        let domain = Domain::default();
+        let domain = Domain::example();
         let mut points: Vec<RawPoint> =
             (0..3).map(|i| pt(i, "house", "centro", 100_000.0)).collect();
         points[0].payload.set("currency", json!("USD"));

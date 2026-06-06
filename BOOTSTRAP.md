@@ -2,8 +2,15 @@
 
 This repository is a template: a complete lab for predicting one target
 variable over a corpus of embedded documents (Qdrant collection: vectors +
-JSON metadata payloads). The shipped configuration predicts Argentine
-real-estate sale prices; everything domain-specific is parameterized.
+JSON metadata payloads). It ships BLANK — `domain.toml` is a neutral
+placeholder and `CLAUDE.md` is a bootstrap-pending stub; everything
+domain-specific is parameterized and comes only from the user during
+bootstrap — never assume any field is the target. A complete worked
+example of `domain.toml` (the framework's original problem: Argentine
+real-estate sale prices, exercising every lever including `[currency]`,
+`[coordinates]` and reconciled fields) lives at
+`crates/lensing-core/src/example-domain.toml` — read it for reference,
+never as a default.
 
 Day-1 checklist for a new project (e.g. used-car prices, salaries):
 
@@ -24,16 +31,18 @@ Day-1 checklist for a new project (e.g. used-car prices, salaries):
    - `[agents]`: API URL, report dir, facts file, naming convention,
      `ingestion = true|false`.
 
-2. **`zig build render-agents`** — regenerates the skills/agents under
-   `.claude/`, `.agents/`, `.gemini/` from `agents-src/` with your domain
-   words. Skim the outputs; `zig build check` fails on drift or leftover
-   `{{tokens}}`.
+2. **`rm CLAUDE.md && zig build render-agents`** — regenerates the
+   skills/agents under `.claude/`, `.agents/`, `.gemini/` AND the repo-root
+   `CLAUDE.md` from `agents-src/` with your domain words. (The template
+   ships `CLAUDE.md` as a bootstrap-pending stub; the renderer preserves
+   the stub until you delete it — hence the `rm`.) Skim the outputs;
+   `zig build check` fails on drift or leftover `{{tokens}}`.
 
-3. **Rewrite the example-domain notes** — the bottom section of
-   `agents-src/agents/listing-generator.md` ("Example domain notes —
-   real-estate / La Plata") holds source-site scraping lore for the original
-   domain. Replace it with your domain's, or set `[agents] ingestion = false`
-   to drop the agent. Also skim PRODUCT.md / DESIGN.md.
+3. **Fill in the domain notes** — the bottom section of
+   `agents-src/agents/listing-generator.md` ("Domain notes — FILLED IN BY
+   BOOTSTRAP") is a placeholder for your domain's source-site scraping
+   lore. Write it, or set `[agents] ingestion = false` to drop the agent.
+   Also skim PRODUCT.md / DESIGN.md.
 
 3b. **Brand the instance** — set `[branding]` in `domain.toml` (`mark_seed`,
    usually your project name, and optionally `mark_hue_shift`) and run

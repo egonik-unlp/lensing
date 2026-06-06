@@ -360,7 +360,9 @@ pub async fn predict(
         // points (the build collection dropped the size fields). Only the
         // point_ids-sourced points — caller items get fallback ids that must
         // not be joined against real companion rows.
-        if let Some(companion) = featurizer.numerics_collection() {
+        if let Some(companion) =
+            featurizer.numerics_collection(st.domain.companion_collection().as_deref())
+        {
             if !points.is_empty() {
                 lensing_pipeline::numerics::reconcile(
                     &mut points,

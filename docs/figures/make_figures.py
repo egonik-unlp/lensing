@@ -39,7 +39,7 @@ MUTED = "#9ca3af"  # gray
 # Domain style header — keep axis units/labels going through these instead
 # of hardcoding the unit per figure (values mirror [metrics] in domain.toml).
 PRIMARY_METRIC = "MAE"
-VALUE_UNIT = "USD"
+VALUE_UNIT = "units"
 VALUE_AXIS = f"{PRIMARY_METRIC} ({VALUE_UNIT})"
 kfmt = FuncFormatter(lambda v, _: f"{v / 1000:.0f}k")
 

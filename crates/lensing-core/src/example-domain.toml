@@ -1,0 +1,234 @@
+# WORKED-EXAMPLE domain configuration — the framework's original problem:
+# sale prices of Argentine real-estate listings, from a Qdrant corpus of
+# embedded listings. This file is a FIXTURE, not live configuration: the
+# rich-domain tests load it via Domain::example(), and BOOTSTRAP.md points
+# implementers here to see every lever of domain.toml exercised. The live
+# (shipped) configuration is the neutral placeholder at the repo root.
+#
+# Rules of the road:
+# - Field order is load-bearing: feature columns are emitted numerics-first
+#   then categoricals, each in the order declared here. Reordering fields
+#   changes new datasets' column layout (frozen models are unaffected —
+#   contracts are self-describing).
+# - Field `name`s are payload JSON keys AND the items.json keys predictors
+#   read. Renaming a field is a corpus-schema statement, not cosmetics.
+# - Quality rule keys ("price-range", "bedrooms-outlier", …) are stable
+#   internal identifiers; a new domain rebinds them to its fields and
+#   relabels them, it does not rename them.
+
+schema_version = 1
+
+[project]
+name = "price-guesser-models"
+title = "Price Guesser Models"
+entity_noun = "listing"
+entity_noun_plural = "listings"
+target_noun = "price"
+
+# Instance personality inside the lensing brand grammar. The velocity-map
+# mark (dark sphere + red/blue shifted trail swarm) and the Sora wordmark
+# are constants; an instance reseeds the arc arrangement and may rotate the
+# ramp hue. The server ignores this section — it is read by the generator:
+#   python3 branding/make_mark.py --install
+# mark_seed "lensing" is the canonical mark; bootstrapped instances usually
+# set it to their project name.
+[branding]
+mark_seed = "lensing"
+mark_hue_shift = 0
+
+[corpus]
+qdrant_url = "http://localhost:6333"
+collection = "properties-tagged"
+manual_collection = "manual-listings"
+embedding_dim = 1536
+# Payload key the metadata fields nest under ("" = payload root).
+metadata_root = "metadata"
+# Payload-root key holding the embedded document text.
+content_field = "content"
+
+# The corpus point filter (translated 1:1 into a Qdrant filter; field names
+# get the metadata_root prefix automatically).
+[corpus.filter]
+desc = 'metadata.operation=="sale" && metadata.price!=0'
+must = [{ field = "operation", equals = "sale" }]
+must_not = [{ field = "price", equals = 0 }]
+
+[target]
+field = "price"
+transform = "log1p"
+
+[target.format]
+style = "money"
+symbol = "$"
+locale = "en-US"
+
+[metrics]
+primary = "MAE"
+columns = ["MAE", "medAPE", "R²"]
+percent = ["MAPE", "medAPE"]
+value_unit = "USD"
+# Size cap of the auto-maintained best-models group (pins may exceed it).
+best_models_size = 12
+
+# ---- Fields: the corpus payload schema ----
+# roles: target | categorical | numeric | coordinates | filter_only |
+#        timestamp | display
+# numeric options: encode = "raw"|"log1p", indicator (emit _missing column),
+#                  zero_is_missing, reconcile (joined from a companion
+#                  collection by point id), group (toggle-group name)
+# categorical options: vocab = "all" | { top_n = N }, critical (counted by
+#                      the missing-fields rule), path = "payload" for
+#                      payload-root fields
+
+[[fields]]
+name = "price"
+role = "target"
+
+[[fields]]
+name = "operation"
+role = "filter_only"
+
+[[fields]]
+name = "createdAt"
+label = "scraped at"
+role = "timestamp"
+
+[[fields]]
+name = "bedrooms"
+role = "numeric"
+encode = "raw"
+zero_is_missing = true
+default_on = true
+
+[[fields]]
+name = "totalArea"
+label = "total area (m²)"
+role = "numeric"
+encode = "log1p"
+indicator = true
+zero_is_missing = true
+reconcile = true
+group = "raw_numerics"
+
+[[fields]]
+name = "coveredArea"
+label = "covered area (m²)"
+role = "numeric"
+encode = "log1p"
+indicator = true
+zero_is_missing = true
+reconcile = true
+group = "raw_numerics"
+
+[[fields]]
+name = "bathrooms"
+role = "numeric"
+encode = "raw"
+indicator = true
+zero_is_missing = true
+reconcile = true
+group = "raw_numerics"
+
+[[fields]]
+name = "garages"
+role = "numeric"
+encode = "raw"
+indicator = true
+zero_is_missing = true
+reconcile = true
+group = "raw_numerics"
+
+[[fields]]
+name = "rooms"
+label = "rooms (ambientes)"
+role = "numeric"
+encode = "raw"
+indicator = true
+zero_is_missing = true
+reconcile = true
+group = "raw_numerics"
+
+[[fields]]
+name = "coordinates"
+role = "coordinates"
+reconcile = true
+
+[[fields]]
+name = "propertyType"
+label = "property type"
+role = "categorical"
+vocab = "all"
+critical = true
+default_on = true
+required = true
+suggestions = ["apartment", "house", "land", "ph", "commercial", "office", "warehouse", "other"]
+
+[[fields]]
+name = "neighborhood"
+role = "categorical"
+vocab = { top_n = 40 }
+critical = true
+default_on = true
+
+[[fields]]
+name = "city"
+role = "categorical"
+vocab = { top_n = 40 }
+
+[[fields]]
+name = "province"
+role = "categorical"
+vocab = "all"
+
+[[fields]]
+name = "cluster"
+role = "categorical"
+path = "payload"
+vocab = "all"
+
+# Plausible bounds for the coordinates field (Argentina). The raw collection
+# carries mis-geocodes and web-mercator clamps; anything outside counts as
+# missing.
+[coordinates]
+field = "coordinates"
+lat_range = [-56.0, -21.0]
+lon_range = [-74.0, -53.0]
+
+# Currency handling: the corpus mixes ARS and USD prices; sale listings are
+# conventionally priced in USD. Single-currency domains delete this section.
+[currency]
+keep = "USD"
+currency_field = "currency"
+date_field = "createdAt"
+reconcile_collection = "properties"
+rate_source = "blue"
+rate_url_template = "https://api.argentinadatos.com/v1/cotizaciones/dolares/{source}"
+pair = ["ARS", "USD"]
+
+# Quality-rule bindings + display labels (rule keys are stable identifiers).
+[quality]
+outlier_group = "propertyType"
+capped_numeric = "bedrooms"
+
+# Agentic-layer parameters, consumed by agents-src/render.py (NOT by the
+# Rust code) to render the skills/agents under .claude/, .agents/, .gemini/.
+# After editing anything in this file, run: zig build render-agents
+[agents]
+api_base_url = "http://localhost:8080"
+report_dir = "experiments"
+facts_file = "experiments/PROJECT-FACTS.md"
+definition_naming = "<predictor>-p<dims>-<slug>"
+definition_naming_example = "burn-mlp-p128-pyramid"
+# Render the ingestion agent (listing-generator)? Domains without a
+# scrape-from-the-web ingestion story set this to false.
+ingestion = true
+
+[quality.rule_labels]
+"nonpositive-price" = "price ≤ 0"
+"price-outlier" = "price outlier"
+"missing-fields" = "missing fields"
+"price-range" = "price out of range"
+"bedrooms-outlier" = "bedrooms outlier"
+"duplicate-content" = "duplicate listing"
+"short-content" = "thin description"
+"foreign-currency" = "foreign currency"

@@ -30,30 +30,22 @@ enum Command {
         /// Disable the log1p target transform.
         #[arg(long)]
         no_log_target: bool,
-        /// Disable the bedrooms numeric feature.
-        #[arg(long)]
-        no_bedrooms: bool,
-        /// Disable propertyType one-hots.
-        #[arg(long)]
-        no_property_type: bool,
-        /// Neighborhood one-hot vocabulary size (0 disables).
-        #[arg(long, default_value_t = 40)]
-        neighborhood_top_n: usize,
-        /// Enable city one-hots (messy field, off by default).
-        #[arg(long)]
-        city: bool,
-        /// Enable province one-hots (messy field, off by default).
-        #[arg(long)]
-        province: bool,
-        /// Enable cluster one-hots (potentially leaky, off by default).
-        #[arg(long)]
-        cluster: bool,
-        /// Enable raw-metadata numeric features (areas, baths, rooms),
-        /// reconciled from the companion collection by point id.
+        /// Per-field feature toggle, repeatable: NAME[=on|off] (bare NAME
+        /// enables). NAME is a domain field or toggle-group name; unset
+        /// fields keep their domain defaults.
+        #[arg(long = "field", value_name = "NAME[=on|off]")]
+        field: Vec<String>,
+        /// Per-categorical vocabulary cap, repeatable: NAME=N
+        /// (top-N one-hots + an __other__ bucket).
+        #[arg(long = "vocab-top-n", value_name = "NAME=N")]
+        vocab_top_n: Vec<String>,
+        /// Enable the reconciled numeric features (the domain's
+        /// reconcile-flagged fields), joined from the companion collection
+        /// by point id.
         #[arg(long)]
         raw_numerics: bool,
-        /// With --raw-numerics: backfill missing areas from "… m²" mentions
-        /// in the listing text.
+        /// With --raw-numerics: backfill missing area-like fields from unit
+        /// mentions (e.g. "… m²") in the entry text.
         #[arg(long)]
         area_content_backfill: bool,
         /// Companion collection for the raw-numerics join ("" disables;
@@ -72,25 +64,27 @@ enum Command {
         /// Enable the price-range quality filter.
         #[arg(long)]
         filter_price_range: bool,
-        /// Price-range filter floor (USD).
+        /// Price-range filter floor (in the target's unit).
         #[arg(long, default_value_t = 1000.0)]
         price_min: f64,
-        /// Price-range filter ceiling (USD).
+        /// Price-range filter ceiling (in the target's unit).
         #[arg(long, default_value_t = 50_000_000.0)]
         price_max: f64,
         /// Enable the missing-critical-fields quality filter.
         #[arg(long)]
         filter_missing_fields: bool,
-        /// Currency handling: filter (drop non-USD, default), convert
-        /// (ARS→USD @ per-date rate), or off.
+        /// Currency handling: filter (drop foreign-currency rows, default),
+        /// convert (rewrite foreign values into the kept currency @ per-date
+        /// rate), or off. No-op for single-currency domains.
         #[arg(long, default_value = "filter")]
         currency_mode: String,
         /// Companion collection for the currency reconcile join ("" disables;
         /// default: domain.toml `currency.reconcile_collection`).
         #[arg(long)]
         currency_reconcile: Option<String>,
-        /// Exchange-rate series for convert mode: blue or oficial.
-        #[arg(long, default_value = "blue")]
+        /// Exchange-rate series for convert mode ("" = domain.toml
+        /// `currency.rate_source`).
+        #[arg(long, default_value = "")]
         currency_rate_source: String,
     },
 }
@@ -106,12 +100,8 @@ fn main() -> Result<()> {
             test_ratio,
             seed,
             no_log_target,
-            no_bedrooms,
-            no_property_type,
-            neighborhood_top_n,
-            city,
-            province,
-            cluster,
+            field,
+            vocab_top_n,
             raw_numerics,
             area_content_backfill,
             numerics_collection,
@@ -147,6 +137,34 @@ fn main() -> Result<()> {
                 Some(c) => (!c.is_empty()).then_some(c),
                 None => companion_default(),
             };
+            // Seed the generic field map from the domain defaults, apply the
+            // --field / --vocab-top-n overrides, then normalize again so the
+            // maps (and the legacy mirror flags) are fully explicit.
+            let mut features = lensing_core::FeatureConfig {
+                pca_dims,
+                raw_numerics,
+                area_content_backfill,
+                // API-driven options; the CLI keeps defaults.
+                ..Default::default()
+            };
+            domain.normalize_config(&mut features);
+            for spec in &field {
+                let (name, on) = match spec.split_once('=') {
+                    None => (spec.as_str(), true),
+                    Some((n, "on")) | Some((n, "true")) | Some((n, "1")) => (n, true),
+                    Some((n, "off")) | Some((n, "false")) | Some((n, "0")) => (n, false),
+                    Some((_, v)) => anyhow::bail!("--field {spec:?}: unknown value {v:?} (on|off)"),
+                };
+                features.fields.insert(name.to_string(), on);
+            }
+            for spec in &vocab_top_n {
+                let (name, n) = spec
+                    .split_once('=')
+                    .and_then(|(n, v)| Some((n, v.parse::<usize>().ok()?)))
+                    .ok_or_else(|| anyhow::anyhow!("--vocab-top-n {spec:?}: expected NAME=N"))?;
+                features.vocab_top_n.insert(name.to_string(), n);
+            }
+            domain.normalize_config(&mut features);
             let cfg = BuildConfig {
                 domain,
                 qdrant_url,
@@ -155,19 +173,7 @@ fn main() -> Result<()> {
                 test_ratio,
                 seed,
                 log_target: !no_log_target,
-                features: lensing_core::FeatureConfig {
-                    pca_dims,
-                    bedrooms: !no_bedrooms,
-                    property_type: !no_property_type,
-                    neighborhood_top_n,
-                    city,
-                    province,
-                    cluster,
-                    raw_numerics,
-                    area_content_backfill,
-                    // API-driven options; the CLI keeps defaults.
-                    ..Default::default()
-                },
+                features,
                 quality: lensing_core::QualityFilterConfig {
                     nonpositive_price: !no_filter_nonpositive_price,
                     price_outlier: filter_price_outliers,

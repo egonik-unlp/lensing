@@ -18,8 +18,8 @@ use serde_json::{json, Value};
 use crate::qdrant::{self, RawPoint};
 
 /// Reconcile currency onto `points` and, in Convert mode, rewrite foreign
-/// target values into `cfg.keep`. Never drops rows — exclusion is the
-/// `foreign-currency` quality rule's job (Filter mode).
+/// target values into the kept currency. Never drops rows — exclusion is
+/// the `foreign-currency` quality rule's job (Filter mode).
 pub fn apply(
     points: &mut [RawPoint],
     cfg: &CurrencyConfig,
@@ -39,6 +39,15 @@ pub fn apply(
     if cfg.mode == CurrencyMode::Off {
         return Ok(report);
     }
+    // Materialize the domain fallbacks so the recorded report (and the
+    // manifest's filter description) carries the concrete values used.
+    let cfg = CurrencyConfig {
+        mode: cfg.mode,
+        keep: cfg.effective_keep(dc).to_string(),
+        reconcile_collection: cfg.effective_reconcile(dc).map(str::to_string),
+        rate_source: cfg.effective_rate_source(dc).to_string(),
+    };
+    report.config = cfg.clone();
     let currency_field = dc.currency_field.as_str();
     let date_field = dc.date_field.as_str();
 
@@ -89,7 +98,12 @@ pub fn apply(
 }
 
 /// Human-readable currency clause for the manifest's filter description.
+/// Expects a RESOLVED config (a [`CurrencyReport`]'s); an empty `keep`
+/// means a single-currency domain — no clause.
 pub fn filter_desc(cfg: &CurrencyConfig) -> String {
+    if cfg.keep.is_empty() {
+        return String::new();
+    }
     match cfg.mode {
         CurrencyMode::Off => String::new(),
         CurrencyMode::Filter => format!(" && currency==\"{}\"", cfg.keep),
@@ -259,7 +273,7 @@ mod tests {
 
     #[test]
     fn convert_ars_to_usd() {
-        let domain = Domain::default();
+        let domain = Domain::example();
         let dc = domain.currency.as_ref().unwrap();
         let mut points = vec![
             ars_point(0, 26_650_000.0, Some("2026-01-05T00:00:00Z")), // @1200

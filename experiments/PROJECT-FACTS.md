@@ -1,4 +1,4 @@
-# PROJECT FACTS — <project title — the bootstrap skill reseeds this file>
+# PROJECT FACTS — Unconfigured Lensing Instance
 
 Living, agent-maintained roll-up of empirical knowledge: the leaderboard,
 noise bands, dataset lineage, per-family field guide and hard-won pitfalls.
@@ -12,9 +12,9 @@ Last updated: never — no facts yet; the first campaign seeds this.
 
 ## Best on record (leaderboard)
 
-| model | dataset | MAE | medAPE | R² | source |
-|---|---|---|---|
-| _none yet_ | | | |
+| model | dataset | MAE | RMSE | R² | source |
+|---|---|---|---|---|---|
+| _none yet_ | | | | | |
 
 ## Noise bands & significance thresholds
 

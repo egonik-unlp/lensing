@@ -249,13 +249,13 @@ export default function NewListingView() {
               rows={7}
               value={draft.content}
               onChange={setContent}
-              placeholder="Luminoso departamento de 85 m² en Palermo, 2 dormitorios, balcón al frente…"
+              placeholder={`Paste or write the ${noun} description exactly as it would appear at the source…`}
               disabled={submitting}
               autoFocus
             />
             <span className="hp-hint">
-              Mentions like “85 m²” also let raw-numerics models backfill a missing area, as in
-              training.
+              Numeric mentions in the text (e.g. “85 m²”) also let raw-numerics models backfill a
+              missing field, as in training.
             </span>
           </div>
         </div>
@@ -336,7 +336,7 @@ export default function NewListingView() {
                 className="mono-input"
                 value={draft.sourceUrl}
                 onChange={setExtra('sourceUrl')}
-                placeholder="https://www.zonaprop.com.ar/…"
+                placeholder="https://example.com/…"
                 disabled={submitting}
               />
             </div>

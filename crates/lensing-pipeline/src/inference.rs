@@ -130,12 +130,16 @@ impl Featurizer {
     }
 
     /// Companion collection for the predict-time numerics join. Contracts
-    /// frozen before the field existed fall back to the build default.
-    pub fn numerics_collection(&self) -> Option<String> {
+    /// frozen before the field existed fall back to `default` (the domain's
+    /// companion collection — those contracts were built with it).
+    pub fn numerics_collection(&self, default: Option<&str>) -> Option<String> {
         if !self.raw_numerics() && !self.coordinates() {
             return None;
         }
-        self.contract.numerics_collection.clone().or_else(|| Some("properties".into()))
+        self.contract
+            .numerics_collection
+            .clone()
+            .or_else(|| default.map(str::to_string))
     }
 
     /// Featurize a batch into the trained column order (n × n_cols,
@@ -314,7 +318,7 @@ mod tests {
             neighborhood_top_n: 0,
             ..Default::default()
         };
-        let domain = lensing_core::domain::Domain::default();
+        let domain = lensing_core::domain::Domain::example();
         let encoder = Encoder::build(&points, &domain, &cfg);
         let trained = features::assemble(&projected, k, &encoder, &points);
 

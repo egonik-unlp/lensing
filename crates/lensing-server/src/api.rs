@@ -227,36 +227,46 @@ pub struct BuildRequest {
     #[serde(default)]
     pub quality: lensing_core::QualityFilterConfig,
     /// Currency handling (reconcile / hard filter / convert); the default
-    /// reconciles from `properties` and hard-filters to USD.
+    /// reconciles from the domain's companion collection and hard-filters
+    /// to the kept currency.
     #[serde(default)]
     pub currency: lensing_core::CurrencyConfig,
     /// Source Qdrant collection to build/analyze from. Defaults to the
     /// server's configured collection; set to build off an exported clean one.
     #[serde(default)]
     pub collection: Option<String>,
-    /// Raw-metadata numeric features (totalArea/coveredArea/bathrooms/
-    /// garages/rooms), reconciled from `numerics_collection` by point id.
+    /// Raw-metadata numeric features (the domain's reconcile-flagged
+    /// numeric fields), reconciled from `numerics_collection` by point id.
     #[serde(default)]
     pub raw_numerics: bool,
-    /// With `raw_numerics`: backfill missing areas from "… m²" mentions in
-    /// the listing text.
+    /// With `raw_numerics`: backfill missing area-like fields from unit
+    /// mentions (e.g. "… m²") in the entry text.
     #[serde(default)]
     pub area_content_backfill: bool,
-    /// Lat/lon from the raw collection's `metadata.coordinates` (raw-degree
+    /// Lat/lon from the raw collection's coordinates field (raw-degree
     /// columns + pair-missing indicator), reconciled like the numerics.
     #[serde(default)]
     pub coordinates: bool,
-    /// With `raw_numerics`: fill missing numeric fields with per-propertyType
-    /// train-split medians and drop the missing-indicator columns.
+    /// With `raw_numerics`: fill missing numeric fields with per-group
+    /// train-split medians (grouped by the domain's outlier group) and drop
+    /// the missing-indicator columns.
     #[serde(default)]
     pub impute_numerics: bool,
-    /// Companion collection for the raw-numerics reconcile join.
-    #[serde(default = "default_numerics_collection")]
+    /// Companion collection for the raw-numerics reconcile join. Absent →
+    /// the domain's companion collection; empty string → no join (inline
+    /// fields only).
+    #[serde(default)]
     pub numerics_collection: Option<String>,
 }
 
-fn default_numerics_collection() -> Option<String> {
-    Some("properties".into())
+/// Companion collection for a request: explicit value, `""` disables the
+/// join, absent falls back to the domain's companion collection.
+fn resolve_numerics_collection(state: &AppState, requested: &Option<String>) -> Option<String> {
+    match requested {
+        Some(c) if c.is_empty() => None,
+        Some(c) => Some(c.clone()),
+        None => state.domain.companion_collection(),
+    }
 }
 
 /// The source collection a request targets, defaulting to the server's.
@@ -334,7 +344,7 @@ pub async fn build_dataset(
         features,
         quality: req.quality,
         currency: req.currency,
-        numerics_collection: req.numerics_collection,
+        numerics_collection: resolve_numerics_collection(&state, &req.numerics_collection),
     };
 
     let st = state.clone();
@@ -465,7 +475,7 @@ pub async fn analyze_dataset(
     let mut features = req.feature_config(&state)?;
     let domain = state.domain.as_ref().clone();
     domain.normalize_config(&mut features);
-    let numerics_collection = req.numerics_collection.clone();
+    let numerics_collection = resolve_numerics_collection(&state, &req.numerics_collection);
 
     let st = state.clone();
     let id = job_id.clone();

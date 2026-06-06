@@ -109,11 +109,11 @@ Extend `make_figures.py` in its exact idiom — never fork the style:
 - Data hand-transcribed from the report's tables into the function — never
   recomputed.
 - Use the shared style block as-is, the `ACCENT`/`GOOD`/`BAD`/`MUTED`
-  palette, the `kfmt` formatter for USD axes, and finish with
+  palette, the `kfmt` formatter for units axes, and finish with
   `save(fig, "<name>.pdf")`. Register the call in the `__main__` block.
 - **Heatmaps for 2-D parameter scans** (C × ε, depth × width, lr × rounds…):
   `ax.pcolormesh` or `ax.imshow` with ticks labeled by the actual axis
-  values, `cmap="viridis"`, a colorbar labeled `"MAE (USD)"` formatted with
+  values, `cmap="viridis"`, a colorbar labeled `"MAE (units)"` formatted with
   `kfmt`, and the best cell annotated. Failed/exploded cells: mask them
   (`np.nan` + `set_bad`) and say so in the caption rather than letting one
   blowup flatten the color scale.

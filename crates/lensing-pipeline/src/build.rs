@@ -38,6 +38,7 @@ impl Default for BuildConfig {
         Self {
             qdrant_url: domain.corpus.qdrant_url.clone(),
             collection: domain.corpus.collection.clone(),
+            numerics_collection: domain.companion_collection(),
             domain,
             out_root: PathBuf::from("data/datasets"),
             test_ratio: 0.2,
@@ -46,7 +47,6 @@ impl Default for BuildConfig {
             features: FeatureConfig::default(),
             quality: lensing_core::QualityFilterConfig::default(),
             currency: lensing_core::CurrencyConfig::default(),
-            numerics_collection: Some("properties".into()),
         }
     }
 }
@@ -237,7 +237,8 @@ pub fn build_dataset(
             filter: format!(
                 "{}{}",
                 domain.corpus.filter.desc,
-                crate::currency::filter_desc(&cfg.currency)
+                // The report's config carries the domain fallbacks resolved.
+                crate::currency::filter_desc(&currency_report.config)
             ),
         },
         n_rows: n,

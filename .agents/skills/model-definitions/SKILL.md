@@ -14,7 +14,7 @@ allowed-tools:
 <!-- GENERATED from agents-src/skills/model-definitions/SKILL.md by agents-src/render.py — edit the template (and domain.toml), not this file; then run `zig build render-agents`. -->
 
 Manage **model definitions**: named, reusable configurations (predictor + concrete
-hyperparameters + dataset tags) for this repo's price-prediction experiments.
+hyperparameters + dataset tags) for this repo's target-prediction experiments.
 
 ## Concepts — keep these straight
 
@@ -150,7 +150,7 @@ the **dataset-design** skill.
    findings. Do not persist anything until the user approves.
 5. **Persist.** Save the winner as a definition (`POST /api/definitions`, or
    clone the baseline and PATCH) named per the convention
-   `<predictor>-p<dims>-<slug>` (e.g. `burn-mlp-p128-pyramid`); tag the
+   `<predictor>-<slug>` (e.g. ``); tag the
    dataset (automatic if a confirming run is launched from the definition,
    otherwise PATCH `dataset_tags`). Then write the report — and reconcile
    `experiments/PROJECT-FACTS.md` (leaderboard row, new pitfalls, dataset
@@ -165,24 +165,24 @@ existing files:
 Goal: … (fixed baseline: dataset id, held hyperparams, reference champion
 with its metrics and run id)
 
-Outcome in one line: **<key finding> — <MAE / medAPE / R²> —
+Outcome in one line: **<key finding> — <MAE / RMSE / R²> —
 definition `<name>`**
 
 ## Results (sorted by MAE; all on <ds-id>)
-| config | MAE | medAPE | R² | run |
+| config | MAE | RMSE | R² | run |
 (bold the winner row and the best cell per metric; include failed runs)
 
 ## Findings
 (interpretation: why the winner wins, trade-offs, failure modes, saturation)
 
 ## Best on record after this work
-| model | MAE | medAPE | R² | run |   ← winner vs. previous champions
+| model | MAE | RMSE | R² | run |   ← winner vs. previous champions
 
 ## Follow-ups
 - next experiments worth running
 ```
 
-Conventions: MAE in raw price units with thousands
+Conventions: MAE in raw target units with thousands
 separators; percentage metrics rendered as %; a run id in every table row;
 name the dataset id; reference prior experiments by filename when building
 on them.

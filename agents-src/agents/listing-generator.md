@@ -175,30 +175,24 @@ Return a self-contained summary:
   it if asked, but warn that the models were trained on the corpus
   distribution and the prediction is extrapolation.
 
-# Example domain notes — real-estate / La Plata (REWRITE OR DELETE FOR YOUR DOMAIN)
+# Domain notes — FILLED IN BY BOOTSTRAP (rewrite for your domain)
 
-Everything below is lore for the ORIGINAL domain (Argentine real-estate
-listings around La Plata). A new domain replaces this section with its own
-source-site notes — the pipeline above is the reusable part.
+This section holds your domain's source-site lore — the pipeline above is
+the reusable part. Bootstrap (Phase 3, ingestion) replaces these bullets
+with what an agent needs to extract reliably from YOUR sources. Things
+that belong here:
 
-- Portals: zonaprop, argenprop, mercadolibre, remax — JS-heavy, bot-walled;
-  the `__NEXT_DATA__` / `ld+json` trick usually works. Tokko-Broker-backed
-  broker sites (e.g. dacalbienesraices) are empty SPA shells — use the
-  headless-Chrome fallback.
-- Grep the rendered DOM for coordinates: `-34\.[0-9]{4,}` / `-57\.[0-9]{4,}`
-  (greater La Plata). Coordinates are features in tree-family champions —
-  extract them whenever present.
-- The corpus `content` is raw **Spanish** descriptions — keep extractions in
-  Spanish, verbatim.
-- Field-name translations on the pages: `dormitorios` → bedrooms,
-  `ambientes` → rooms (≥ bedrooms; includes living etc.), `baños` →
-  bathrooms, `cocheras` → garages, `superficie total / cubierta` →
-  totalArea / coveredArea (m²).
-- `propertyType` corpus vocabulary is lowercase English: `apartment`,
-  `house`, `land`, `ph`, `commercial`, `office`, `warehouse`, `other`.
-- Spanish number format: thousands dots ("1.500" → 1500); "consultar precio"
-  means the {{target_noun}} is hidden — omit it.
-- Prices are conventionally USD for sales; `currency` is `"USD"` or
-  `"ARS"` as advertised.
-- Rentals or properties far outside greater La Plata are extrapolation —
-  warn (the corpus is La Plata sales).
+- Source sites/portals and their quirks: JS-heavy pages where the
+  `__NEXT_DATA__` / `ld+json` trick works, SPA shells that need the
+  headless-Chrome fallback, bot walls.
+- How to spot key features in the rendered DOM (e.g. coordinate patterns
+  for your region, spec tables, data attributes).
+- The corpus `{{content_field}}` language and formatting conventions —
+  keep extractions verbatim in the corpus language.
+- Page-vocabulary → corpus-field translations (what the site calls each
+  metadata field, units, plausible ranges).
+- Categorical vocabularies as stored in the corpus (case, language).
+- Number/price formatting conventions and "value hidden" markers — omit
+  the {{target_noun}} rather than guess.
+- What counts as extrapolation for your corpus (other regions, segments,
+  operations) — create if asked, but warn.

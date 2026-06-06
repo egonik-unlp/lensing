@@ -67,11 +67,18 @@ curl -s -X POST <qdrant>/collections/<name>/points/scroll \
 ```
 
 From the sample, build and SHOW a schema inference table: payload key →
-observed JSON type → coverage in sample → proposed role (`target` |
-`categorical` | `numeric` | `coordinates` | `filter_only` | `timestamp` |
-`display`) → proposed options (encode log1p for heavy-tailed sizes,
+observed JSON type → coverage in sample → proposed role (`categorical` |
+`numeric` | `coordinates` | `filter_only` | `timestamp` | `display`) →
+proposed options (encode log1p for heavy-tailed sizes,
 indicator for sparse numerics, vocab top-N for high-cardinality
-categoricals, critical for must-have fields). Also: where the metadata
+categoricals, critical for must-have fields). Do NOT propose a `target`
+role for any field — the prediction target is the user's call alone, asked
+in Phase 1. The shipped `domain.toml` is a neutral placeholder and the
+worked example at `crates/lensing-core/src/example-domain.toml` is
+reference material, not a preference: never carry its target (or any
+plausible-looking field) over as an assumed target. If several fields could
+plausibly be targets, list them neutrally as candidates without ranking.
+Also: where the metadata
 nests (`metadata_root`), which key holds the embedded text
 (`content_field`), the embedding dim (scroll once with
 `"with_vector": true, "limit": 1`), and a candidate corpus filter. If they
@@ -81,13 +88,16 @@ pipeline — this skill does not embed documents.
 
 ## Phase 1 — Interview → domain.toml
 
-Ask only what you cannot infer; propose defaults for everything else:
+Ask only what you cannot infer; propose defaults for everything else —
+with ONE exception: the **target is always asked, never inferred**. It is
+the first question of the interview, asked open-endedly ("which field
+should the models predict?") with no pre-selected suggestion:
 
-1. **Nouns + title**: entity noun ("listing"/"vehicle"/"posting"), target
+1. **Target**: field (the user's answer — no default), transform (`log1p`
+   for heavy-tailed positive targets — the default and well-trodden path;
+   `none` otherwise), display format (symbol/locale).
+2. **Nouns + title**: entity noun ("listing"/"vehicle"/"posting"), target
    noun, project name/title.
-2. **Target**: field, transform (`log1p` for heavy-tailed positive targets —
-   the default and well-trodden path; `none` otherwise), display format
-   (symbol/locale).
 3. **Fields = the dataset-pane levers.** Walk the inference table together.
    Each `[[fields]]` entry becomes a build-form toggle (`default_on`), and
    the `[quality]` bindings become the preflight/filter levers in the
@@ -106,8 +116,12 @@ Ask only what you cannot infer; propose defaults for everything else:
 
 Then: write `domain.toml`, validate via `cargo test -p lensing-core` (the
 embedded-domain tests re-read it) — fix anything it rejects, and run
-`zig build render-agents` so the skills/agents speak the new domain.
-`zig build check` must pass before moving on.
+`rm CLAUDE.md && zig build render-agents` so the skills/agents AND the
+repo-root `CLAUDE.md` speak the new domain. (The template ships
+`CLAUDE.md` as a bootstrap-pending stub and the renderer preserves the
+stub until it is deleted — hence the `rm`. Never leave the stub or
+another project's CLAUDE.md in place.) `zig build check` must pass
+before moving on.
 
 ## Phase 2 — Reset the empirical record (DESTRUCTIVE — explicit confirmation)
 
@@ -131,7 +145,7 @@ Decide together how one-off entries are fetched and presented:
 
 | option | what to do |
 |---|---|
-| **Scrape from source sites** | Rewrite the fenced "Example domain notes" section of `agents-src/agents/listing-generator.md` with THEIR source-site lore (portals, embedded-JSON tricks, field-name translations, regional quirks); keep `[agents] ingestion = true`; re-render. |
+| **Scrape from source sites** | Fill in the "Domain notes — FILLED IN BY BOOTSTRAP" section of `agents-src/agents/listing-generator.md` with THEIR source-site lore (portals, embedded-JSON tricks, field-name translations, regional quirks); keep `[agents] ingestion = true`; re-render. |
 | **Manual entry only** | `[agents] ingestion = false` (drops the agent); the UI's New-entry form (generated from `[[fields]]`, with `suggestions` datalists and `required` flags) is the whole story — tune those field options now. |
 | **API/CSV import later** | Same as manual for now; note it as a follow-up (the `POST /api/listings` flat-fields shape is the integration point). |
 
@@ -177,6 +191,10 @@ Launch one run each on the first dataset, watch them complete, then seed
 
 - Every file write and every destructive step is announced and confirmed
   first. Phase 2 doubly so.
+- **No default prediction target.** The shipped domain is a neutral
+  placeholder and the worked example (prices) is reference material, not a
+  bias: never assume, pre-select, or rank a target field on the user's
+  behalf — the target comes only from their explicit answer in Phase 1.
 - Never write under `data/` by hand; never hand-edit the rendered
   `.claude/.agents/.gemini` outputs (edit `agents-src/` + `domain.toml`,
   then `zig build render-agents`).

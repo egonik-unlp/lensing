@@ -1,4 +1,4 @@
-# Infrastructure for price-guesser-models.
+# Infrastructure for a lensing instance.
 #
 #   docker compose up -d postgres --wait     metadata database (zig build db-up)
 #   docker compose --profile qdrant up -d    + a local Qdrant for greenfield

@@ -5,36 +5,16 @@
 use anyhow::{bail, Result};
 use lensing_core::{ColumnDesc, ColumnKind};
 
-/// The lat/lon/indicator triple `FeatureConfig.coordinates` produces.
-const COORDINATE_FIELDS: [&str; 3] = ["lat", "lon", "coords_missing"];
-/// Numeric fields `FeatureConfig.raw_numerics` produces (with and without
-/// `impute_numerics`, which drops the `_missing` indicators).
-const RAW_NUMERIC_FIELDS: [&str; 10] = [
-    "totalArea_log",
-    "totalArea_missing",
-    "coveredArea_log",
-    "coveredArea_missing",
-    "bathrooms",
-    "bathrooms_missing",
-    "garages",
-    "garages_missing",
-    "rooms",
-    "rooms_missing",
-];
-
-/// Does `col` belong to the named feature block?
+/// Does `col` belong to the named feature block? Entirely artifact-driven:
+/// a numeric column matches its source field name or the feature block the
+/// encoder recorded on it (the domain field's toggle group, or
+/// "coordinates" for the lat/lon/missing triple); a one-hot matches its
+/// group. Pre-group artifacts carry no block tag — their numeric columns
+/// match by field name only (rebuild the dataset to exclude by block).
 fn in_block(col: &ColumnDesc, block: &str) -> bool {
     match (&col.kind, block) {
         (ColumnKind::Pca { .. }, "pca") => true,
-        (ColumnKind::Numeric { field }, "coordinates") => {
-            COORDINATE_FIELDS.contains(&field.as_str())
-        }
-        (ColumnKind::Numeric { field }, "raw_numerics") => {
-            RAW_NUMERIC_FIELDS.contains(&field.as_str())
-        }
-        // A bare numeric field name ("bedrooms") or a one-hot group name
-        // ("propertyType", "neighborhood", …).
-        (ColumnKind::Numeric { field }, b) => field == b,
+        (ColumnKind::Numeric { field, group }, b) => field == b || group.as_deref() == Some(b),
         (ColumnKind::Onehot { group, .. }, b) => group == b,
         _ => false,
     }
@@ -46,12 +26,13 @@ fn in_block(col: &ColumnDesc, block: &str) -> bool {
 pub fn mask_by_blocks(columns: &[ColumnDesc], exclude: &[String]) -> Result<Vec<usize>> {
     for block in exclude {
         if !columns.iter().any(|c| in_block(c, block)) {
-            let known: Vec<&str> = ["pca", "coordinates", "raw_numerics"]
-                .into_iter()
-                .chain(columns.iter().filter_map(|c| match &c.kind {
-                    ColumnKind::Onehot { group, .. } => Some(group.as_str()),
-                    ColumnKind::Numeric { field } => Some(field.as_str()),
-                    _ => None,
+            let known: std::collections::BTreeSet<&str> = std::iter::once("pca")
+                .chain(columns.iter().flat_map(|c| match &c.kind {
+                    ColumnKind::Onehot { group, .. } => vec![group.as_str()],
+                    ColumnKind::Numeric { field, group } => std::iter::once(field.as_str())
+                        .chain(group.as_deref())
+                        .collect(),
+                    _ => vec![],
                 }))
                 .collect();
             bail!("exclude_blocks {block:?} matches no column; known blocks: {known:?}");
@@ -105,41 +86,74 @@ pub fn subset(features: &[f32], n_cols: usize, rows: &[u32], cols: &[usize]) -> 
 mod tests {
     use super::*;
 
+    fn num(name: &str, field: &str, group: Option<&str>) -> ColumnDesc {
+        ColumnDesc {
+            name: name.into(),
+            kind: ColumnKind::Numeric {
+                field: field.into(),
+                group: group.map(str::to_string),
+            },
+        }
+    }
+
+    /// Columns as the encoder emits them: numeric `field` is the SOURCE
+    /// payload field (a suffixed column keeps its source field), `group` the
+    /// feature block.
     fn cols() -> Vec<ColumnDesc> {
         vec![
             ColumnDesc { name: "pca_0".into(), kind: ColumnKind::Pca { component: 0 } },
-            ColumnDesc { name: "bedrooms".into(), kind: ColumnKind::Numeric { field: "bedrooms".into() } },
-            ColumnDesc { name: "lat".into(), kind: ColumnKind::Numeric { field: "lat".into() } },
-            ColumnDesc { name: "lon".into(), kind: ColumnKind::Numeric { field: "lon".into() } },
+            num("size", "size", None),
+            num("area_log", "area", Some("raw_numerics")),
+            num("area_missing", "area", Some("raw_numerics")),
+            num("lat", "geo", Some("coordinates")),
+            num("lon", "geo", Some("coordinates")),
+            num("coords_missing", "geo", Some("coordinates")),
             ColumnDesc {
-                name: "coords_missing".into(),
-                kind: ColumnKind::Numeric { field: "coords_missing".into() },
-            },
-            ColumnDesc {
-                name: "propertyType=house".into(),
-                kind: ColumnKind::Onehot { group: "propertyType".into(), value: "house".into() },
+                name: "category=a".into(),
+                kind: ColumnKind::Onehot { group: "category".into(), value: "a".into() },
             },
         ]
     }
 
     #[test]
-    fn block_mask_drops_coordinates_and_keeps_order() {
+    fn block_mask_drops_blocks_and_keeps_order() {
         let kept = mask_by_blocks(&cols(), &["coordinates".into()]).unwrap();
-        assert_eq!(kept, vec![0, 1, 5]);
-        let kept = mask_by_blocks(&cols(), &["propertyType".into(), "pca".into()]).unwrap();
-        assert_eq!(kept, vec![1, 2, 3, 4]);
+        assert_eq!(kept, vec![0, 1, 2, 3, 7]);
+        let kept = mask_by_blocks(&cols(), &["raw_numerics".into()]).unwrap();
+        assert_eq!(kept, vec![0, 1, 4, 5, 6, 7]);
+        // A source-field name also works as a block ("area" → its columns).
+        let kept = mask_by_blocks(&cols(), &["area".into()]).unwrap();
+        assert_eq!(kept, vec![0, 1, 4, 5, 6, 7]);
+        let kept = mask_by_blocks(&cols(), &["category".into(), "pca".into()]).unwrap();
+        assert_eq!(kept, vec![1, 2, 3, 4, 5, 6]);
         assert!(mask_by_blocks(&cols(), &["nope".into()]).is_err());
         assert!(mask_by_blocks(
             &cols(),
-            &["pca".into(), "coordinates".into(), "bedrooms".into(), "propertyType".into()]
+            &[
+                "pca".into(),
+                "coordinates".into(),
+                "raw_numerics".into(),
+                "size".into(),
+                "category".into()
+            ]
         )
         .is_err());
     }
 
     #[test]
+    fn pre_group_artifacts_match_by_field_name_only() {
+        // Columns frozen before block tags existed carry no group; block
+        // names match nothing (typo-guard error), field names still work.
+        let legacy = vec![num("area_log", "area", None), num("size", "size", None)];
+        assert!(mask_by_blocks(&legacy, &["raw_numerics".into()]).is_err());
+        let kept = mask_by_blocks(&legacy, &["area".into()]).unwrap();
+        assert_eq!(kept, vec![1]);
+    }
+
+    #[test]
     fn name_mask_preserves_member_order_and_names_missing() {
         let idx = mask_by_names(&cols(), &["lat".into(), "pca_0".into()]).unwrap();
-        assert_eq!(idx, vec![2, 0]);
+        assert_eq!(idx, vec![4, 0]);
         let err = mask_by_names(&cols(), &["pca_0".into(), "ghost".into()]).unwrap_err();
         assert!(err.to_string().contains("ghost"), "{err}");
     }

@@ -68,8 +68,17 @@ pub struct ColumnDesc {
 pub enum ColumnKind {
     /// PCA component of the embedding vector.
     Pca { component: usize },
-    /// Raw numeric payload field.
-    Numeric { field: String },
+    /// Raw numeric payload field. `group` names the feature block the
+    /// column belongs to — the domain field's toggle group (e.g. the
+    /// reconciled-numerics group) or `"coordinates"` for the lat/lon/missing
+    /// triple — so block-level column masks resolve from the artifact alone,
+    /// without referencing the domain. `None` on bare numerics and on
+    /// artifacts built before groups were recorded.
+    Numeric {
+        field: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        group: Option<String>,
+    },
     /// One-hot indicator. `group` is the source field, `value` the category.
     Onehot { group: String, value: String },
 }
@@ -139,6 +148,11 @@ pub struct FeatureConfig {
     /// artifacts → [`legacy_coordinate_bounds`] (the original corpus bounds).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub coordinate_bounds: Option<[[f64; 2]; 2]>,
+    // ---- Legacy named flags (pre-domain compat) ----
+    // The original example domain's field toggles, kept so pre-domain
+    // manifests/contracts/clients deserialize unchanged. `fields` above is
+    // authoritative whenever non-empty; `Domain::normalize_config` mirrors
+    // the effective enables back into these for old readers.
     #[serde(default = "default_flag_true")]
     pub bedrooms: bool,
     #[serde(default = "default_flag_true")]
@@ -152,27 +166,29 @@ pub struct FeatureConfig {
     pub province: bool,
     #[serde(default)]
     pub cluster: bool,
-    /// Numeric payload fields from the raw scrape collection (totalArea,
-    /// coveredArea, bathrooms, garages, rooms), reconciled by point id at
-    /// build time: log1p columns for areas, raw counts for the rest, each
-    /// with a missing indicator. Absent on datasets built before this existed.
+    // ---- Mechanism toggles (domain-generic) ----
+    /// The domain's reconcile-flagged numeric fields, joined from the
+    /// companion collection by point id at build time: log1p columns for
+    /// log-encoded fields, raw values for the rest, each with a missing
+    /// indicator. Absent on datasets built before this existed.
     #[serde(default)]
     pub raw_numerics: bool,
-    /// With `raw_numerics`: rows lacking both areas get totalArea extracted
-    /// from "… m²" mentions in the listing text.
+    /// With `raw_numerics`: rows lacking area-like fields get them backfilled
+    /// from unit mentions (e.g. "… m²") in the entry text.
     #[serde(default)]
     pub area_content_backfill: bool,
-    /// Latitude/longitude from the raw collection's `metadata.coordinates`,
+    /// Latitude/longitude from the domain's coordinates-role field,
     /// reconciled by point id like the numeric fields: raw-degree lat/lon
     /// columns plus a single pair-missing indicator. Out-of-bounds values
     /// are treated as missing (mis-geocodes).
     #[serde(default)]
     pub coordinates: bool,
-    /// With `raw_numerics`: fill missing numeric fields with per-propertyType
-    /// train-split medians and drop the missing-indicator columns. Kernel
-    /// models can't branch on indicators the way trees do; this gives them
-    /// meaningful distances instead (the frozen medians live in the manifest
-    /// and the promoted contract so predict imputes identically).
+    /// With `raw_numerics`: fill missing numeric fields with train-split
+    /// medians per outlier-group value and drop the missing-indicator
+    /// columns. Kernel models can't branch on indicators the way trees do;
+    /// this gives them meaningful distances instead (the frozen medians live
+    /// in the manifest and the promoted contract so predict imputes
+    /// identically).
     #[serde(default)]
     pub impute_numerics: bool,
 }

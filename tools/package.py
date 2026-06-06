@@ -10,6 +10,11 @@ record instead of this project's history:
   docs/experiments.tex         -> minimal skeleton (title from domain.toml)
   docs/figures/make_figures.py -> style header only
   PRODUCT.md                   -> stub pointing at /bootstrap
+  CLAUDE.md                    -> bootstrap-pending stub (NOT this repo's
+                                  rendered copy — a fresh instance must never
+                                  read the packaging domain as its own project
+                                  truth; `zig build render-agents` regenerates
+                                  it once domain.toml describes the new domain)
 
 Excluded entirely: data/ (binary artifacts), target/, ui/node_modules,
 ui/dist, .git, docker volumes, personal settings. The consumer unpacks,
@@ -35,6 +40,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
+# Single definition of the stub sentinel lives next to the renderer that
+# honors it (render.py --check accepts stub outputs; a plain render replaces
+# them).
+sys.path.insert(0, str(ROOT / "agents-src"))
+from render import TEMPLATE_SENTINEL  # noqa: E402
+
 # Framework files/dirs copied verbatim. (path, ignore-glob-patterns)
 INCLUDE: list[tuple[str, tuple[str, ...]]] = [
     ("VERSION", ()),
@@ -45,7 +56,6 @@ INCLUDE: list[tuple[str, tuple[str, ...]]] = [
     ("registry.toml", ()),
     (".gitignore", ()),
     ("BOOTSTRAP.md", ()),
-    ("CLAUDE.md", ()),
     ("README.md", ()),
     ("DESIGN.md", ()),
     ("Cargo.lock", ()),
@@ -78,8 +88,8 @@ Last updated: never — no facts yet; the first campaign seeds this.
 ## Best on record (leaderboard)
 
 | model | dataset | {metrics} | source |
-|---|---|---|---|
-| _none yet_ | | | |
+{metrics_separator}
+{metrics_empty_row}
 
 ## Noise bands & significance thresholds
 
@@ -209,6 +219,39 @@ MODELS_TOML_STUB = """\
 # create definitions via the UI or the model-definitions skill.
 """
 
+# Pre-bootstrap CLAUDE.md. This is what an agent reads as project
+# instructions in a fresh (unbootstrapped) instance, BEFORE any domain
+# exists — it must declare the template state, never describe any other
+# project as if it were this one. The framework repo checks the same stub
+# in at its root (it is itself a blank template).
+CLAUDE_STUB = (
+    TEMPLATE_SENTINEL
+    + """
+# Lensing template — bootstrap pending
+
+This is an unconfigured lensing instance with NO domain of its own yet.
+The FIRST action in this repository is `/bootstrap` (or follow
+BOOTSTRAP.md). This instance is fully independent: it must never read
+from or write to any other lensing project's corpus, datasets, server,
+or experiment record.
+
+Until bootstrap completes:
+
+- `domain.toml` is a neutral placeholder (placeholder fields, no real
+  corpus bindings); the generated agent layer (`.claude/`, `.agents/`,
+  `.gemini/`) renders from it and is equally unconfigured. A complete
+  worked example of domain.toml lives at
+  `crates/lensing-core/src/example-domain.toml`.
+- `zig build render-agents` regenerates the agent layer from
+  `domain.toml` but leaves this stub in place. Once `domain.toml`
+  describes the new domain, bootstrap finishes with
+  `rm CLAUDE.md && zig build render-agents`, which writes the real
+  project instructions here.
+- The empirical record (models.toml, experiments/PROJECT-FACTS.md, docs
+  skeletons) is seeded empty; the first campaign writes it.
+"""
+)
+
 
 # Seeded (instance-owned) paths — recorded in the manifest so the
 # upstream-sync agent knows they are never part of a framework sync.
@@ -281,8 +324,13 @@ def main() -> None:
     with open(ROOT / "domain.toml", "rb") as f:
         domain = tomllib.load(f)
     title = domain["project"]["title"]
-    metrics = " | ".join(domain["metrics"]["columns"])
-    # The framework's own name, independent of the shipped example domain.
+    columns = domain["metrics"]["columns"]
+    metrics = " | ".join(columns)
+    # Leaderboard table geometry: model + dataset + metric columns + source.
+    n_cols = 3 + len(columns)
+    metrics_separator = "|" + "---|" * n_cols
+    metrics_empty_row = "| _none yet_ " + "| " * (n_cols - 1) + "|"
+    # The framework's own name, independent of the shipped placeholder domain.
     name = "lensing"
 
     out_root = Path(args.out)
@@ -313,14 +361,21 @@ def main() -> None:
         "schema_version": domain.get("schema_version"),
         "files": file_manifest(pkg),
         "seeded": SEEDED,
-        "rendered_outputs_excluded": list(RENDERED_PREFIXES),
+        # CLAUDE.md is a rendered output too (agents-src/root/CLAUDE.md):
+        # downstream it always diverges and is re-rendered, never synced.
+        "rendered_outputs_excluded": [*RENDERED_PREFIXES, "CLAUDE.md"],
     }
 
     # Seeded instance files.
     (pkg / "models.toml").write_text(MODELS_TOML_STUB)
     (pkg / "experiments").mkdir(exist_ok=True)
     (pkg / "experiments/PROJECT-FACTS.md").write_text(
-        FACTS_SKELETON.format(title=title, metrics=metrics)
+        FACTS_SKELETON.format(
+            title=title,
+            metrics=metrics,
+            metrics_separator=metrics_separator,
+            metrics_empty_row=metrics_empty_row,
+        )
     )
     (pkg / "docs").mkdir(exist_ok=True)
     (pkg / "docs/experiments.tex").write_text(TEX_SKELETON % {"title": title})
@@ -331,6 +386,7 @@ def main() -> None:
         )
     )
     (pkg / "PRODUCT.md").write_text(PRODUCT_STUB.format(title=title))
+    (pkg / "CLAUDE.md").write_text(CLAUDE_STUB)
     (pkg / "data").mkdir(exist_ok=True)
     (pkg / "data/.gitkeep").write_text("")
     (pkg / ".lensing-upstream.json").write_text(json.dumps(manifest, indent=2) + "\n")

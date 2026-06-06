@@ -8,9 +8,10 @@ your target and fields in `domain.toml`, and it bends: dataset levers, model
 registry, experiment agents, UI and distributed training/inference all take
 your domain's shape. Run `/bootstrap` (or follow BOOTSTRAP.md) to begin.
 
-The repository ships configured for its original example domain
-(real-estate price prediction), which doubles as the worked example —
-`domain.toml` describes that corpus and `/bootstrap` replaces it with yours.
+The repository ships BLANK: `domain.toml` is a neutral placeholder and
+`/bootstrap` replaces it with your domain. A complete worked example (the
+framework's original problem, real-estate price prediction, exercising
+every domain lever) lives at `crates/lensing-core/src/example-domain.toml`.
 
 - `crates/lensing-pipeline` builds dataset artifacts from Qdrant (PCA-reduced
   embeddings + metadata one-hots).
@@ -73,7 +74,7 @@ cache, so steps are cheap to re-run. `zig build -l` prints this list.
 Options (apply to `serve` / `dataset`):
 
 ```sh
-zig build serve -Dport=9000 -Dqdrant-url=http://qdrant:6333 -Dcollection=properties-tagged
+zig build serve -Dport=9000 -Dqdrant-url=http://qdrant:6333 -Dcollection=my-corpus
 ```
 
 For non-default dataset flags (PCA dims, quality filters, …) call
@@ -251,10 +252,11 @@ returns per-rule counts + sample flagged rows.
 
 ### Currency handling
 
-The example corpus mixes ARS- and USD-denominated listings, and the derived build
-collections dropped `metadata.currency`. Builds (and preflight / analyze /
-export) take a `currency{...}` config: currency is **reconciled** by point id
-from a companion collection (default `properties`, which still carries
+For multi-currency corpora (`[currency]` in domain.toml; the worked example's
+corpus mixes ARS- and USD-denominated listings whose derived build collections
+dropped `metadata.currency`), builds (and preflight / analyze / export) take a
+`currency{...}` config: currency is **reconciled** by point id from a
+companion collection (the worked example's `properties`, which still carries
 `metadata.currency` + `metadata.createdAt`), then either
 
 - `mode: "filter"` (default) — rows whose currency differs from `keep`

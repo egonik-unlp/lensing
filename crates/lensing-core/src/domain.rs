@@ -10,10 +10,11 @@
 //!   internal identifiers shared by manifests, the API and the UI; the
 //!   domain binds them to ITS fields and provides display labels. A new
 //!   domain reuses the keys with different bindings/labels.
-//! - The repository ships `domain.toml` describing the original problem
-//!   (the shipped example: Argentine real-estate prices); [`Domain::default`]
-//! embeds that file,
-//!   so tests and a missing file behave exactly like the shipped domain.
+//! - The repository ships `domain.toml` as a NEUTRAL PLACEHOLDER (the
+//!   template is unconfigured until /bootstrap); [`Domain::default`] embeds
+//!   that file, so a missing file behaves exactly like the shipped state.
+//!   The worked example (Argentine real-estate prices, exercising every
+//!   lever) is the separate fixture behind [`Domain::example`].
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -24,9 +25,16 @@ use serde::{Deserialize, Serialize};
 use crate::manifest::TargetTransform;
 
 /// The embedded copy of the repository's `domain.toml` (single source: the
-/// file at the workspace root).
+/// file at the workspace root — the neutral placeholder a template ships).
 pub const DEFAULT_DOMAIN_TOML: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../domain.toml"));
+
+/// The worked-example domain: the framework's original problem (Argentine
+/// real-estate sale prices), exercising every lever — [currency],
+/// [coordinates], reconciled fields, vocab caps, quality bindings. Used as
+/// the rich fixture by tests across the workspace and referenced from
+/// BOOTSTRAP.md; NOT the shipped configuration.
+pub const EXAMPLE_DOMAIN_TOML: &str = include_str!("example-domain.toml");
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Domain {
@@ -346,6 +354,21 @@ impl Default for Domain {
 }
 
 impl Domain {
+    /// The worked-example domain (see [`EXAMPLE_DOMAIN_TOML`]) — the rich
+    /// fixture for tests that need coordinates/currency/reconcile/vocab
+    /// behavior. The shipped default is the neutral placeholder.
+    pub fn example() -> Self {
+        toml::from_str(EXAMPLE_DOMAIN_TOML).expect("example-domain.toml is valid")
+    }
+
+    /// Default companion collection for reconciled-field joins (numerics
+    /// and currency reconcile from the same raw collection): the
+    /// `[currency].reconcile_collection` binding. `None` when the domain
+    /// declares no companion — reconcile then relies on inline fields.
+    pub fn companion_collection(&self) -> Option<String> {
+        self.currency.as_ref().and_then(|c| c.reconcile_collection.clone())
+    }
+
     /// Load `domain.toml` from `root`, falling back to the embedded default
     /// when the file is absent. A present-but-invalid file is an error.
     pub fn load_or_default(root: &Path) -> Result<Domain> {
@@ -448,7 +471,7 @@ impl Domain {
     /// (field name or toggle-group name → bool) is authoritative when
     /// non-empty; otherwise the legacy named flags apply — a compatibility
     /// shim for pre-domain manifests/requests, keyed by the original
-    /// original example-domain field names (alien domains always use the map).
+    /// example-domain field names (other domains always use the map).
     pub fn field_enabled(&self, cfg: &crate::FeatureConfig, f: &FieldDesc) -> bool {
         if !cfg.fields.is_empty() {
             if let Some(&on) = cfg.fields.get(&f.name) {
@@ -576,10 +599,28 @@ mod tests {
 
     #[test]
     fn embedded_domain_parses_and_validates() {
+        // The shipped default is the neutral placeholder a blank template
+        // boots with — structurally valid, no example-domain bindings.
         let d = Domain::default();
         d.validate().unwrap();
-        assert_eq!(d.target.field, "price");
+        assert_eq!(d.target.field, "target");
         assert_eq!(d.corpus.metadata_root, "metadata");
+        let numeric: Vec<&str> = d.numeric_fields().map(|f| f.name.as_str()).collect();
+        assert_eq!(numeric, ["numeric_example"]);
+        let cats: Vec<&str> = d.categorical_fields().map(|f| f.name.as_str()).collect();
+        assert_eq!(cats, ["category_example"]);
+        assert_eq!(d.coordinates_field().map(|f| f.name.as_str()), None);
+        assert_eq!(d.outlier_group(), None);
+        assert_eq!(d.quality.capped_numeric.as_deref(), None);
+        assert!(d.currency.is_none());
+        assert_eq!(d.qualified_key(d.field("target").unwrap()), "metadata.target");
+    }
+
+    #[test]
+    fn example_domain_parses_and_validates() {
+        let d = Domain::example();
+        d.validate().unwrap();
+        assert_eq!(d.target.field, "price");
         // Declared order is load-bearing for column order.
         let numeric: Vec<&str> = d.numeric_fields().map(|f| f.name.as_str()).collect();
         assert_eq!(numeric, ["bedrooms", "totalArea", "coveredArea", "bathrooms", "garages", "rooms"]);
@@ -623,7 +664,7 @@ mod tests {
 
     #[test]
     fn qdrant_filter_matches_legacy_sale_filter() {
-        let d = Domain::default();
+        let d = Domain::example();
         assert_eq!(
             d.qdrant_filter(),
             serde_json::json!({

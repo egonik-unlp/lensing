@@ -43,12 +43,12 @@ and the model-definitions experiment workflow.
 | `pca_dims` | 32 | PCA dims of the embedding block (1..=1536) |
 | `test_ratio` | 0.2 | test split fraction (0.05..=0.5) |
 | `seed` | 42 | split shuffle seed |
-| `log_target` | true | train on log1p(price) |
+| `log_target` | true | train on log1p(target) |
 | `fields` | `{}` | per-field enables, keyed by field or group name (below); when non-empty, authoritative |
 | `vocab_top_n` | `{}` | per-categorical vocabulary-size overrides (field name → top-N) |
 | `area_content_backfill` | false | backfill missing areas from "… m²" mentions in the document text |
 | `impute_numerics` | false | fill missing reconciled numerics with train-split group medians (drops indicator columns) |
-| `numerics_collection` | `"properties"` | companion collection for the reconciled-numerics join |
+| `numerics_collection` | `""` | companion collection for the reconciled-numerics join |
 | `collection` | server's | source Qdrant collection |
 | `quality` | see below | quality filter config |
 | `currency` | see below | currency handling |
@@ -60,18 +60,8 @@ For this domain:
 
 | field | default | what it is |
 |---|---|---|
-| `bedrooms` | true | bedrooms; numeric |
-| `totalArea` | false | total area (m²); numeric; reconciled from the companion collection; group `raw_numerics` toggles together |
-| `coveredArea` | false | covered area (m²); numeric; reconciled from the companion collection; group `raw_numerics` toggles together |
-| `bathrooms` | false | bathrooms; numeric; reconciled from the companion collection; group `raw_numerics` toggles together |
-| `garages` | false | garages; numeric; reconciled from the companion collection; group `raw_numerics` toggles together |
-| `rooms` | false | rooms (ambientes); numeric; reconciled from the companion collection; group `raw_numerics` toggles together |
-| `coordinates` | false | coordinates; coordinates; reconciled from the companion collection |
-| `propertyType` | true | property type; categorical; one-hot over all values + `__other__` |
-| `neighborhood` | true | neighborhood; categorical; top-40 one-hot + `__other__` |
-| `city` | false | city; categorical; top-40 one-hot + `__other__` |
-| `province` | false | province; categorical; one-hot over all values + `__other__` |
-| `cluster` | false | cluster; categorical; one-hot over all values + `__other__` |
+| `numeric_example` | true | numeric_example; numeric |
+| `category_example` | true | category_example; categorical; one-hot over all values + `__other__` |
 
 (Pre-domain clients may still send the legacy named flags — `bedrooms`,
 `property_type`, `neighborhood_top_n`, `city`, `province`, `cluster`,
@@ -89,8 +79,8 @@ critical fields).
 
 `currency` (domains with a `[currency]` section in domain.toml; single-
 currency domains ignore it): `mode` `"filter"` (default; also `"off"` |
-`"convert"`), `keep` `"USD"`, `reconcile_collection`
-`"properties"`, `rate_source` (the rate series for `convert`).
+`"convert"`), `keep` `""`, `reconcile_collection`
+`""`, `rate_source` (the rate series for `convert`).
 
 
 ## Workflows
