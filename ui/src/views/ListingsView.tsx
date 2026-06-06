@@ -9,12 +9,20 @@ import ViewHeader from '../components/ViewHeader'
 import { useAsync } from '../hooks/useAsync'
 import { useDensity } from '../hooks/useDensity'
 import { useDomain } from '../lib/DomainContext'
+import {
+  categoricalFields,
+  currencyValue,
+  fieldLabel,
+  targetValue,
+  timestampFieldName,
+  type Domain,
+} from '../lib/domain'
 import { cap } from '../lib/format'
 import { fmtMoney, fmtMoneyCell, fmtSignedPct, fmtStamp } from '../lib/format'
 import {
-  bestModels,
   invalidateConsensus,
   listingConsensus,
+  resolvePredictGroup,
   type ListingConsensus,
 } from '../lib/listingPredict'
 import './models.css'
@@ -26,15 +34,18 @@ type ConsensusSlot =
   | { state: 'done'; consensus: ListingConsensus }
   | { state: 'error'; error: string }
 
-/** "apartment · Centro, La Plata · 2 bd · 1 ba · 85 m²" */
-function attrLine(md: ListingMetadata): string {
+/** One-line attribute summary, domain-driven: the prominent categorical
+ *  values, then every populated numeric with its label. */
+function attrLine(domain: Domain, md: ListingMetadata): string {
   const parts: string[] = []
-  if (md.propertyType) parts.push(md.propertyType)
-  const loc = [md.neighborhood, md.city].filter(Boolean).join(', ')
-  if (loc) parts.push(loc)
-  if (md.bedrooms) parts.push(`${md.bedrooms} bd`)
-  if (md.bathrooms) parts.push(`${md.bathrooms} ba`)
-  if (md.totalArea) parts.push(`${md.totalArea} m²`)
+  for (const f of categoricalFields(domain).slice(0, 3)) {
+    const v = md[f.name]
+    if (typeof v === 'string' && v) parts.push(v)
+  }
+  for (const f of domain.fields.filter((f) => f.role === 'numeric')) {
+    const v = md[f.name]
+    if (typeof v === 'number' && v) parts.push(`${v} ${fieldLabel(f)}`)
+  }
   return parts.join(' · ')
 }
 
@@ -45,21 +56,23 @@ export default function ListingsView() {
   }, [domain])
   const navigate = useNavigate()
   const listings = useAsync(() => api.listListings(), [])
-  const models = useAsync(() => api.listModels(), [])
+  // The server-maintained best-models group, falling back to the legacy
+  // heuristic over all promoted models when the group is empty.
+  const predictGroup = useAsync(async () => resolvePredictGroup(await api.listModels()), [])
   const [density, toggleDensity] = useDensity()
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [slots, setSlots] = useState<Record<number, ConsensusSlot>>({})
 
   const list = listings.data ?? []
-  const group = models.data ? bestModels(models.data) : []
+  const group = predictGroup.data?.names ?? []
 
-  // Auto-predict: one listing at a time (each fans out over the model
-  // group), so a cold visit never floods the server's run slots. Cached
-  // consensus (sessionStorage) resolves instantly.
+  // Auto-predict: one listing at a time (a server-side group consensus call,
+  // or the per-model fallback fan-out), so a cold visit never floods the
+  // server's run slots. Cached consensus (sessionStorage) resolves instantly.
   useEffect(() => {
-    if (!listings.data || !models.data) return
-    const group = bestModels(models.data)
-    if (group.length === 0) return
+    if (!listings.data || !predictGroup.data) return
+    const group = predictGroup.data
+    if (group.names.length === 0) return
     let cancelled = false
     const queue = listings.data
     // Sync fill is the point: every row shows its shimmer the moment the
@@ -85,7 +98,7 @@ export default function ListingsView() {
     return () => {
       cancelled = true
     }
-  }, [listings.data, models.data, domain])
+  }, [listings.data, predictGroup.data, domain])
 
   const remove = async (id: number) => {
     if (!window.confirm(`Delete ${domain.project.entity_noun} ${id}? Its stored embedding is removed too.`)) return
@@ -101,6 +114,7 @@ export default function ListingsView() {
 
   const noun = domain.project.entity_noun
   const nounPl = domain.project.entity_noun_plural
+  const tsField = timestampFieldName(domain)
   return (
     <section aria-label={`Manual ${nounPl}`}>
       <ViewHeader
@@ -162,8 +176,8 @@ export default function ListingsView() {
             <thead>
               <tr>
                 <th aria-label="Photo" className="listing-thumb-col" />
-                <th>Listing</th>
-                <th>Property</th>
+                <th>{cap(noun)}</th>
+                <th>Description</th>
                 <th className="num-col col-group-start">Listed</th>
                 <th className="num-col">Predicted</th>
                 <th className="num-col">Δ vs listed</th>
@@ -174,7 +188,8 @@ export default function ListingsView() {
             <tbody>
               {list.map((l) => {
                 const md = l.metadata
-                const listed = md.price > 0 ? md.price : null
+                const listed = targetValue(domain, md)
+                const created = tsField ? md[tsField] : null
                 const slot: ConsensusSlot | undefined =
                   group.length > 0 ? slots[l.id] : undefined
                 return (
@@ -194,11 +209,11 @@ export default function ListingsView() {
                     </td>
                     <td className="listing-property-cell">
                       <div className="listing-snippet">{l.content}</div>
-                      <div className="listing-attrs">{attrLine(md) || '—'}</div>
+                      <div className="listing-attrs">{attrLine(domain, md) || '—'}</div>
                     </td>
                     <td className="num-col num col-group-start">
                       {listed ? (
-                        <span title={`${fmtMoney(listed)} ${md.currency ?? ''}`.trim()}>
+                        <span title={`${fmtMoney(listed)} ${currencyValue(domain, md) ?? ''}`.trim()}>
                           {fmtMoneyCell(listed)}
                         </span>
                       ) : (
@@ -237,7 +252,7 @@ export default function ListingsView() {
                       )}
                     </td>
                     <td className="num-col num col-group-start">
-                      {md.createdAt ? fmtStamp(md.createdAt) : '—'}
+                      {typeof created === 'string' && created ? fmtStamp(created) : '—'}
                     </td>
                     <td>
                       <button className="btn-inline" onClick={() => void remove(l.id)}>

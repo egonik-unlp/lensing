@@ -9,10 +9,8 @@ registry, experiment agents, UI and distributed training/inference all take
 your domain's shape. Run `/bootstrap` (or follow BOOTSTRAP.md) to begin.
 
 The repository ships configured for its original example domain
-(real-estate price prediction), which doubles as the worked example.
-
-Internal tool for evaluating and comparing price-prediction ML models against
-the Snappler property corpus (Qdrant collection `properties-tagged`).
+(real-estate price prediction), which doubles as the worked example —
+`domain.toml` describes that corpus and `/bootstrap` replaces it with yours.
 
 - `crates/lensing-pipeline` builds dataset artifacts from Qdrant (PCA-reduced
   embeddings + metadata one-hots).
@@ -114,7 +112,7 @@ Notes:
   only). The artifact is a neutral raw feature matrix; tree models won't
   want scaling, neural nets will.
 - **The target is already transformed** (`log1p` by default). Metrics and
-  predictions must be reported in **price space**: invert with
+  predictions must be reported in **target space**: invert with
   `expm1` before computing/writing them.
 - The train/test split is reproducible from `(n_rows, seed, test_ratio)`:
   Fisher-Yates over `0..n_rows` driven by a SplitMix64 stream seeded with
@@ -147,10 +145,10 @@ It must:
    - `{"event":"done"}` as the final line.
 2. Write into `<run_dir>`:
    - `metrics.json`: `{"mae":..,"rmse":..,"r2":..,"mape":..,"medape":..,"n_test":N}`
-     computed on the test split, **in price space** (`mape`/`medape` as
+     computed on the test split, **in target space** (`mape`/`medape` as
      fractions, 0.25 = 25%),
-   - `predictions.json`: `[{"row_id":id,"actual":price,"predicted":price}, ...]`
-     for every test row, price space,
+   - `predictions.json`: `[{"row_id":id,"actual":value,"predicted":value}, ...]`
+     for every test row, target space,
    - **every file it needs to reload the model later** (checkpoint, scaler,
      …). Promotion copies all non-contract files from the run dir into the
      model dir verbatim (atomic-write temp files containing `.tmp`/`-tmp`
@@ -209,8 +207,8 @@ params (without final test metrics).
   | `manifest.json`| trimmed: `n_rows`, `n_cols`, `columns[]`, `target{field,transform}` |
   | `items.json`   | row_id → raw payload echo (for payload-based predictors; feature-based ones ignore it) |
 
-- It must write `<out.json>` as `[{"row_id":id,"predicted":price}, ...]` in
-  **price space** (invert the target transform, exactly as at train time),
+- It must write `<out.json>` as `[{"row_id":id,"predicted":value}, ...]` in
+  **target space** (invert the target transform, exactly as at train time),
   stream optional `{"event":"log",...}` lines plus a final
   `{"event":"done"}`, and exit 0 on success.
 
@@ -243,15 +241,17 @@ inference features are bit-identical to training features.
 Dataset builds run data-quality rules over the corpus before the split /
 PCA / vocabularies. Toggles + thresholds arrive in the build request
 (`quality{...}`); the applied config and per-rule counts are recorded in the
-manifest (`quality`). Built-ins: `nonpositive-price` (default on),
-`price-outlier` (MAD z-score on log-price per propertyType, default off,
-threshold `price_outlier_mad_z`), `missing-fields` (default off).
+manifest (`quality`). Built-ins: `nonpositive-price` (nonpositive target, default on),
+`price-outlier` (MAD z-score on the log target per outlier group, default
+off, threshold `price_outlier_mad_z`), `missing-fields` (default off).
+(Rule keys are stable identifiers from the original domain; each domain
+rebinds and relabels them in `domain.toml`.)
 `POST /api/datasets/preflight` evaluates the rules without building and
 returns per-rule counts + sample flagged rows.
 
 ### Currency handling
 
-The corpus mixes ARS- and USD-priced listings, and the derived build
+The example corpus mixes ARS- and USD-denominated listings, and the derived build
 collections dropped `metadata.currency`. Builds (and preflight / analyze /
 export) take a `currency{...}` config: currency is **reconciled** by point id
 from a companion collection (default `properties`, which still carries
@@ -259,16 +259,16 @@ from a companion collection (default `properties`, which still carries
 
 - `mode: "filter"` (default) — rows whose currency differs from `keep`
   (default `"USD"`) are excluded via the `foreign-currency` quality rule, or
-- `mode: "convert"` — foreign prices are rewritten into `keep` using the
+- `mode: "convert"` — foreign values are rewritten into `keep` using the
   per-date ARS/USD rate (`rate_source: "blue"|"oficial"`, daily series from
   api.argentinadatos.com) keyed on the listing's `createdAt`, *before* the
-  price quality rules run, or
+  target quality rules run, or
 - `mode: "off"` — currency is ignored.
 
 Rows with no currency after reconciliation are kept and reported
 (`n_missing`). The applied config + counts (+ applied rate range) land in the
 manifest under `currency`; collection exports stamp the reconciled currency
-(and converted prices) into the exported payloads.
+(and converted values) into the exported payloads.
 
 ## Registry (`registry.toml`)
 
@@ -321,7 +321,7 @@ conversationally against this API.
 ## Layout
 
 ```
-crates/pg-core/            shared types + artifact I/O
+crates/lensing-core/            shared types + artifact I/O
 crates/lensing-pipeline/        Qdrant fetch → features → PCA → artifact
 crates/lensing-server/          axum API + run orchestration + static UI
 crates/predictor-burn-mlp/ first predictor (burn MLP, ndarray CPU)
@@ -357,7 +357,7 @@ GET|POST /api/models                list / promote {name, run_id, notes?}
 GET|DELETE /api/models/{name}       record + contract summary + hyperparams / remove
 GET  /api/models/{name}/viz         architecture SVG copied at promotion (404 if absent)
 GET  /api/models/{name}/contract    required input fields, dims, transform
-POST /api/models/{name}/predict     {items?: [...], point_ids?: [...]} → prices
+POST /api/models/{name}/predict     {items?: [...], point_ids?: [...]} → predictions
 POST /api/models/{name}/rename      {new_name} (moves the model dir)
 GET|POST /api/definitions           list / create {name, predictor, hyperparams?, dataset_tags?, notes?}
 GET|PATCH|DELETE /api/definitions/{name}  get / partial update / remove
@@ -368,7 +368,8 @@ POST /api/definitions/{name}/clone  {new_name} (params + notes; tags reset)
 `POST /api/runs` also accepts `{definition, dataset_id, hyperparams?}` to
 launch from a definition (see above).
 
-A predict item is the payload fields the model consumes plus the embedding:
-`{"propertyType": "...", "bedrooms": 2, "neighborhood": "...",
-"embedding": [1536 floats], "id": optional}`. The response carries
-price-space predictions plus warnings for out-of-vocabulary categoricals.
+A predict item is the payload fields the model consumes (keyed by domain
+field name, see `GET /api/domain`) plus the embedding:
+`{"<categorical>": "...", "<numeric>": 2, "embedding": [<dim> floats],
+"id": optional}`. The response carries target-space predictions plus
+warnings for out-of-vocabulary categoricals.

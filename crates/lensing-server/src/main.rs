@@ -1,4 +1,5 @@
 mod api;
+mod best_models;
 mod definitions;
 mod infer;
 mod models;
@@ -21,7 +22,7 @@ use crate::registry::Registry;
 use crate::state::AppState;
 
 #[derive(Parser)]
-#[command(name = "lensing-server", about = "Price-guesser API + UI server")]
+#[command(name = "lensing-server", about = "Lensing API + UI server")]
 struct Cli {
     #[arg(long, default_value_t = 8080)]
     port: u16,
@@ -30,11 +31,13 @@ struct Cli {
     root: PathBuf,
     #[arg(long, default_value = "http://localhost:6333")]
     qdrant_url: String,
-    #[arg(long, default_value = "properties-tagged")]
-    collection: String,
-    /// Qdrant collection for manually authored listings.
-    #[arg(long, default_value = "manual-listings")]
-    manual_collection: String,
+    /// Qdrant corpus collection (default: domain.toml `corpus.collection`).
+    #[arg(long)]
+    collection: Option<String>,
+    /// Qdrant collection for manually authored entries (default: domain.toml
+    /// `corpus.manual_collection`).
+    #[arg(long)]
+    manual_collection: Option<String>,
     /// Max concurrent training runs.
     #[arg(long, default_value_t = 2)]
     max_runs: usize,
@@ -90,7 +93,7 @@ async fn main() -> Result<()> {
         .database_url
         .clone()
         .or_else(|| std::env::var("DATABASE_URL").ok().filter(|u| !u.is_empty()))
-        .unwrap_or_else(|| pg_db::DEFAULT_DATABASE_URL.to_string());
+        .unwrap_or_else(|| lensing_db::DEFAULT_DATABASE_URL.to_string());
 
     match &cli.command {
         Some(Cmd::MigrateData) => return migrate_data(&root, &database_url).await,
@@ -110,14 +113,21 @@ async fn main() -> Result<()> {
         None => {}
     }
 
-    let domain = pg_core::domain::Domain::load_or_default(&root)?;
+    let domain = lensing_core::domain::Domain::load_or_default(&root)?;
+    // CLI flags override the domain's corpus collections.
+    let collection =
+        cli.collection.clone().unwrap_or_else(|| domain.corpus.collection.clone());
+    let manual_collection = cli
+        .manual_collection
+        .clone()
+        .unwrap_or_else(|| domain.corpus.manual_collection.clone());
     eprintln!(
         "[lensing-server] domain: {} ({} → {}), {} fields, collection {}",
         domain.project.name,
         domain.project.entity_noun,
         domain.project.target_noun,
         domain.fields.len(),
-        domain.corpus.collection,
+        collection,
     );
 
     let registry = Registry::load(&root.join("registry.toml"))?;
@@ -138,11 +148,11 @@ async fn main() -> Result<()> {
         eprintln!("[lensing-server] --no-db: metadata database disabled (file-only state)");
         None
     } else {
-        match pg_db::connect(&database_url).await {
+        match lensing_db::connect(&database_url).await {
             Ok(pool) => {
-                match pg_db::backfill::backfill(&pool, &root).await {
+                match lensing_db::backfill::backfill(&pool, &root).await {
                     Ok(report) => {
-                        let counts = pg_db::backfill::table_counts(&pool).await?;
+                        let counts = lensing_db::backfill::table_counts(&pool).await?;
                         eprint!("[lensing-server] {}", report.render(&counts));
                         if !report.consistent_with(&counts) {
                             eprintln!("[lensing-server] WARNING: database is missing rows for files on disk (see report)");
@@ -166,7 +176,7 @@ async fn main() -> Result<()> {
     let defs = match &db {
         Some(pool) => {
             let defs = definitions::Definitions {
-                definitions: pg_db::queries::load_definitions(pool).await?,
+                definitions: lensing_db::queries::load_definitions(pool).await?,
             };
             // Refresh the git-diffable snapshot so file and database agree.
             if let Err(e) = definitions::export_file(&root, &defs) {
@@ -187,28 +197,32 @@ async fn main() -> Result<()> {
     // OpenAI embeddings config for manual listings; key absence only blocks
     // listing creation, the rest of the server is unaffected.
     let openai_api_key = std::env::var("OPENAI_API_KEY").ok().filter(|k| !k.is_empty());
-    let embedding_model = std::env::var("PG_EMBEDDING_MODEL")
-        .ok()
-        .filter(|m| !m.is_empty())
-        .unwrap_or_else(|| pg_pipeline::openai::DEFAULT_MODEL.to_string());
-    let openai_base_url = std::env::var("PG_OPENAI_BASE_URL")
-        .ok()
-        .filter(|u| !u.is_empty())
-        .unwrap_or_else(|| pg_pipeline::openai::DEFAULT_BASE_URL.to_string());
+    // LENSING_* is the canonical prefix; PG_* is honored as a legacy fallback
+    // so pre-rename .env files keep working.
+    let env_or_legacy = |name: &str, legacy: &str| {
+        std::env::var(name)
+            .ok()
+            .filter(|v| !v.is_empty())
+            .or_else(|| std::env::var(legacy).ok().filter(|v| !v.is_empty()))
+    };
+    let embedding_model = env_or_legacy("LENSING_EMBEDDING_MODEL", "PG_EMBEDDING_MODEL")
+        .unwrap_or_else(|| lensing_pipeline::openai::DEFAULT_MODEL.to_string());
+    let openai_base_url = env_or_legacy("LENSING_OPENAI_BASE_URL", "PG_OPENAI_BASE_URL")
+        .unwrap_or_else(|| lensing_pipeline::openai::DEFAULT_BASE_URL.to_string());
     if openai_api_key.is_none() {
         eprintln!("[lensing-server] OPENAI_API_KEY not set: manual listing creation disabled");
     } else {
         eprintln!("[lensing-server] manual listings: embedding model {embedding_model}");
     }
 
-    let db_sink = db.clone().map(pg_db::sink::DbSink::spawn);
+    let db_sink = db.clone().map(lensing_db::sink::DbSink::spawn);
     let state = Arc::new(AppState {
         root: root.clone(),
         domain: Arc::new(domain),
         registry,
         qdrant_url: cli.qdrant_url,
-        collection: cli.collection,
-        manual_collection: cli.manual_collection,
+        collection,
+        manual_collection,
         openai_api_key,
         embedding_model,
         openai_base_url,
@@ -220,6 +234,7 @@ async fn main() -> Result<()> {
         jobs: Mutex::new(Default::default()),
         run_slots: Arc::new(Semaphore::new(cli.max_runs)),
         build_slots: Arc::new(Semaphore::new(1)),
+        best_models_lock: tokio::sync::Mutex::new(()),
     });
 
     let ui_dist = root.join("ui/dist");
@@ -250,12 +265,17 @@ async fn main() -> Result<()> {
         .route("/runs/{id}/events", get(api::run_events))
         .route("/runs/{id}/stop", axum::routing::post(api::stop_run))
         .route("/runs/{id}/viz", get(api::get_run_viz))
+        .route("/runs/{id}/blend", get(api::get_run_blend))
         .route("/models", get(api::list_models).post(api::promote_model))
         .route("/models/{name}", get(api::get_model).delete(api::delete_model))
         .route("/models/{name}/viz", get(api::get_model_viz))
+        .route("/models/{name}/blend", get(api::get_model_blend))
         .route("/models/{name}/contract", get(api::get_model_contract))
         .route("/models/{name}/predict", axum::routing::post(api::predict_model))
         .route("/models/{name}/rename", axum::routing::post(api::rename_model))
+        .route("/best-models", get(api::get_best_models).put(api::put_best_models))
+        .route("/best-models/recompute", axum::routing::post(api::recompute_best_models))
+        .route("/best-models/predict", axum::routing::post(api::predict_best_models))
         .route("/listings", get(api::list_listings).post(api::create_listing))
         .route(
             "/listings/{id}",
@@ -290,12 +310,12 @@ async fn main() -> Result<()> {
 /// `lensing-server migrate-data`: explicit one-shot backfill. Unlike the serve
 /// path, an unreachable database here is a hard error.
 async fn migrate_data(root: &PathBuf, database_url: &str) -> Result<()> {
-    let pool = pg_db::connect(database_url)
+    let pool = lensing_db::connect(database_url)
         .await
         .context("metadata database unreachable; start it with `zig build db-up`")?;
     eprintln!("[migrate-data] connected to {database_url}");
-    let report = pg_db::backfill::backfill(&pool, root).await?;
-    let counts = pg_db::backfill::table_counts(&pool).await?;
+    let report = lensing_db::backfill::backfill(&pool, root).await?;
+    let counts = lensing_db::backfill::table_counts(&pool).await?;
     print!("{}", report.render(&counts));
     if report.consistent_with(&counts) {
         println!("consistency: OK — every file artifact is covered by the database");

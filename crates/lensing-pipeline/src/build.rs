@@ -5,8 +5,8 @@ use anyhow::{ensure, Context, Result};
 use chrono::Utc;
 use serde_json::json;
 
-use pg_core::artifact::{write_f32, write_u32, write_u64};
-use pg_core::{
+use lensing_core::artifact::{write_f32, write_u32, write_u64};
+use lensing_core::{
     ColumnDesc, ColumnKind, FeatureConfig, Manifest, PcaInfo, Source, SplitInfo, TargetInfo,
     TargetTransform,
 };
@@ -17,7 +17,7 @@ use crate::{pca, shuffle};
 
 pub struct BuildConfig {
     /// The domain configuration (corpus schema, target, field descriptors).
-    pub domain: pg_core::domain::Domain,
+    pub domain: lensing_core::domain::Domain,
     pub qdrant_url: String,
     pub collection: String,
     pub out_root: PathBuf,
@@ -25,8 +25,8 @@ pub struct BuildConfig {
     pub seed: u64,
     pub log_target: bool,
     pub features: FeatureConfig,
-    pub quality: pg_core::QualityFilterConfig,
-    pub currency: pg_core::CurrencyConfig,
+    pub quality: lensing_core::QualityFilterConfig,
+    pub currency: lensing_core::CurrencyConfig,
     /// Companion collection for the reconciled-numerics join (only used when
     /// reconcile fields are enabled); `None` relies on fields already inline.
     pub numerics_collection: Option<String>,
@@ -34,7 +34,7 @@ pub struct BuildConfig {
 
 impl Default for BuildConfig {
     fn default() -> Self {
-        let domain = pg_core::domain::Domain::default();
+        let domain = lensing_core::domain::Domain::default();
         Self {
             qdrant_url: domain.corpus.qdrant_url.clone(),
             collection: domain.corpus.collection.clone(),
@@ -44,8 +44,8 @@ impl Default for BuildConfig {
             seed: 42,
             log_target: true,
             features: FeatureConfig::default(),
-            quality: pg_core::QualityFilterConfig::default(),
-            currency: pg_core::CurrencyConfig::default(),
+            quality: lensing_core::QualityFilterConfig::default(),
+            currency: lensing_core::CurrencyConfig::default(),
             numerics_collection: Some("properties".into()),
         }
     }

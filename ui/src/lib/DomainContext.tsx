@@ -2,7 +2,7 @@
 // is gated behind a successful fetch so every view can read the domain
 // synchronously via useDomain() without null checks.
 
-import { createContext, useContext, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, type ReactNode } from 'react'
 import { fetchDomain, type Domain } from './domain'
 import { useAsync } from '../hooks/useAsync'
 
@@ -13,6 +13,16 @@ export function useDomain(): Domain {
   const d = useContext(DomainCtx)
   if (!d) throw new Error('useDomain() called outside DomainProvider')
   return d
+}
+
+/** Set `document.title` to "<prefix> · <project title>"; a null prefix
+ *  (e.g. while the entity name is still loading) leaves the title alone. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function useDocTitle(prefix: string | null) {
+  const domain = useDomain()
+  useEffect(() => {
+    if (prefix != null) document.title = `${prefix} · ${domain.project.title}`
+  }, [prefix, domain.project.title])
 }
 
 export function DomainProvider({ children }: { children: ReactNode }) {

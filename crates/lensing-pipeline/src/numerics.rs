@@ -16,8 +16,8 @@
 //! the raw collection.
 
 use anyhow::{Context, Result};
-use pg_core::domain::{Domain, NumericEncode};
-use pg_core::{FeatureConfig, NumericImputation, NumericMedians, NumericsReport};
+use lensing_core::domain::{Domain, NumericEncode};
+use lensing_core::{FeatureConfig, NumericImputation, NumericMedians, NumericsReport};
 use serde_json::json;
 
 use crate::qdrant::{self, RawPoint};

@@ -24,14 +24,36 @@ export function toPredictItem(listing: Listing, domain: Domain): Record<string, 
   return { id: listing.id, content: listing.content, embedding: listing.embedding, ...metadata }
 }
 
-/** Default model group: the curated best-models promotions (marked
- *  `Group: best-models` in their notes), falling back to name matching for
- *  registries that predate the marker, then to everything. */
+/** Legacy heuristic group, kept as the fallback when the server-side
+ *  best-models group is empty (nothing recomputed yet): notes marked
+ *  `Group: best-models`, then name matching, then everything. */
 export function bestModels(models: ModelRecord[]): ModelRecord[] {
   const curated = models.filter((m) => m.notes?.includes('Group: best-models'))
   if (curated.length > 0) return curated
   const named = models.filter((m) => m.name.includes('best'))
   return named.length > 0 ? named : models
+}
+
+/** The model set consensus predictions run against. `viaServer` selects the
+ *  single-call `/api/best-models/predict` fan-out (server-maintained group)
+ *  over the legacy client-side per-model fan-out (heuristic fallback). */
+export interface PredictGroup {
+  names: string[]
+  viaServer: boolean
+}
+
+/** Resolve the prediction group: the server-maintained best-models group
+ *  when populated, else the legacy heuristic over all promoted models. */
+export async function resolvePredictGroup(models: ModelRecord[]): Promise<PredictGroup> {
+  try {
+    const group = await api.bestModels()
+    if (group.entries.length > 0) {
+      return { names: group.entries.map((e) => e.name), viaServer: true }
+    }
+  } catch {
+    /* endpoint unavailable: fall through to the heuristic */
+  }
+  return { names: bestModels(models).map((m) => m.name), viaServer: false }
 }
 
 export function median(values: number[]): number | null {
@@ -44,14 +66,14 @@ export function median(values: number[]): number | null {
 /* ---------------- index-view consensus cache ---------------- */
 
 export interface ListingConsensus {
-  /** Median predicted price across the models that answered. */
+  /** Median predicted value across the models that answered. */
   median: number
   /** How many models answered / were asked. */
   n_ok: number
   n_models: number
 }
 
-const CACHE_KEY = 'pg:listing-consensus:v1'
+const CACHE_KEY = 'lensing:listing-consensus:v1'
 
 interface CacheShape {
   /** Sorted model names the cached numbers were computed with. */
@@ -84,33 +106,42 @@ function writeCache(cache: CacheShape) {
 /**
  * Consensus (median of the best-model group) for one listing, cached in
  * sessionStorage so revisiting the index doesn't respawn predictors.
- * Fetches the stored listing (the embedding rides along) and fans out one
- * inline-items predict call per model; the server's run-slot semaphore
- * paces the actual predictor processes.
+ * Fetches the stored listing (the embedding rides along), then either makes
+ * one `/api/best-models/predict` call (server-side fan-out + median) or, on
+ * the heuristic fallback, fans out one inline-items predict call per model;
+ * either way the server's run-slot semaphore paces the predictor processes.
  */
 export async function listingConsensus(
   id: number,
-  models: ModelRecord[],
+  group: PredictGroup,
   domain: Domain,
 ): Promise<ListingConsensus> {
-  const names = models.map((m) => m.name).sort()
+  const names = [...group.names].sort()
   const cache = readCache(names)
   const hit = cache.byId[String(id)]
   if (hit) return hit
 
   const listing = await api.getListing(id)
   const item = toPredictItem(listing, domain)
-  const settled = await Promise.allSettled(
-    models.map((m) => api.predictModel(m.name, { items: [item] })),
-  )
-  const values = settled.flatMap((r) =>
-    r.status === 'fulfilled' && r.value.predictions[0]
-      ? [r.value.predictions[0].predicted]
-      : [],
-  )
-  const med = median(values)
-  if (med === null) throw new Error('no model returned a prediction')
-  const consensus: ListingConsensus = { median: med, n_ok: values.length, n_models: models.length }
+  let consensus: ListingConsensus
+  if (group.viaServer) {
+    const r = await api.predictBestModels({ items: [item] })
+    const point = r.consensus[0]
+    if (!point) throw new Error('no model returned a prediction')
+    consensus = { median: point.predicted, n_ok: point.n_models, n_models: group.names.length }
+  } else {
+    const settled = await Promise.allSettled(
+      group.names.map((name) => api.predictModel(name, { items: [item] })),
+    )
+    const values = settled.flatMap((r) =>
+      r.status === 'fulfilled' && r.value.predictions[0]
+        ? [r.value.predictions[0].predicted]
+        : [],
+    )
+    const med = median(values)
+    if (med === null) throw new Error('no model returned a prediction')
+    consensus = { median: med, n_ok: values.length, n_models: group.names.length }
+  }
 
   // Re-read before writing: parallel rows may have written in the meantime.
   const latest = readCache(names)

@@ -3,11 +3,13 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { Items, Metrics, Prediction, Predictor, RunMeta } from '../api/types'
 import ArchViz from '../components/ArchViz'
+import BlendPanel from '../components/BlendPanel'
 import ErrorHistogram from '../components/charts/ErrorHistogram'
 import LossChart from '../components/charts/LossChart'
 import LossDerivativeChart from '../components/charts/LossDerivativeChart'
 import ScatterChart from '../components/charts/ScatterChart'
 import { DatasetRef, DefinitionRef, ModelRef, PredictorRef, RunRef } from '../components/EntityRef'
+import ItemMeta from '../components/ItemMeta'
 import LogPane from '../components/LogPane'
 import MetricStrip from '../components/MetricStrip'
 import StatusBadge from '../components/StatusBadge'
@@ -27,6 +29,7 @@ import {
   shortRunId,
 } from '../lib/format'
 import './rundetail.css'
+import { useDocTitle } from '../lib/DomainContext'
 
 export default function RunDetailView() {
   const { runId } = useParams<{ runId: string }>()
@@ -40,9 +43,7 @@ export default function RunDetailView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [events.terminal])
 
-  useEffect(() => {
-    if (run) document.title = `${shortRunId(run.run_id)} · Price Guesser Models`
-  }, [run])
+  useDocTitle(run ? shortRunId(run.run_id) : null)
 
   if (error) {
     return (
@@ -184,8 +185,26 @@ function RunArch({ run, canFallback }: { run: RunMeta; canFallback: boolean }) {
   if (manifest.loading) return null
   const m = manifest.data
   const features = m
-    ? { nCols: m.n_cols, nPca: m.columns.filter((c) => c.kind.type === 'pca').length }
+    ? {
+        nCols: m.n_cols,
+        nPca: m.columns.filter((c) => c.kind.type === 'pca').length,
+        onehotGroups: [
+          ...new Set(
+            m.columns.flatMap((c) => (c.kind.type === 'onehot' ? [c.kind.group] : [])),
+          ),
+        ],
+      }
     : null
+  if (run.predictor === 'blend') {
+    return (
+      <BlendPanel
+        load={() => api.runBlend(run.run_id)}
+        hyperparams={run.hyperparams}
+        features={features}
+        blendMetrics={run.metrics}
+      />
+    )
+  }
   return (
     <ArchViz
       predictor={run.predictor}
@@ -496,7 +515,7 @@ function FinishedRun({ run, events }: { run: RunMeta; events: ReturnType<typeof 
         metrics={[
           { label: 'MAE', value: fmtMoney(m.mae), hint: 'mean absolute error', onClick: () => jumpToTable('abs_err') },
           { label: 'RMSE', value: fmtMoney(m.rmse), hint: 'outlier-sensitive', onClick: () => jumpToTable('abs_err') },
-          { label: 'R²', value: fmtR2(m.r2), hint: 'price-space fit', onClick: () => jumpToTable('abs_err') },
+          { label: 'R²', value: fmtR2(m.r2), hint: 'target-space fit', onClick: () => jumpToTable('abs_err') },
           { label: 'MAPE', value: fmtPct(m.mape, 0), hint: 'mean % error', onClick: () => jumpToTable('pct_err') },
           { label: 'medAPE', value: fmtPct(m.medape), hint: 'median % error', onClick: () => jumpToTable('pct_err') },
           { label: 'test items', value: m.n_test.toLocaleString() },
@@ -618,7 +637,7 @@ function PromotePanel({ run, checkpointOnly = false }: { run: RunMeta; checkpoin
           <span className="muted">
             {checkpointOnly
               ? 'freeze the last saved checkpoint under a name — promoted without final test metrics'
-              : 'freeze these weights under a name and predict prices with them any time'}
+              : 'freeze these weights under a name and predict with them any time'}
           </span>
         </>
       ) : (
@@ -877,30 +896,7 @@ function PredRow({
             ) : (
               <div className="item-detail">
                 <p className="item-content">{item.content || <span className="muted">No description</span>}</p>
-                <dl className="item-meta">
-                  <div>
-                    <dt>type</dt>
-                    <dd>{item.propertyType}</dd>
-                  </div>
-                  <div>
-                    <dt>bedrooms</dt>
-                    <dd className="num">{item.bedrooms}</dd>
-                  </div>
-                  <div>
-                    <dt>neighborhood</dt>
-                    <dd>{item.neighborhood || '—'}</dd>
-                  </div>
-                  <div>
-                    <dt>city</dt>
-                    <dd>{item.city || '—'}</dd>
-                  </div>
-                  {item.cluster_label && (
-                    <div>
-                      <dt>cluster</dt>
-                      <dd>{item.cluster_label}</dd>
-                    </div>
-                  )}
-                </dl>
+                <ItemMeta item={item} />
               </div>
             )}
           </td>

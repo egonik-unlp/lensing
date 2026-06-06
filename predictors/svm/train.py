@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """SVM (epsilon-SVR) predictor. Implements the predictor contract in
 README.md with numpy + scikit-learn: standardize on the train split, fit
-sklearn.svm.SVR in transformed (log-price) target space with a selectable
-kernel (rbf/linear/poly/sigmoid), report price-space metrics. The model is
+sklearn.svm.SVR in transformed (log) target space with a selectable
+kernel (rbf/linear/poly/sigmoid), report target-space metrics. The model is
 saved as plain JSON + a binary support-vector matrix, so predict needs no
 sklearn version pinning — the decision function is recomputed with numpy.
 
@@ -49,14 +49,14 @@ def fit_scaler(x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 
 
 def invert_target(y: np.ndarray, transform: str) -> np.ndarray:
-    """Map transformed-space targets back to price space."""
+    """Map transformed-space targets back to target space."""
     if transform == "log1p":
         return np.expm1(y)
     return y
 
 
 def compute_metrics(actual: np.ndarray, predicted: np.ndarray) -> dict:
-    """Price-space metrics, formula identical to pg-core::compute_metrics
+    """Target-space metrics, formula identical to lensing-core::compute_metrics
     (medape for even n = mean of the two middle APEs)."""
     n = len(actual)
     err = predicted - actual
@@ -182,7 +182,7 @@ def train(dataset: Path, output: Path, hp_path: Path) -> None:
 def predict(model_dir: Path, input_dir: Path, output: Path) -> None:
     """Contract v2 predict: standardize the input mini-artifact with the
     trained scaler, evaluate the stored SVR decision function with numpy,
-    write price-space predictions."""
+    write target-space predictions."""
     model = json.loads((model_dir / "model.json").read_text())
     scaler = json.loads((model_dir / "scaler.json").read_text())
     mean = np.asarray(scaler["mean"], dtype=np.float64)

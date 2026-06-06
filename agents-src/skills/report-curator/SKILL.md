@@ -49,7 +49,7 @@ stops.
 - If the agent reports "fully synced, nothing to fold in", that is a valid
   outcome — tell the user, don't re-spawn hoping for different results.
 - The document's source of truth is `{{report_dir}}/*.md`; if the user wants a
-  *new experiment* run and reported, that's the experiment-designer agent /
-  `/model-definitions experiment`, not this skill.
+  *new experiment* run and reported, that's the experiment-designer →
+  experiment-runner agents / `/model-definitions experiment`, not this skill.
 - Build requires `tectonic` (~/.local/bin) and python3 + matplotlib — the
   agent runs `bash docs/build.sh` and reports failures verbatim.

@@ -1,4 +1,4 @@
-//! `registry.toml` parsing — the predictor registry. Lives in pg-core so
+//! `registry.toml` parsing — the predictor registry. Lives in lensing-core so
 //! both lensing-server (orchestration) and meta-predictors that spawn member
 //! predictors (predictor-blend) share one schema and one args-template
 //! substitution.

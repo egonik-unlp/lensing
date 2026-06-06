@@ -11,7 +11,8 @@
 //!   domain binds them to ITS fields and provides display labels. A new
 //!   domain reuses the keys with different bindings/labels.
 //! - The repository ships `domain.toml` describing the original problem
-//!   (Argentine real-estate prices); [`Domain::default`] embeds that file,
+//!   (the shipped example: Argentine real-estate prices); [`Domain::default`]
+//! embeds that file,
 //!   so tests and a missing file behave exactly like the shipped domain.
 
 use std::collections::BTreeMap;
@@ -310,6 +311,32 @@ pub struct MetricsSpec {
     pub percent: Vec<String>,
     /// Unit label for target-space metric axes ("USD", "points", …).
     pub value_unit: String,
+    /// Size cap of the auto-maintained best-models group. Defaults to 12.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub best_models_size: Option<usize>,
+}
+
+impl MetricsSpec {
+    pub const DEFAULT_BEST_MODELS_SIZE: usize = 12;
+
+    /// Effective best-models group size.
+    pub fn best_models_size(&self) -> usize {
+        self.best_models_size.unwrap_or(Self::DEFAULT_BEST_MODELS_SIZE)
+    }
+
+    /// `(extractor, lower_is_better)` for the configured primary metric.
+    /// Maps the display label onto a [`crate::Metrics`] field; `None` when
+    /// the label names no struct field (callers must then skip ranking).
+    pub fn primary_accessor(&self) -> Option<(fn(&crate::Metrics) -> f64, bool)> {
+        match self.primary.to_lowercase().as_str() {
+            "mae" => Some((|m| m.mae, true)),
+            "rmse" => Some((|m| m.rmse, true)),
+            "mape" => Some((|m| m.mape, true)),
+            "medape" => Some((|m| m.medape, true)),
+            "r²" | "r2" => Some((|m| m.r2, false)),
+            _ => None,
+        }
+    }
 }
 
 impl Default for Domain {
@@ -421,7 +448,7 @@ impl Domain {
     /// (field name or toggle-group name → bool) is authoritative when
     /// non-empty; otherwise the legacy named flags apply — a compatibility
     /// shim for pre-domain manifests/requests, keyed by the original
-    /// real-estate field names (alien domains always use the map).
+    /// original example-domain field names (alien domains always use the map).
     pub fn field_enabled(&self, cfg: &crate::FeatureConfig, f: &FieldDesc) -> bool {
         if !cfg.fields.is_empty() {
             if let Some(&on) = cfg.fields.get(&f.name) {
@@ -566,6 +593,32 @@ mod tests {
         assert_eq!(cluster.path, FieldPath::Payload);
         assert_eq!(d.qualified_key(cluster), "cluster");
         assert_eq!(d.qualified_key(d.field("price").unwrap()), "metadata.price");
+    }
+
+    #[test]
+    fn primary_accessor_maps_labels_and_directions() {
+        let m = crate::Metrics { mae: 1.0, rmse: 2.0, r2: 0.5, mape: 0.2, medape: 0.1, n_test: 10 };
+        let spec = |primary: &str| MetricsSpec {
+            primary: primary.into(),
+            columns: vec![primary.into()],
+            percent: vec![],
+            value_unit: "USD".into(),
+            best_models_size: None,
+        };
+        let (f, lower) = spec("MAE").primary_accessor().unwrap();
+        assert_eq!(f(&m), 1.0);
+        assert!(lower);
+        let (f, lower) = spec("medAPE").primary_accessor().unwrap();
+        assert_eq!(f(&m), 0.1);
+        assert!(lower);
+        let (f, lower) = spec("R²").primary_accessor().unwrap();
+        assert_eq!(f(&m), 0.5);
+        assert!(!lower);
+        assert!(spec("ELO").primary_accessor().is_none());
+        // embedded domain: MAE primary, default group size
+        let d = Domain::default();
+        assert!(d.metrics.primary_accessor().is_some());
+        assert_eq!(d.metrics.best_models_size(), 12);
     }
 
     #[test]

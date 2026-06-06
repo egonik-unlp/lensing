@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Price-stratified mixture-of-experts SVM predictor. Implements the
+"""Target-stratified mixture-of-experts SVM predictor. Implements the
 predictor contract in README.md: train targets are cut into quantile bands
 (a supervised regime split on the *target*, unlike svm-moe's unsupervised
 GMM over features), one epsilon-SVR (rbf) expert is trained per band, and a
 multinomial logistic gate predicts band membership from the features.
 Predictions are the gate-probability-weighted blend of the experts (in
-log-price space). Motivation (experiments/2026-06-04-svm-moe-cluster-scan.md):
-the expensive tail is >80% of the squared error and feature-space GMM
+log-target space). Motivation (experiments/2026-06-04-svm-moe-cluster-scan.md):
+the high tail is >80% of the squared error and feature-space GMM
 clustering cannot isolate it — quantile bins do, by construction.
 
 The model is saved as plain JSON + a binary support-vector matrix; predict
@@ -62,14 +62,14 @@ def fit_scaler(x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 
 
 def invert_target(y: np.ndarray, transform: str) -> np.ndarray:
-    """Map transformed-space targets back to price space."""
+    """Map transformed-space targets back to target space."""
     if transform == "log1p":
         return np.expm1(y)
     return y
 
 
 def compute_metrics(actual: np.ndarray, predicted: np.ndarray) -> dict:
-    """Price-space metrics, formula identical to pg-core::compute_metrics
+    """Target-space metrics, formula identical to lensing-core::compute_metrics
     (medape for even n = mean of the two middle APEs)."""
     n = len(actual)
     err = predicted - actual
@@ -152,7 +152,7 @@ def train(dataset: Path, output: Path, hp_path: Path) -> None:
     train_y = target[train_idx]
 
     # Supervised regime split: quantile bands over the train targets
-    # (transformed space — equivalently price bands, the transform is
+    # (transformed space — equivalently target bands, the transform is
     # monotone). Interior edges only; searchsorted assigns bands.
     edges = np.quantile(train_y, np.linspace(0, 1, n_bands + 1)[1:-1])
     bands = band_assign(train_y, edges)
@@ -175,7 +175,7 @@ def train(dataset: Path, output: Path, hp_path: Path) -> None:
     emit({"event": "log", "msg": f"gate train accuracy {gate_acc:.1%} "
           f"(C {gate_c})"})
 
-    # One rbf-SVR expert per price band.
+    # One rbf-SVR expert per target band.
     experts, svs, fitted = [], [], []
     for k in range(n_bands):
         rows = np.where(bands == k)[0]
@@ -237,7 +237,7 @@ def train(dataset: Path, output: Path, hp_path: Path) -> None:
     }))
 
     # Per-band test breakdown by *true* band (where does the error live?),
-    # plus the gate's view — the direct check of the expensive-tail claim.
+    # plus the gate's view — the direct check of the high-tail claim.
     test_bands = band_assign(target[test_idx], edges)
     gate_assign = test_probs.argmax(axis=1)
     bands_report = []
@@ -250,8 +250,8 @@ def train(dataset: Path, output: Path, hp_path: Path) -> None:
         bands_report.append({
             "cluster": k,
             "n_test": int(sel.sum()),
-            "median_price": float(np.median(actual[sel])),
-            "mean_price": float(actual[sel].mean()),
+            "median_target": float(np.median(actual[sel])),
+            "mean_target": float(actual[sel].mean()),
             "mae": m["mae"],
             "medape": m["medape"],
             "share_of_sq_err": float(
@@ -260,7 +260,7 @@ def train(dataset: Path, output: Path, hp_path: Path) -> None:
             "gate_recall": float((gate_assign[sel] == k).mean()),
         })
         emit({"event": "log", "msg": f"band {k}: {bands_report[-1]['n_test']} "
-              f"test rows, median ${bands_report[-1]['median_price']:,.0f}, "
+              f"test rows, median {bands_report[-1]['median_target']:,.0f}, "
               f"MAE {m['mae']:,.0f}, medAPE {m['medape']:.1%}, "
               f"{bands_report[-1]['share_of_sq_err']:.0%} of sq err, "
               f"gate recall {bands_report[-1]['gate_recall']:.0%}"})
@@ -275,7 +275,7 @@ def train(dataset: Path, output: Path, hp_path: Path) -> None:
 def predict(model_dir: Path, input_dir: Path, output: Path) -> None:
     """Contract v2 predict: standardize the input mini-artifact with the
     trained scaler, evaluate the stored gate + expert mixture with numpy,
-    write price-space predictions."""
+    write target-space predictions."""
     model = json.loads((model_dir / "model.json").read_text())
     scaler = json.loads((model_dir / "scaler.json").read_text())
     mean = np.asarray(scaler["mean"], dtype=np.float64)
@@ -299,7 +299,7 @@ def predict(model_dir: Path, input_dir: Path, output: Path) -> None:
     features = read_features(input_dir, n_rows, n_cols)
     row_ids = np.fromfile(input_dir / "row_ids.u64", dtype="<u8")
     emit({"event": "log", "msg": f"predicting {n_rows} rows, {n_cols} "
-          f"features, {model['n_bands']}-band price mixture "
+          f"features, {model['n_bands']}-band target mixture "
           f"({total_sv} SVs)"})
 
     x = (features - mean) / std

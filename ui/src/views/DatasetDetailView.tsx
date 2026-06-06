@@ -15,7 +15,13 @@ import { loadItems, loadSplit } from '../lib/itemsCache'
 import { fmtDateTime, fmtMoney, fmtPct, fmtR2, shortDatasetId } from '../lib/format'
 import { ruleLabel } from '../lib/rules'
 import { useDomain } from '../lib/DomainContext'
-import { fieldLabel, type Domain } from '../lib/domain'
+import {
+  cappedNumericField,
+  categoricalFields,
+  fieldLabel,
+  type Domain,
+  type DomainField,
+} from '../lib/domain'
 import { quantiles, topCategories } from '../lib/stats'
 import { moneyTick } from '../lib/scale'
 import './datasetdetail.css'
@@ -23,12 +29,10 @@ import './datasetdetail.css'
 /** One corpus row: items.json entry + its id + split membership. */
 interface Row {
   row_id: number
-  price: number
-  propertyType: string
-  neighborhood: string
-  city: string
-  province: string
-  bedrooms: number
+  /** The domain's target-field value. */
+  target: number
+  /** The domain's capped-numeric field value; null when the domain binds none. */
+  capped: number | null
   content: string
   cluster_label: string | null
   split: 'train' | 'test' | null
@@ -38,8 +42,8 @@ interface Row {
 
 /** A selected EDA slice: a histogram bin range or a category value. */
 type Slice =
-  | { kind: 'price'; lo: number; hi: number }
-  | { kind: 'bedrooms'; lo: number; hi: number }
+  | { kind: 'target'; lo: number; hi: number }
+  | { kind: 'capped'; lo: number; hi: number }
   | { kind: 'category'; field: string; value: string }
 
 export default function DatasetDetailView() {
@@ -47,10 +51,7 @@ export default function DatasetDetailView() {
   const { id } = useParams<{ id: string }>()
   const manifest = useAsync(() => api.getDataset(id!), [id])
 
-  const catFields = useMemo(
-    () => domain.fields.filter((f) => f.role === 'categorical'),
-    [domain],
-  )
+  const catFields = useMemo(() => categoricalFields(domain), [domain])
 
   useEffect(() => {
     if (id) document.title = `${shortDatasetId(id)} · ${domain.project.title}`
@@ -69,6 +70,8 @@ export default function DatasetDetailView() {
     if (!items) return []
     const train = new Set(split?.train ?? [])
     const test = new Set(split?.test ?? [])
+    const targetField = domain.target.field
+    const cappedField = domain.quality.capped_numeric
     return Object.entries(items).map(([rid, it]) => {
       const row_id = Number(rid)
       const cats: Record<string, string> = {}
@@ -78,19 +81,15 @@ export default function DatasetDetailView() {
       }
       return {
         row_id,
-        price: it.price,
-        propertyType: it.propertyType,
-        neighborhood: it.neighborhood,
-        city: it.city,
-        province: it.province,
-        bedrooms: it.bedrooms,
+        target: Number(it[targetField] ?? 0),
+        capped: cappedField ? Number(it[cappedField] ?? NaN) : null,
         content: it.content,
         cluster_label: it.cluster_label,
         split: train.has(row_id) ? 'train' : test.has(row_id) ? 'test' : null,
         cats,
       }
     })
-  }, [items, split, catFields])
+  }, [items, split, catFields, domain])
 
   if (manifest.error) {
     return (
@@ -329,7 +328,7 @@ function ExportPanel({ m }: { m: Manifest }) {
             <div className="hp-field">
               <label htmlFor="export-suffix">collection name</label>
               <div className="export-name">
-                <span className="num muted">properties-tagged-clean-</span>
+                <span className="num muted">{m.source.collection}-clean-</span>
                 <input
                   id="export-suffix"
                   type="text"
@@ -489,12 +488,16 @@ function Exploration({
   const [overlay, setOverlay] = useState(false)
   const [slice, setSlice] = useState<Slice | null>(null)
 
-  const prices = useMemo(() => rows.map((r) => r.price).filter((p) => p > 0), [rows])
-  const [p10, p50, p90] = useMemo(() => quantiles(prices, [0.1, 0.5, 0.9]), [prices])
-  const bedrooms = useMemo(() => rows.map((r) => r.bedrooms).filter((b) => b >= 0), [rows])
-  const meanBedrooms = useMemo(
-    () => (bedrooms.length ? bedrooms.reduce((a, b) => a + b, 0) / bedrooms.length : 0),
-    [bedrooms],
+  const cappedDesc = useMemo(() => cappedNumericField(domain), [domain])
+  const targets = useMemo(() => rows.map((r) => r.target).filter((t) => t > 0), [rows])
+  const [p10, p50, p90] = useMemo(() => quantiles(targets, [0.1, 0.5, 0.9]), [targets])
+  const capped = useMemo(
+    () => rows.map((r) => r.capped ?? NaN).filter((v) => v >= 0),
+    [rows],
+  )
+  const meanCapped = useMemo(
+    () => (capped.length ? capped.reduce((a, b) => a + b, 0) / capped.length : 0),
+    [capped],
   )
 
   // Per categorical field: the top values by row count, with median target.
@@ -504,7 +507,7 @@ function Exploration({
     () =>
       catFields.map((f) => ({
         field: f,
-        data: topCategories(rows.map((r) => ({ key: r.cats[f.name] ?? '', price: r.price })), 12),
+        data: topCategories(rows.map((r) => ({ key: r.cats[f.name] ?? '', value: r.target })), 12),
       })),
     [rows, catFields],
   )
@@ -512,32 +515,33 @@ function Exploration({
   const extraCats = byCat.slice(2)
   const targetNoun = domain.project.target_noun
 
-  const priceSeries = useMemo(() => {
+  const targetSeries = useMemo(() => {
     if (overlay && hasSplit) {
       return [
-        { label: 'train', values: rows.filter((r) => r.split === 'train').map((r) => r.price), style: 'fill' as const },
-        { label: 'test', values: rows.filter((r) => r.split === 'test').map((r) => r.price), style: 'outline' as const },
+        { label: 'train', values: rows.filter((r) => r.split === 'train').map((r) => r.target), style: 'fill' as const },
+        { label: 'test', values: rows.filter((r) => r.split === 'test').map((r) => r.target), style: 'outline' as const },
       ]
     }
-    return [{ label: 'corpus', values: prices, style: 'fill' as const }]
-  }, [rows, prices, overlay, hasSplit])
+    return [{ label: 'corpus', values: targets, style: 'fill' as const }]
+  }, [rows, targets, overlay, hasSplit])
 
-  // Chart domain caps at p99.5: a handful of 50-bedroom typos would
-  // otherwise own the axis. The slice drill-down still reaches them.
-  const bedCap = useMemo(
-    () => Math.max(quantiles(bedrooms, [0.995])[0] || 1, 1),
-    [bedrooms],
+  // Chart domain caps at p99.5: a handful of typo outliers would otherwise
+  // own the axis. The slice drill-down still reaches them.
+  const cappedCap = useMemo(
+    () => Math.max(quantiles(capped, [0.995])[0] || 1, 1),
+    [capped],
   )
-  const bedroomSeries = useMemo(() => {
-    const chartable = (rs: Row[]) => rs.map((r) => r.bedrooms).filter((b) => b >= 0 && b <= bedCap)
+  const cappedSeries = useMemo(() => {
+    const chartable = (rs: Row[]) =>
+      rs.map((r) => r.capped ?? NaN).filter((v) => v >= 0 && v <= cappedCap)
     if (overlay && hasSplit) {
       return [
         { label: 'train', values: chartable(rows.filter((r) => r.split === 'train')), style: 'fill' as const },
         { label: 'test', values: chartable(rows.filter((r) => r.split === 'test')), style: 'outline' as const },
       ]
     }
-    return [{ label: 'corpus', values: bedrooms.filter((b) => b <= bedCap), style: 'fill' as const }]
-  }, [rows, bedrooms, bedCap, overlay, hasSplit])
+    return [{ label: 'corpus', values: capped.filter((v) => v <= cappedCap), style: 'fill' as const }]
+  }, [rows, capped, cappedCap, overlay, hasSplit])
 
   if (loading) {
     return (
@@ -563,9 +567,9 @@ function Exploration({
 
         <div className="metrics-strip eda-strip" role="group" aria-label="Corpus summary statistics">
           <Stat label={`median ${targetNoun}`} value={fmtMoney(p50)} hint="p50 over the corpus" />
-          <Stat label="p10" value={fmtMoney(p10)} hint="cheap tail" />
-          <Stat label="p90" value={fmtMoney(p90)} hint="expensive tail" />
-          <Stat label="bedrooms" value={meanBedrooms.toFixed(1)} hint="mean" />
+          <Stat label="p10" value={fmtMoney(p10)} hint="low tail" />
+          <Stat label="p90" value={fmtMoney(p90)} hint="high tail" />
+          {cappedDesc && <Stat label={fieldLabel(cappedDesc)} value={meanCapped.toFixed(1)} hint="mean" />}
           {primaryCats[0] && (
             <Stat
               label={`${fieldLabel(primaryCats[0].field)}s`}
@@ -578,9 +582,9 @@ function Exploration({
 
         <div className="eda-grid">
           <div>
-            <h3 className="panel-title">Price</h3>
+            <h3 className="panel-title">{targetNoun}</h3>
             <Histogram
-              series={priceSeries}
+              series={targetSeries}
               log
               bins={48}
               xLabel={`${targetNoun}, log scale`}
@@ -590,21 +594,23 @@ function Exploration({
                 { value: p10, label: 'p10' },
                 { value: p90, label: 'p90' },
               ]}
-              onBinClick={(lo, hi) => setSlice({ kind: 'price', lo, hi })}
-              selected={slice?.kind === 'price' ? [slice.lo, slice.hi] : null}
+              onBinClick={(lo, hi) => setSlice({ kind: 'target', lo, hi })}
+              selected={slice?.kind === 'target' ? [slice.lo, slice.hi] : null}
             />
           </div>
-          <div>
-            <h3 className="panel-title">Bedrooms</h3>
-            <Histogram
-              series={bedroomSeries}
-              bins={Math.min(16, Math.ceil(bedCap) + 1)}
-              xLabel="bedrooms"
-              tickFormat={(v) => String(Math.round(v))}
-              onBinClick={(lo, hi) => setSlice({ kind: 'bedrooms', lo, hi })}
-              selected={slice?.kind === 'bedrooms' ? [slice.lo, slice.hi] : null}
-            />
-          </div>
+          {cappedDesc && (
+            <div>
+              <h3 className="panel-title">{fieldLabel(cappedDesc)}</h3>
+              <Histogram
+                series={cappedSeries}
+                bins={Math.min(16, Math.ceil(cappedCap) + 1)}
+                xLabel={fieldLabel(cappedDesc)}
+                tickFormat={(v) => String(Math.round(v))}
+                onBinClick={(lo, hi) => setSlice({ kind: 'capped', lo, hi })}
+                selected={slice?.kind === 'capped' ? [slice.lo, slice.hi] : null}
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -698,12 +704,14 @@ function Stat({ label, value, hint }: { label: string; value: string; hint: stri
 
 const SLICE_LIMIT = 20
 
-function sliceLabel(slice: Slice): string {
+function sliceLabel(slice: Slice, domain: Domain): string {
   switch (slice.kind) {
-    case 'price':
-      return `price ${fmtMoney(slice.lo)} – ${fmtMoney(slice.hi)}`
-    case 'bedrooms':
-      return `bedrooms ${Math.ceil(slice.lo)} – ${Math.floor(slice.hi)}`
+    case 'target':
+      return `${domain.project.target_noun} ${fmtMoney(slice.lo)} – ${fmtMoney(slice.hi)}`
+    case 'capped': {
+      const f = cappedNumericField(domain)
+      return `${f ? fieldLabel(f) : 'value'} ${Math.ceil(slice.lo)} – ${Math.floor(slice.hi)}`
+    }
     case 'category':
       return `${slice.field} = ${slice.value}`
   }
@@ -711,10 +719,10 @@ function sliceLabel(slice: Slice): string {
 
 function matches(r: Row, slice: Slice): boolean {
   switch (slice.kind) {
-    case 'price':
-      return r.price >= slice.lo && r.price < slice.hi
-    case 'bedrooms':
-      return r.bedrooms >= slice.lo && r.bedrooms < slice.hi
+    case 'target':
+      return r.target >= slice.lo && r.target < slice.hi
+    case 'capped':
+      return r.capped != null && r.capped >= slice.lo && r.capped < slice.hi
     case 'category': {
       const v = (r.cats[slice.field] ?? '').trim() || '(empty)'
       return v === slice.value
@@ -722,22 +730,35 @@ function matches(r: Row, slice: Slice): boolean {
   }
 }
 
-/** Drill-down one gesture away: the listings inside the selected slice. */
+/** Drill-down one gesture away: the corpus entries inside the selected slice. */
 function SlicePanel({ rows, slice, onClear }: { rows: Row[]; slice: Slice; onClear: () => void }) {
+  const domain = useDomain()
   const matched = useMemo(() => {
     const out = rows.filter((r) => matches(r, slice))
-    out.sort((a, b) => b.price - a.price)
+    out.sort((a, b) => b.target - a.target)
     return out
   }, [rows, slice])
 
+  // Table columns mirror the EDA panels: target, the two prominent
+  // categoricals, and the capped numeric when the domain binds one.
+  const cappedDesc = useMemo(() => cappedNumericField(domain), [domain])
+  const cats = useMemo(() => categoricalFields(domain), [domain])
+  const primary = cats.slice(0, 2)
+  const extra = cats.slice(2)
+  const label = sliceLabel(slice, domain)
+  const noun = domain.project.entity_noun
+  const nounPlural = domain.project.entity_noun_plural
+
   return (
-    <div className="slice-panel" role="region" aria-label={`Items in slice ${sliceLabel(slice)}`}>
+    <div className="slice-panel" role="region" aria-label={`Items in slice ${label}`}>
       <div className="slice-head">
         <h3 className="panel-title">
-          <span className="num">{sliceLabel(slice)}</span>{' '}
+          <span className="num">{label}</span>{' '}
           <span className="muted num">
-            {matched.length.toLocaleString()} {matched.length === 1 ? 'listing' : 'listings'}
-            {matched.length > SLICE_LIMIT ? `, showing ${SLICE_LIMIT} priciest` : ''}
+            {matched.length.toLocaleString()} {matched.length === 1 ? noun : nounPlural}
+            {matched.length > SLICE_LIMIT
+              ? `, showing top ${SLICE_LIMIT} by ${domain.project.target_noun}`
+              : ''}
           </span>
         </h3>
         <button className="btn" onClick={onClear}>
@@ -748,16 +769,17 @@ function SlicePanel({ rows, slice, onClear }: { rows: Row[]; slice: Slice; onCle
         <thead>
           <tr>
             <th>Item</th>
-            <th className="num-col">Price</th>
-            <th>Type</th>
-            <th>Neighborhood</th>
-            <th className="num-col">Bedrooms</th>
+            <th className="num-col">{domain.project.target_noun}</th>
+            {primary.map((f) => (
+              <th key={f.name}>{fieldLabel(f)}</th>
+            ))}
+            {cappedDesc && <th className="num-col">{fieldLabel(cappedDesc)}</th>}
             <th>Split</th>
           </tr>
         </thead>
         <tbody>
           {matched.slice(0, SLICE_LIMIT).map((r) => (
-            <SliceRow key={r.row_id} r={r} />
+            <SliceRow key={r.row_id} r={r} primary={primary} extra={extra} capped={cappedDesc} />
           ))}
         </tbody>
       </table>
@@ -765,28 +787,42 @@ function SlicePanel({ rows, slice, onClear }: { rows: Row[]; slice: Slice; onCle
   )
 }
 
-function SliceRow({ r }: { r: Row }) {
+function SliceRow({
+  r,
+  primary,
+  extra,
+  capped,
+}: {
+  r: Row
+  primary: DomainField[]
+  extra: DomainField[]
+  capped: DomainField | null
+}) {
   const [expanded, setExpanded] = useState(false)
+  const nCols = 3 + primary.length + (capped ? 1 : 0)
   return (
     <>
       <tr className="pred-row" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded}>
         <td className="num">{r.row_id}</td>
-        <td className="num-col num">{fmtMoney(r.price)}</td>
-        <td>{r.propertyType || '—'}</td>
-        <td>{r.neighborhood || '—'}</td>
-        <td className="num-col num">{r.bedrooms}</td>
+        <td className="num-col num">{fmtMoney(r.target)}</td>
+        {primary.map((f) => (
+          <td key={f.name}>{r.cats[f.name] || '—'}</td>
+        ))}
+        {capped && <td className="num-col num">{r.capped ?? '—'}</td>}
         <td className="num split-tag">{r.split ?? '—'}</td>
       </tr>
       {expanded && (
         <tr className="pred-detail">
-          <td colSpan={6}>
+          <td colSpan={nCols}>
             <div className="item-detail">
               <p className="item-content">{r.content || <span className="muted">No description</span>}</p>
               <dl className="item-meta">
-                <div>
-                  <dt>city</dt>
-                  <dd>{r.city || '—'}</dd>
-                </div>
+                {extra.map((f) => (
+                  <div key={f.name}>
+                    <dt>{fieldLabel(f)}</dt>
+                    <dd>{r.cats[f.name] || '—'}</dd>
+                  </div>
+                ))}
                 {r.cluster_label && (
                   <div>
                     <dt>cluster</dt>

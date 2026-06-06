@@ -9,9 +9,9 @@
 
 use std::collections::{HashMap, HashSet};
 
-use pg_core::domain::Domain;
-use pg_core::quality::{QualityFilterConfig, QualityReport, RuleStats};
-use pg_core::{CurrencyConfig, CurrencyMode};
+use lensing_core::domain::Domain;
+use lensing_core::quality::{QualityFilterConfig, QualityReport, RuleStats};
+use lensing_core::{CurrencyConfig, CurrencyMode};
 use serde_json::json;
 
 use crate::qdrant::RawPoint;
@@ -306,7 +306,7 @@ impl QualityAnalysis {
 mod tests {
     use super::*;
     use crate::qdrant::Payload;
-    use pg_core::domain::Domain;
+    use lensing_core::domain::Domain;
     use serde_json::json;
 
     fn currency_off() -> CurrencyConfig {

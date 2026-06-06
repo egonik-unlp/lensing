@@ -29,23 +29,23 @@ pub async fn run(
     qdrant_url: String,
     max_concurrent: usize,
 ) -> Result<()> {
-    let db = pg_db::connect(&database_url)
+    let db = lensing_db::connect(&database_url)
         .await
         .context("inference role requires the metadata database")?;
-    let domain = pg_core::domain::Domain::load_or_default(&root)?;
+    let domain = lensing_core::domain::Domain::load_or_default(&root)?;
     let registry = Registry::load(&root.join("registry.toml"))?;
 
     // Materialize promoted models from the database into the local cache.
     let models_dir = root.join("data/models");
     std::fs::create_dir_all(&models_dir)?;
-    let names = pg_db::queries::model_artifact_names(&db).await?;
+    let names = lensing_db::queries::model_artifact_names(&db).await?;
     let mut materialized = 0usize;
     for name in &names {
         let dir = models_dir.join(name);
         if dir.join("record.json").is_file() {
             continue; // already cached
         }
-        let files = pg_db::queries::load_model_artifacts(&db, name).await?;
+        let files = lensing_db::queries::load_model_artifacts(&db, name).await?;
         for (rel, bytes) in &files {
             // Artifact paths come from our own uploader, but never let a
             // stored path escape the model dir.
@@ -87,7 +87,39 @@ pub async fn run(
         jobs: Mutex::new(Default::default()),
         run_slots: Arc::new(Semaphore::new(max_concurrent)),
         build_slots: Arc::new(Semaphore::new(1)),
+        best_models_lock: tokio::sync::Mutex::new(()),
     });
+
+    // Materialize the best-models group from the database so the predict
+    // surface includes the consensus endpoint (read-only: no recompute here).
+    if let Some(db) = &state.db {
+        match lensing_db::queries::load_best_models(db).await {
+            Ok(entries) if !entries.is_empty() => {
+                let group = lensing_core::BestModelGroup {
+                    primary_metric: state.domain.metrics.primary.clone(),
+                    size: state.domain.metrics.best_models_size(),
+                    updated_at: entries
+                        .iter()
+                        .map(|e| e.selected_at.clone())
+                        .max()
+                        .unwrap_or_default(),
+                    entries,
+                    pinned: Vec::new(),
+                    excluded: Vec::new(),
+                };
+                eprintln!(
+                    "[lensing-server infer] best-models group: {} members",
+                    group.entries.len()
+                );
+                std::fs::write(
+                    root.join("data/best-models.json"),
+                    serde_json::to_vec_pretty(&group)?,
+                )?;
+            }
+            Ok(_) => {}
+            Err(e) => eprintln!("[lensing-server infer] best-models load failed: {e:#}"),
+        }
+    }
 
     let app = Router::new()
         .route("/health", get(api::health))
@@ -97,6 +129,8 @@ pub async fn run(
         .route("/models/{name}/contract", get(api::get_model_contract))
         .route("/models/{name}/viz", get(api::get_model_viz))
         .route("/models/{name}/predict", axum::routing::post(api::predict_model))
+        .route("/best-models", get(api::get_best_models))
+        .route("/best-models/predict", axum::routing::post(api::predict_best_models))
         .with_state(state);
     let app = Router::new().nest("/api", app);
 

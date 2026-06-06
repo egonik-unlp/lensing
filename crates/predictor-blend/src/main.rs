@@ -1,4 +1,4 @@
-//! Blend meta-predictor: combines member models' price-space predictions
+//! Blend meta-predictor: combines member models' target-space predictions
 //! (weighted mean or median vote). Members are frozen promoted models,
 //! models.toml definitions trained inside the blend run, or inline
 //! predictor+hyperparams recipes. Rides the ordinary contract v2 — the
@@ -19,8 +19,8 @@ use clap::{Parser, Subcommand};
 use serde::Deserialize;
 use serde_json::json;
 
-use pg_core::registry::{Predictor, Registry};
-use pg_core::{
+use lensing_core::registry::{Predictor, Registry};
+use lensing_core::{
     artifact, compute_metrics, ColumnDesc, Contract, Dataset, InferenceInput,
     InferencePrediction, InputManifest, Metrics, ModelDefinition, ModelRecord, Prediction,
     CONTRACT_VERSION,
@@ -47,7 +47,7 @@ enum Command {
         #[arg(long)]
         hyperparams: PathBuf,
     },
-    /// Predict prices by fanning a server-featurized input out to the member
+    /// Predict target values by fanning a server-featurized input out to the member
     /// models nested in the blend model directory.
     Predict {
         #[arg(long)]
@@ -363,7 +363,7 @@ fn train(dataset_dir: PathBuf, run_dir: PathBuf, hp_path: PathBuf) -> Result<()>
     // Validation carve-out for weight fitting: trained members see
     // train-minus-val, the test split stays untouched.
     let (fit_train_idx, val_idx): (Vec<u32>, Vec<u32>) = if hp.weight_fit == WeightFit::Grid {
-        let (keep, val) = pg_core::shuffle::train_test_split(
+        let (keep, val) = lensing_core::shuffle::train_test_split(
             ds.train_idx.len(),
             hp.val_fraction,
             ds.manifest.split.seed,
@@ -378,7 +378,7 @@ fn train(dataset_dir: PathBuf, run_dir: PathBuf, hp_path: PathBuf) -> Result<()>
 
     let blend_stop = run_dir.join(child::STOP_FILE);
     let mut stopped = false;
-    // Per member: test predictions (price space), val predictions, solo metrics.
+    // Per member: test predictions (target space), val predictions, solo metrics.
     let mut test_preds: Vec<Option<Vec<f64>>> = vec![None; members.len()];
     let mut val_preds: Vec<Option<Vec<f64>>> = vec![None; members.len()];
     let mut solo: Vec<Option<Metrics>> = vec![None; members.len()];
@@ -585,7 +585,7 @@ fn predict(model_dir: PathBuf, input_dir: PathBuf, output: PathBuf) -> Result<()
     )}));
 
     let tmp_base = std::env::temp_dir().join(format!(
-        "pg-blend-{}-{}",
+        "lensing-blend-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

@@ -6,14 +6,21 @@ import type {
   CollectionValidation,
   CurrencyConfig,
   PreflightResponse,
+  PreflightSample,
   QualityFilterConfig,
   RedundancyReport,
 } from '../api/types'
 import { DEFAULT_CURRENCY, DEFAULT_QUALITY } from '../api/types'
-import { fmtPct } from '../lib/format'
+import { fmtMoney, fmtPct } from '../lib/format'
 import { ruleLabel } from '../lib/rules'
 import { useDomain } from '../lib/DomainContext'
-import { fieldLabel, vocabTopN, type Domain, type DomainField } from '../lib/domain'
+import {
+  cappedNumericField,
+  fieldLabel,
+  vocabTopN,
+  type Domain,
+  type DomainField,
+} from '../lib/domain'
 import VarianceChart from './charts/VarianceChart'
 
 // Styles live in views/newrun.css (hp-grid, toggles, quality-*); all view CSS
@@ -598,6 +605,15 @@ export function RedundancyFindings({ report }: { report: RedundancyReport }) {
 
 /* ---------------- currency handling ---------------- */
 
+/** Display host of the domain's rate endpoint, for the hint line. */
+function rateHost(template: string): string {
+  try {
+    return new URL(template.replace('{source}', 'x')).host
+  } catch {
+    return template
+  }
+}
+
 function CurrencyPanel({
   currency,
   collections,
@@ -610,6 +626,8 @@ function CurrencyPanel({
   onChange: (c: CurrencyConfig) => void
   disabled: boolean
 }) {
+  const domain = useDomain()
+  const pair = domain.currency?.pair
   const set = <K extends keyof CurrencyConfig>(k: K, v: CurrencyConfig[K]) =>
     onChange({ ...currency, [k]: v })
 
@@ -617,9 +635,9 @@ function CurrencyPanel({
     <fieldset className="toggles quality-panel" disabled={disabled}>
       <legend>Currency</legend>
       <p className="muted quality-blurb">
-        The corpus mixes ARS and USD prices. Currency is reconciled by point id from a
-        companion collection, then foreign-priced rows are dropped or converted before
-        the quality rules run.
+        The corpus mixes {pair ? `${pair[0]} and ${pair[1]}` : 'multiple'} values. Currency
+        is reconciled by point id from a companion collection, then foreign-currency rows
+        are dropped or converted before the quality rules run.
       </p>
       <div className="hp-field">
         <label htmlFor="cur-mode">mode</label>
@@ -633,7 +651,7 @@ function CurrencyPanel({
           <option value="convert">convert to {currency.keep} @ per-date rate</option>
           <option value="off">off (ignore currency)</option>
         </select>
-        <span className="hp-hint">sale listings are conventionally priced in USD</span>
+        <span className="hp-hint">the target is conventionally denominated in {currency.keep}</span>
       </div>
       {currency.mode !== 'off' && (
         <div className="hp-field">
@@ -663,10 +681,13 @@ function CurrencyPanel({
             value={currency.rate_source}
             onChange={(e) => set('rate_source', e.target.value as CurrencyConfig['rate_source'])}
           >
-            <option value="blue">blue (real-estate convention)</option>
+            <option value="blue">blue</option>
             <option value="oficial">oficial</option>
           </select>
-          <span className="hp-hint">daily rate keyed on listing createdAt · api.argentinadatos.com</span>
+          <span className="hp-hint">
+            daily rate keyed on {domain.currency?.date_field ?? 'the timestamp field'}
+            {domain.currency ? ` · ${rateHost(domain.currency.rate_url_template)}` : ''}
+          </span>
         </div>
       )}
     </fieldset>
@@ -691,6 +712,36 @@ function QualityPanel({
   disabled: boolean
 }) {
   const domain = useDomain()
+  const targetNoun = domain.project.target_noun
+  const cappedDesc = cappedNumericField(domain)
+  const cappedLabel = cappedDesc ? fieldLabel(cappedDesc) : 'capped numeric'
+  const outlierGroupDesc = domain.fields.find((f) => f.name === domain.quality.outlier_group)
+  const outlierGroupLabel = outlierGroupDesc ? fieldLabel(outlierGroupDesc) : null
+  const criticalLabels = domain.fields
+    .filter((f) => f.critical)
+    .map(fieldLabel)
+    .join(' / ')
+  // Mirrors the server's sample-field choice: critical fields, the outlier
+  // group and the capped numeric, deduplicated.
+  const sampleFields = useMemo(() => {
+    const names = domain.fields.filter((f) => f.critical).map((f) => f.name)
+    for (const extra of [domain.quality.outlier_group, domain.quality.capped_numeric]) {
+      if (extra && !names.includes(extra)) names.push(extra)
+    }
+    return names.flatMap((n) => domain.fields.find((f) => f.name === n) ?? [])
+  }, [domain])
+  const sampleLine = (s: PreflightSample): string => {
+    const parts: string[] = []
+    for (const f of sampleFields) {
+      const v = s[f.name]
+      parts.push(v != null && v !== '' && v !== 0 ? String(v) : `(no ${fieldLabel(f)})`)
+    }
+    const t = s[domain.target.field]
+    if (typeof t === 'number') parts.push(fmtMoney(t))
+    const cur = domain.currency ? s[domain.currency.currency_field] : null
+    if (typeof cur === 'string' && cur) parts.push(cur)
+    return parts.join(' · ')
+  }
   const [preview, setPreview] = useState<PreflightResponse | null>(null)
   const [previewing, setPreviewing] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
@@ -745,8 +796,8 @@ function QualityPanel({
     <fieldset className="toggles quality-panel" disabled={disabled}>
       <legend>Data quality</legend>
       <p className="muted quality-blurb">
-        Suspicious listings are excluded before the split, the PCA fit and the vocabularies; the
-        applied rules are recorded in the dataset manifest.
+        Suspicious {domain.project.entity_noun_plural} are excluded before the split, the PCA fit
+        and the vocabularies; the applied rules are recorded in the dataset manifest.
       </p>
       <label className="toggle">
         <input
@@ -754,7 +805,8 @@ function QualityPanel({
           checked={quality.nonpositive_price}
           onChange={(e) => set('nonpositive_price', e.target.checked)}
         />
-        drop price ≤ 0<span className="hp-hint">unpriced listings poison the target</span>
+        drop {targetNoun} ≤ 0
+        <span className="hp-hint">rows without a {targetNoun} poison the target</span>
       </label>
       <label className="toggle">
         <input
@@ -762,8 +814,11 @@ function QualityPanel({
           checked={quality.price_outlier}
           onChange={(e) => set('price_outlier', e.target.checked)}
         />
-        drop price outliers
-        <span className="hp-hint">MAD z-score on log price, per property type</span>
+        drop {targetNoun} outliers
+        <span className="hp-hint">
+          MAD z-score on log {targetNoun}
+          {outlierGroupLabel ? `, per ${outlierGroupLabel}` : ''}
+        </span>
       </label>
       {quality.price_outlier &&
         numField('qf-madz', 'outlier threshold (MAD z)', 'price_outlier_mad_z', '3.5 is conservative; lower drops more')}
@@ -773,34 +828,37 @@ function QualityPanel({
           checked={quality.price_range}
           onChange={(e) => set('price_range', e.target.checked)}
         />
-        drop price out of range
+        drop {targetNoun} out of range
         <span className="hp-hint">hard caps; catches noise the statistics miss</span>
       </label>
       {quality.price_range && (
         <div className="quality-range">
-          {numField('qf-pmin', 'min price ($)', 'price_min', 'below this is noise, not a sale')}
-          {numField('qf-pmax', 'max price ($)', 'price_max', 'above this is noise or mistyped')}
+          {numField('qf-pmin', `min ${targetNoun}`, 'price_min', 'below this is noise')}
+          {numField('qf-pmax', `max ${targetNoun}`, 'price_max', 'above this is noise or mistyped')}
         </div>
       )}
-      <label className="toggle">
-        <input
-          type="checkbox"
-          checked={quality.bedrooms_outlier}
-          onChange={(e) => set('bedrooms_outlier', e.target.checked)}
-        />
-        drop bedrooms outliers
-        <span className="hp-hint">negative or above the cap; 0 means unspecified and is kept</span>
-      </label>
-      {quality.bedrooms_outlier &&
-        numField('qf-bmax', 'max bedrooms', 'bedrooms_max', 'above this is a typo or a hotel')}
+      {cappedDesc && (
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={quality.bedrooms_outlier}
+            onChange={(e) => set('bedrooms_outlier', e.target.checked)}
+          />
+          drop {cappedLabel} outliers
+          <span className="hp-hint">negative or above the cap; 0 means unspecified and is kept</span>
+        </label>
+      )}
+      {cappedDesc &&
+        quality.bedrooms_outlier &&
+        numField('qf-bmax', `max ${cappedLabel}`, 'bedrooms_max', 'above this is likely a typo')}
       <label className="toggle">
         <input
           type="checkbox"
           checked={quality.duplicate_content}
           onChange={(e) => set('duplicate_content', e.target.checked)}
         />
-        drop duplicate listings
-        <span className="hp-hint">identical text; relistings double-count in PCA and split</span>
+        drop duplicate {domain.project.entity_noun_plural}
+        <span className="hp-hint">identical text; duplicates double-count in PCA and split</span>
       </label>
       <label className="toggle">
         <input
@@ -812,7 +870,12 @@ function QualityPanel({
         <span className="hp-hint">little text means little embedding signal</span>
       </label>
       {quality.short_content &&
-        numField('qf-minchars', 'min characters', 'short_content_min_chars', 'listings shorter than this are dropped')}
+        numField(
+          'qf-minchars',
+          'min characters',
+          'short_content_min_chars',
+          `${domain.project.entity_noun_plural} shorter than this are dropped`,
+        )}
       <label className="toggle">
         <input
           type="checkbox"
@@ -820,7 +883,9 @@ function QualityPanel({
           onChange={(e) => set('missing_fields', e.target.checked)}
         />
         drop missing critical fields
-        <span className="hp-hint">empty propertyType / neighborhood; training tolerates them</span>
+        <span className="hp-hint">
+          empty {criticalLabels || 'critical fields'}; training tolerates them
+        </span>
       </label>
 
       <div className="quality-preview-row">
@@ -842,7 +907,7 @@ function QualityPanel({
           </p>
           {preview.currency.n_converted > 0 && (
             <p className="num">
-              {preview.currency.n_converted.toLocaleString()} prices converted to{' '}
+              {preview.currency.n_converted.toLocaleString()} rows converted to{' '}
               {preview.currency.config.keep}
               {preview.currency.rate_min != null &&
                 ` @ ${Math.round(preview.currency.rate_min)}–${Math.round(preview.currency.rate_max ?? 0)} ${preview.currency.config.rate_source}`}
@@ -875,9 +940,7 @@ function QualityPanel({
                 <ul>
                   {samples.map((s) => (
                     <li key={s.row_id} className="num">
-                      #{s.row_id} · {s.propertyType || '(no type)'} · {s.neighborhood || '(no neighborhood)'} ·{' '}
-                      {s.bedrooms} bd · ${s.price.toLocaleString()}
-                      {s.currency ? ` ${s.currency}` : ''}
+                      #{s.row_id} · {sampleLine(s)}
                     </li>
                   ))}
                 </ul>

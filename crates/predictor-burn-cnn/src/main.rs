@@ -1,4 +1,4 @@
-//! 1D CNN price predictor on the language-neutral dataset artifact.
+//! 1D CNN target-value predictor on the language-neutral dataset artifact.
 //! burn 0.21, ndarray CPU backend, hand-written training loop.
 //!
 //! The leading PCA columns of the feature vector are convolved as a
@@ -18,8 +18,8 @@ use clap::{Parser, Subcommand};
 use serde::Deserialize;
 use serde_json::json;
 
-use pg_core::manifest::{ColumnDesc, ColumnKind};
-use pg_core::{compute_metrics, Dataset, InferenceInput, InferencePrediction, Prediction};
+use lensing_core::manifest::{ColumnDesc, ColumnKind};
+use lensing_core::{compute_metrics, Dataset, InferenceInput, InferencePrediction, Prediction};
 
 #[derive(Parser)]
 #[command(name = "predictor-burn-cnn")]
@@ -39,7 +39,7 @@ enum Command {
         #[arg(long)]
         hyperparams: PathBuf,
     },
-    /// Predict prices for a server-featurized input mini-artifact using a
+    /// Predict target values for a server-featurized input mini-artifact using a
     /// promoted model directory (checkpoint + scaler + hyperparams snapshot).
     Predict {
         #[arg(long)]
@@ -226,7 +226,7 @@ fn train(dataset_dir: PathBuf, run_dir: PathBuf, hp_path: PathBuf) -> Result<()>
         &emit,
     )?;
 
-    // Predictions in price space.
+    // Predictions in target space.
     let transform = ds.manifest.target.transform;
     let predicted_t = model::predict(&trained, &test_x, n_cols, hp.batch_size);
     let mut predictions = Vec::with_capacity(ds.test_idx.len());

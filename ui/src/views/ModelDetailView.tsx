@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
-import type { ContractSummary, PredictResponse } from '../api/types'
+import type { ContractSummary, ModelRecord, PredictResponse } from '../api/types'
 import ArchViz from '../components/ArchViz'
+import BlendPanel from '../components/BlendPanel'
 import { DatasetRef, DefinitionRef, ModelRef, PredictorRef, RunRef } from '../components/EntityRef'
 import SubmitRow from '../components/SubmitRow'
 import ViewHeader from '../components/ViewHeader'
@@ -10,6 +11,8 @@ import { useAsync } from '../hooks/useAsync'
 import { fmtDateTime, fmtMoney } from '../lib/format'
 import './models.css'
 import './definitions.css'
+import { useDocTitle, useDomain } from '../lib/DomainContext'
+import { cappedNumericField, categoricalFields, type Domain } from '../lib/domain'
 
 const NAME_RE = /^[a-z0-9][a-z0-9-]{0,63}$/
 
@@ -20,9 +23,7 @@ export default function ModelDetailView() {
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (name) document.title = `${name} · Price Guesser Models`
-  }, [name])
+  useDocTitle(name ?? null)
 
   if (model.error) {
     return (
@@ -143,16 +144,43 @@ export default function ModelDetailView() {
         />
       </header>
 
-      <ArchViz
-        predictor={record.predictor}
-        hyperparams={hyperparams}
-        features={{ nCols: contract.n_cols, nPca: contract.pca_dims }}
-        fallbackUrl={api.modelVizUrl(record.name)}
-      />
+      {record.predictor === 'blend' ? (
+        <BlendModelPanel record={record} contract={contract} hyperparams={hyperparams} />
+      ) : (
+        <ArchViz
+          predictor={record.predictor}
+          hyperparams={hyperparams}
+          features={{ nCols: contract.n_cols, nPca: contract.pca_dims }}
+          fallbackUrl={api.modelVizUrl(record.name)}
+        />
+      )}
       <ContractPanel contract={contract} />
       <Playground name={record.name} contract={contract} />
       </div>
     </section>
+  )
+}
+
+/* ---------------- blend panel wiring ---------------- */
+
+/** The blend's own test metrics live on the run it was promoted from. */
+function BlendModelPanel({
+  record,
+  contract,
+  hyperparams,
+}: {
+  record: ModelRecord
+  contract: ContractSummary
+  hyperparams: Record<string, unknown> | null
+}) {
+  const run = useAsync(() => api.getRun(record.run_id).catch(() => null), [record.run_id])
+  return (
+    <BlendPanel
+      load={() => api.modelBlend(record.name)}
+      hyperparams={hyperparams}
+      features={{ nCols: contract.n_cols, nPca: contract.pca_dims }}
+      blendMetrics={run.data?.metrics ?? null}
+    />
   )
 }
 
@@ -288,7 +316,20 @@ function ContractPanel({ contract }: { contract: ContractSummary }) {
 
 type Tab = 'ids' | 'json'
 
+/** Domain-driven example item for the raw-JSON tab: a couple of prominent
+ *  metadata fields plus the embedding shape. */
+function jsonPlaceholder(domain: Domain, embeddingDim: number): string {
+  const lines: string[] = []
+  const cat = categoricalFields(domain)[0]
+  if (cat) lines.push(`  "${cat.name}": ${JSON.stringify(cat.suggestions?.[0] ?? '…')}`)
+  const capped = cappedNumericField(domain)
+  if (capped) lines.push(`  "${capped.name}": 2`)
+  lines.push(`  "embedding": [${embeddingDim} floats]`)
+  return `{\n${lines.join(',\n')}\n}`
+}
+
 function Playground({ name, contract }: { name: string; contract: ContractSummary }) {
+  const domain = useDomain()
   const [tab, setTab] = useState<Tab>('ids')
   const [ids, setIds] = useState('')
   const [rawJson, setRawJson] = useState('')
@@ -368,7 +409,7 @@ function Playground({ name, contract }: { name: string; contract: ContractSummar
             className="mono-input json-input"
             rows={8}
             spellCheck={false}
-            placeholder={`{\n  "propertyType": "apartment",\n  "bedrooms": 2,\n  "neighborhood": "…",\n  "embedding": [${contract.input_fields.embedding_dim} floats]\n}`}
+            placeholder={jsonPlaceholder(domain, contract.input_fields.embedding_dim)}
             value={rawJson}
             onChange={(e) => setRawJson(e.target.value)}
             disabled={busy}
@@ -377,7 +418,7 @@ function Playground({ name, contract }: { name: string; contract: ContractSummar
       )}
 
       <SubmitRow
-        label="Predict prices"
+        label={`Predict ${domain.project.target_noun}`}
         busyLabel="Predicting…"
         busy={busy}
         error={error}
@@ -390,7 +431,7 @@ function Playground({ name, contract }: { name: string; contract: ContractSummar
             <thead>
               <tr>
                 <th>Item</th>
-                <th className="num-col">Predicted price</th>
+                <th className="num-col">Predicted {domain.project.target_noun}</th>
               </tr>
             </thead>
             <tbody>

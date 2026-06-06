@@ -1,5 +1,5 @@
 //! Model definition and hand-written training loop (burn 0.21, ndarray CPU).
-//! Loss values are MSE in transformed (log-price) target space.
+//! Loss values are MSE in transformed (log) target space.
 //!
 //! The feature vector is split at `n_pca`: the leading PCA components are
 //! treated as a 1-channel 1D signal for the conv stack; the metadata tail
@@ -23,7 +23,7 @@ use burn::record::CompactRecorder;
 use burn::tensor::backend::Backend;
 use burn::tensor::{Tensor, TensorData};
 
-use pg_core::shuffle::SplitMix64;
+use lensing_core::shuffle::SplitMix64;
 
 pub type Inner = NdArray<f32>;
 pub type Auto = Autodiff<Inner>;

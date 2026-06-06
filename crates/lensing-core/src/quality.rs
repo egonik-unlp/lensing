@@ -6,10 +6,10 @@ use serde::{Deserialize, Serialize};
 /// dataset is what its models trained on).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QualityFilterConfig {
-    /// price ≤ 0 or missing target. Cheap and safe; on by default.
+    /// target ≤ 0 or missing. Cheap and safe; on by default.
     #[serde(default = "default_true")]
     pub nonpositive_price: bool,
-    /// Robust price outliers: MAD z-score on log1p(price), grouped per
+    /// Robust target outliers: MAD z-score on log1p(target), grouped per
     /// propertyType (global fallback for thin groups).
     #[serde(default)]
     pub price_outlier: bool,
@@ -20,7 +20,7 @@ pub struct QualityFilterConfig {
     /// default: training tolerates them via the __other__ bucket.
     #[serde(default)]
     pub missing_fields: bool,
-    /// Manual hard price caps; complements the statistical MAD rule with
+    /// Manual hard target caps; complements the statistical MAD rule with
     /// domain knowledge (a $30 or $900M "sale" is noise, not an outlier).
     #[serde(default)]
     pub price_range: bool,

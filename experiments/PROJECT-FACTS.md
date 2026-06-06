@@ -1,10 +1,10 @@
-# PROJECT FACTS — Price Guesser Models
+# PROJECT FACTS — <project title — the bootstrap skill reseeds this file>
 
 Living, agent-maintained roll-up of empirical knowledge: the leaderboard,
 noise bands, dataset lineage, per-family field guide and hard-won pitfalls.
 The campaign reports in experiments/*.md are PRIMARY; this file is their
 index. When they disagree, the newest report wins — and this file is stale
-and must be updated. Writers: the experiment-designer agent and the
+and must be updated. Writers: the experiment-runner agent and the
 model-definitions experiment workflow reconcile this file as part of every
 campaign report.
 

@@ -1,7 +1,7 @@
 //! Typed query layer over tokio-postgres.
 
 use anyhow::{Context, Result};
-use pg_core::{ModelDefinition, ModelRecord, RunMeta};
+use lensing_core::{BestModelEntry, ModelDefinition, ModelRecord, RunMeta};
 
 use crate::Db;
 
@@ -363,6 +363,71 @@ pub async fn delete_model(db: &Db, name: &str) -> Result<()> {
     Ok(())
 }
 
+// ---------------- best-models group (mirror of data/best-models.json) ----------------
+
+/// Replace the whole best_models table with the given member set, atomically.
+/// The group is tiny (≈12 rows) and the JSON mirror's semantics are
+/// whole-file, so a full swap is the simplest write that can't drift.
+pub async fn replace_best_models(db: &Db, entries: &[BestModelEntry]) -> Result<()> {
+    let mut client = db.client().await?;
+    let tx = client.transaction().await?;
+    tx.execute("DELETE FROM best_models", &[]).await?;
+    for e in entries {
+        tx.execute(
+            "INSERT INTO best_models (name, rank, metric, metric_value, run_id, predictor,
+                                      dataset_id, source, selected_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+            &[
+                &e.name,
+                &(e.rank as i32),
+                &e.metric,
+                &e.metric_value,
+                &e.run_id,
+                &e.predictor,
+                &e.dataset_id,
+                &source_str(e.source),
+                &e.selected_at,
+            ],
+        )
+        .await
+        .with_context(|| format!("insert best model {}", e.name))?;
+    }
+    tx.commit().await.context("commit best models")?;
+    Ok(())
+}
+
+pub async fn load_best_models(db: &Db) -> Result<Vec<BestModelEntry>> {
+    let client = db.client().await?;
+    let rows = client
+        .query("SELECT * FROM best_models ORDER BY rank", &[])
+        .await
+        .context("load best models")?;
+    rows.iter()
+        .map(|r| {
+            let source: String = r.get("source");
+            Ok(BestModelEntry {
+                name: r.get("name"),
+                rank: r.get::<_, i32>("rank") as u32,
+                metric: r.get("metric"),
+                metric_value: r.get("metric_value"),
+                run_id: r.get("run_id"),
+                predictor: r.get("predictor"),
+                dataset_id: r.get("dataset_id"),
+                source: serde_json::from_value(serde_json::Value::String(source))
+                    .context("best model source")?,
+                selected_at: r.get("selected_at"),
+            })
+        })
+        .collect()
+}
+
+fn source_str(s: lensing_core::BestModelSource) -> &'static str {
+    match s {
+        lensing_core::BestModelSource::Auto => "auto",
+        lensing_core::BestModelSource::Pinned => "pinned",
+    }
+}
+
 // ---------------- datasets / presets (mirror) ----------------
 
 pub async fn upsert_dataset(
@@ -409,13 +474,13 @@ pub async fn count(db: &Db, table: &str) -> Result<i64> {
     Ok(row.get::<_, i64>("n"))
 }
 
-pub fn status_str(s: pg_core::RunStatus) -> &'static str {
+pub fn status_str(s: lensing_core::RunStatus) -> &'static str {
     match s {
-        pg_core::RunStatus::Queued => "queued",
-        pg_core::RunStatus::Running => "running",
-        pg_core::RunStatus::Succeeded => "succeeded",
-        pg_core::RunStatus::Failed => "failed",
-        pg_core::RunStatus::Interrupted => "interrupted",
-        pg_core::RunStatus::Stopped => "stopped",
+        lensing_core::RunStatus::Queued => "queued",
+        lensing_core::RunStatus::Running => "running",
+        lensing_core::RunStatus::Succeeded => "succeeded",
+        lensing_core::RunStatus::Failed => "failed",
+        lensing_core::RunStatus::Interrupted => "interrupted",
+        lensing_core::RunStatus::Stopped => "stopped",
     }
 }

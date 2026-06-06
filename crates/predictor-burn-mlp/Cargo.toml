@@ -7,7 +7,7 @@ repository.workspace = true
 description = "Lensing MLP predictor (burn)"
 
 [dependencies]
-pg-core = { workspace = true }
+lensing-core = { workspace = true }
 anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

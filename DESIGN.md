@@ -1,11 +1,11 @@
 <!-- Tokens resolved 2026-06-04 from the shipped implementation (ui/src/styles/tokens.css). -->
 <!-- For a full component capture, run /impeccable document. -->
 ---
-name: Price Guesser Models
-description: Internal tool for evaluating and comparing price-prediction ML models
+name: Lensing
+description: Internal tool for evaluating and comparing prediction ML models
 ---
 
-# Design System: Price Guesser Models
+# Design System: Lensing
 
 ## 1. Overview
 
@@ -19,7 +19,7 @@ The references are the Braun ET66 calculator (dark housing, bright readout, one 
 - Two-tone committed color: ~30% slate chrome framing near-zero-chroma paper surfaces
 - Signal orange ≤10% of any screen: live state + one primary action, never decoration
 - Links and selection are slate; chart series are graphite (A) and blue (B); orange means live
-- Sans for UI, JetBrains Mono with tabular figures for every number, price, ID, and log line
+- Sans for UI, JetBrains Mono with tabular figures for every number, value, ID, and log line
 - Denser than before: 44px topbar, 13px body, 12.5px tables, tight row padding, density toggle on every entity table
 - Flat elevation: hairlines and tone steps at rest; shadow only on things that float (menus, the compare bar, the log "jump to latest" pill)
 
@@ -60,12 +60,22 @@ Shipped values (OKLCH, see `ui/src/styles/tokens.css`):
 
 ## 3. Typography
 
-**UI Font:** Inter Variable (self-hosted). **Mono:** JetBrains Mono 400/600 — every number, price, ID, metric, hyperparameter and log line; tabular figures always.
+**Display Font:** Sora Variable 550 (`--font-display`, self-hosted) — the brand face: the wordmark, page titles (h1 / view-band titles) and section titles. **UI Font:** Inter Variable (self-hosted) — everything below section scale: body, tables, forms; geometric sans at dense-table sizes hurts scanability, so Inter holds the data layer. **Mono:** JetBrains Mono 400/600 — every number, value, ID, metric, hyperparameter and log line; tabular figures always.
 
 Fixed rem scale (denser than v1): 11.5 label / 12.5 dense-table / 13 body / 15 panel title / 18 section / 22 page title / 24 metric hero. The measurement still outranks the page title.
 
 ### Named Rules
-**The Tabular Figures Rule.** A column of prices that doesn't align vertically is a bug, not a style choice.
+**The Tabular Figures Rule.** A column of values that doesn't align vertically is a bug, not a style choice.
+
+**The Display Boundary Rule.** Sora stops at section scale (18px). Panel titles, body, tables and forms are Inter; if Sora appears in a data row, it has leaked.
+
+## 3b. Brand mark
+
+The mark is the **Velocity Map**: a dark sphere (the unobservable mass) inside a swarm of tangentially smeared trails colored by line-of-sight velocity — blueshifted approaching, redshifted receding — with a Doppler-weighted rim. It is generated, not drawn: `branding/make_mark.py --install` writes `ui/public/favicon.svg` and `ui/public/brand/mark{,-dark}.svg` from `domain.toml [branding]`.
+
+- **Ramp colors are brand-surface only.** The red→orange→blue shift ramp is anchored to the system's own `--bad` / `--accent` / `--series-b` hues (interpolated in Oklab), but it lives exclusively in the mark and brand surfaces. On screens, the Live-or-Primary rule still governs: orange means live or primary, red/green stay semantic, and nothing in the UI borrows the ramp.
+- **Sub-instance branding.** Lensing deployments keep the grammar (dark sphere, velocity swarm, Sora wordmark, the `lensing · <instance>` topbar form) and inject personality through `mark_seed` (arc arrangement) and `mark_hue_shift` (ramp rotation) in `domain.toml [branding]`. The canonical lensing mark is seed `"lensing"`, hue 0.
+- **Wordmark form.** Topbar reads `[mark] lensing · <instance title>` — "lensing" in Sora 550 on-chrome, the instance title in `--on-chrome-dim`.
 
 ## 4. Structure
 

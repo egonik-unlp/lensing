@@ -8,8 +8,8 @@ use std::path::Path;
 use anyhow::{ensure, Context, Result};
 use serde::Deserialize;
 
-use pg_core::artifact::{read_f32, write_f32, write_u64};
-use pg_core::{ColumnDesc, Contract, InputFields, InputManifest, TargetInfo};
+use lensing_core::artifact::{read_f32, write_f32, write_u64};
+use lensing_core::{ColumnDesc, Contract, InputFields, InputManifest, TargetInfo};
 
 use crate::build::write_items;
 use crate::features::{self, Encoder};
@@ -78,7 +78,7 @@ impl Featurizer {
         let bounds = contract
             .feature_config
             .coordinate_bounds
-            .unwrap_or_else(pg_core::manifest::legacy_coordinate_bounds);
+            .unwrap_or_else(lensing_core::manifest::legacy_coordinate_bounds);
         let encoder = Encoder::from_columns_with_bounds(&contract.columns, bounds)?;
         ensure!(
             k + encoder.width() == contract.n_cols,
@@ -125,7 +125,7 @@ impl Featurizer {
 
     /// Frozen train-split medians, present when training imputed missing
     /// numerics; predict must repeat the fill after reconcile/normalize.
-    pub fn imputation(&self) -> Option<&pg_core::NumericImputation> {
+    pub fn imputation(&self) -> Option<&lensing_core::NumericImputation> {
         self.contract.imputation.as_ref()
     }
 
@@ -198,7 +198,7 @@ impl Featurizer {
                 .contract
                 .feature_config
                 .coordinate_bounds
-                .unwrap_or_else(pg_core::manifest::legacy_coordinate_bounds);
+                .unwrap_or_else(lensing_core::manifest::legacy_coordinate_bounds);
             for (i, p) in points.iter().enumerate() {
                 if p.payload.coords_of(field, &bounds).is_none() {
                     out.push(format!(
@@ -248,7 +248,7 @@ impl Featurizer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pg_core::{
+    use lensing_core::{
         ColumnKind, FeatureConfig, PcaInfo, TargetInfo, TargetTransform, CONTRACT_VERSION,
     };
 
@@ -314,7 +314,7 @@ mod tests {
             neighborhood_top_n: 0,
             ..Default::default()
         };
-        let domain = pg_core::domain::Domain::default();
+        let domain = lensing_core::domain::Domain::default();
         let encoder = Encoder::build(&points, &domain, &cfg);
         let trained = features::assemble(&projected, k, &encoder, &points);
 

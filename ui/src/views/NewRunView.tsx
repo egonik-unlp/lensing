@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { Manifest } from '../api/types'
@@ -17,11 +17,10 @@ import {
 import { useAsync } from '../hooks/useAsync'
 import { fmtDateTime, fmtPct, shortDatasetId } from '../lib/format'
 import './newrun.css'
+import { useDocTitle } from '../lib/DomainContext'
 
 export default function NewRunView() {
-  useEffect(() => {
-    document.title = 'New run · Price Guesser Models'
-  }, [])
+  useDocTitle('New run')
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const defName = searchParams.get('definition')

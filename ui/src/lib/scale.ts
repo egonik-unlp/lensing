@@ -56,7 +56,7 @@ export function moneyTick(v: number): string {
   return `$${v}`
 }
 
-/** Log-log axis domain covering both actual and predicted prices, padded. */
+/** Log-log axis domain covering both actual and predicted values, padded. */
 export function scatterDomain(preds: { actual: number; predicted: number }[]): [number, number] {
   let lo = Infinity
   let hi = 0

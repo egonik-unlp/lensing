@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { ColumnDesc, Manifest } from '../api/types'
@@ -9,6 +9,7 @@ import { DatasetRef } from '../components/EntityRef'
 import { useAsync } from '../hooks/useAsync'
 import { fmtDateTime, fmtPct } from '../lib/format'
 import './datasets.css'
+import { useDocTitle } from '../lib/DomainContext'
 
 type SortKey = 'created_at' | 'n_rows' | 'n_cols' | 'var' | 'runs' | 'models'
 
@@ -27,9 +28,7 @@ function kindCounts(columns: ColumnDesc[]): { pca: number; numeric: number; oneh
 const evrSum = (m: Manifest) => m.pca.explained_variance_ratio.reduce((a, b) => a + b, 0)
 
 export default function DatasetsView() {
-  useEffect(() => {
-    document.title = 'Datasets · Price Guesser Models'
-  }, [])
+  useDocTitle('Datasets')
   const navigate = useNavigate()
   const datasets = useAsync(() => api.listDatasets(), [])
   const runs = useAsync(() => api.listRuns(), [])

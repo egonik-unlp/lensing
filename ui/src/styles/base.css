@@ -36,9 +36,13 @@ h3 {
   text-wrap: balance;
 }
 
+/* Display layer: Sora carries the brand at page-title scale and above;
+   panel titles (h2) and below stay Inter for density. */
 h1 {
+  font-family: var(--font-display);
+  font-weight: 550;
   font-size: var(--text-page);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
 }
 
 h2 {
@@ -47,6 +51,8 @@ h2 {
 
 /* Heading rhythm: 22 page / 18 section / 15 panel. */
 .section-title {
+  font-family: var(--font-display);
+  font-weight: 550;
   font-size: var(--text-section);
 }
 

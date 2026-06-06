@@ -1,5 +1,5 @@
 #!/usr/bin/env julia
-# 1D CNN price predictor on the language-neutral dataset artifact. Flux.jl, CPU.
+# 1D CNN target-value predictor on the language-neutral dataset artifact. Flux.jl, CPU.
 # Mirrors crates/predictor-burn-cnn (burn) and predictors/torch-cnn (PyTorch)
 # layer for layer: the leading PCA columns are convolved as a 1-channel
 # signal, the metadata tail (numeric + one-hots) joins the dense head after
@@ -51,7 +51,7 @@ function load_hyperparams(path)
     )
 end
 
-"Invert manifest.target.transform back to price space."
+"Invert manifest.target.transform back to target space."
 invert(transform::AbstractString, y::Float64) = transform == "log1p" ? expm1(y) : y
 
 """
@@ -160,7 +160,7 @@ function gather(features::Vector{Float32}, n_cols::Int, idx)
     X
 end
 
-"Same SplitMix64 stream as pg-core, so the epoch shuffles match burn-cnn."
+"Same SplitMix64 stream as lensing-core, so the epoch shuffles match burn-cnn."
 mutable struct SplitMix64
     s::UInt64
 end
@@ -190,7 +190,7 @@ function save_checkpoint_atomic(run_dir, model)
     mv(tmp, joinpath(run_dir, "model.jld2"); force = true)
 end
 
-"Hand-written loop; losses are MSE in transformed (log-price) target space."
+"Hand-written loop; losses are MSE in transformed (log) target space."
 function run_training!(model, train_X, train_y, test_X, test_y, hp::Hyperparams, run_dir)
     n_train = length(train_y)
     opt = Flux.setup(Adam(hp.lr), model)
@@ -294,7 +294,7 @@ end
 
 # -------------------------------------------------------------------- metrics
 
-"Exact pg_core::compute_metrics formulas, price space, mape/medape fractions."
+"Exact lensing_core::compute_metrics formulas, target space, mape/medape fractions."
 function compute_metrics(pairs::Vector{Tuple{Float64,Float64}})
     n = length(pairs)
     abs_err = 0.0
@@ -362,7 +362,7 @@ function cmd_train(dataset_dir, run_dir, hp_path)
                       hp.dense_hidden, hp.dropout)
     run_training!(model, train_X, train_y, test_X, test_y, hp, run_dir)
 
-    # Predictions in price space.
+    # Predictions in target space.
     transform = String(manifest.target.transform)
     predicted_t = predict_batched(model, test_X, hp.batch_size)
     pairs = Tuple{Float64,Float64}[]

@@ -1,4 +1,6 @@
 import type {
+  BestModelGroup,
+  BlendFile,
   BuildRequest,
   BuildStatus,
   CollectionValidation,
@@ -6,6 +8,7 @@ import type {
   CreateListingRequest,
   CurrencyConfig,
   DatasetSplit,
+  GroupPredictResponse,
   Items,
   JobStatus,
   Listing,
@@ -104,6 +107,8 @@ export const api = {
     request<{ ok: boolean }>(`/api/runs/${id}`, { method: 'DELETE' }),
   runVizUrl: (runId: string) => `/api/runs/${runId}/viz`,
   modelVizUrl: (name: string) => `/api/models/${name}/viz`,
+  runBlend: (runId: string) => request<BlendFile>(`/api/runs/${runId}/blend`),
+  modelBlend: (name: string) => request<BlendFile>(`/api/models/${name}/blend`),
   preflight: (quality: QualityFilterConfig, currency: CurrencyConfig, sample = 8, collection?: string) =>
     request<PreflightResponse>('/api/datasets/preflight', post({ quality, currency, sample, collection })),
   listModels: () =>
@@ -122,6 +127,17 @@ export const api = {
     request<ModelRecord>(`/api/models/${name}/rename`, post({ new_name })),
   predictModel: (name: string, body: { items?: unknown[]; point_ids?: number[] }) =>
     request<PredictResponse>(`/api/models/${name}/predict`, post(body)),
+  bestModels: () => request<BestModelGroup>('/api/best-models'),
+  recomputeBestModels: () =>
+    request<BestModelGroup>('/api/best-models/recompute', { method: 'POST' }),
+  curateBestModels: (req: {
+    pin?: string[]
+    exclude?: string[]
+    unpin?: string[]
+    unexclude?: string[]
+  }) => request<BestModelGroup>('/api/best-models', put(req)),
+  predictBestModels: (body: { items?: unknown[]; point_ids?: number[] }) =>
+    request<GroupPredictResponse>('/api/best-models/predict', post(body)),
   listListings: () =>
     request<{ listings: ListingSummary[] }>('/api/listings').then((r) => r.listings),
   getListing: (id: number) => request<Listing>(`/api/listings/${id}`),

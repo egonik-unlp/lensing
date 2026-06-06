@@ -3,7 +3,7 @@
 //!
 //! `data/models/<name>/` layout:
 //!   record.json          ModelRecord (name, run_id, predictor, dataset_id, …)
-//!   contract.json        frozen featurization contract (pg_core::Contract)
+//!   contract.json        frozen featurization contract (lensing_core::Contract)
 //!   pca_components.f32   copied from the training dataset
 //!   hyperparams.json     copy of the run's hp.json (predictors rebuild their
 //!                        architecture from it before loading weights)
@@ -18,13 +18,13 @@ use std::sync::Arc;
 
 use anyhow::{bail, ensure, Context, Result};
 use chrono::Utc;
-use pg_core::{
+use lensing_core::{
     Contract, InferencePrediction, InputFields, Manifest, ModelRecord, RunStatus,
     CONTRACT_VERSION,
 };
-use pg_pipeline::features::Encoder;
-use pg_pipeline::inference::{Featurizer, RawItem};
-use pg_pipeline::qdrant::{self, RawPoint};
+use lensing_pipeline::features::Encoder;
+use lensing_pipeline::inference::{Featurizer, RawItem};
+use lensing_pipeline::qdrant::{self, RawPoint};
 
 use crate::registry;
 use crate::runs;
@@ -322,7 +322,7 @@ impl From<anyhow::Error> for PredictError {
 /// Run a one-shot predict against a promoted model. Featurizes inputs under
 /// the model's frozen contract, writes a temp input mini-artifact, spawns
 /// the predictor's predict subcommand under the training semaphore, returns
-/// price-space predictions.
+/// target-space predictions.
 pub async fn predict(
     state: Arc<AppState>,
     name: String,
@@ -362,7 +362,7 @@ pub async fn predict(
         // not be joined against real companion rows.
         if let Some(companion) = featurizer.numerics_collection() {
             if !points.is_empty() {
-                pg_pipeline::numerics::reconcile(
+                lensing_pipeline::numerics::reconcile(
                     &mut points,
                     &companion,
                     &st.qdrant_url,
@@ -378,7 +378,7 @@ pub async fn predict(
         // Same per-point cleanup training applied (decimal repair + optional
         // text backfill) so predict features cannot drift from trained ones.
         if featurizer.raw_numerics() {
-            pg_pipeline::numerics::normalize(
+            lensing_pipeline::numerics::normalize(
                 &mut points,
                 featurizer.area_content_backfill(),
                 &st.domain,
@@ -389,7 +389,7 @@ pub async fn predict(
         // frozen-median fill training applied.
         let warnings = featurizer.warnings(&points);
         if let Some(imp) = featurizer.imputation() {
-            pg_pipeline::numerics::impute(&mut points, imp);
+            lensing_pipeline::numerics::impute(&mut points, imp);
         }
         let nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -451,8 +451,8 @@ mod tests {
     /// only; tmp-named entries are skipped at any depth.
     #[test]
     fn promote_copy_recurses_with_top_level_exclusions() {
-        let src = std::env::temp_dir().join(format!("pg-copy-src-{}", std::process::id()));
-        let dst = std::env::temp_dir().join(format!("pg-copy-dst-{}", std::process::id()));
+        let src = std::env::temp_dir().join(format!("lensing-copy-src-{}", std::process::id()));
+        let dst = std::env::temp_dir().join(format!("lensing-copy-dst-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&src);
         let _ = std::fs::remove_dir_all(&dst);
         std::fs::create_dir_all(src.join("members/0/ds-tmp")).unwrap();

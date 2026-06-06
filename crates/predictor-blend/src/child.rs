@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use anyhow::{bail, Context, Result};
-use pg_core::registry::{substitute, Predictor};
+use lensing_core::registry::{substitute, Predictor};
 
 use crate::emit;
 
@@ -96,14 +96,14 @@ pub fn train_member(
 }
 
 /// Run a member's predict subcommand synchronously; returns the parsed
-/// price-space predictions.
+/// target-space predictions.
 pub fn predict_member(
     label: &str,
     predictor: &Predictor,
     model_dir: &Path,
     input_dir: &Path,
     output_file: &Path,
-) -> Result<Vec<pg_core::InferencePrediction>> {
+) -> Result<Vec<lensing_core::InferencePrediction>> {
     let (command, template) = predictor
         .predict_invocation()
         .with_context(|| format!("member {label}: predictor {} is train-only", predictor.name))?;

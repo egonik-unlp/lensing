@@ -21,19 +21,9 @@ export default function Shell() {
       <header className={stuck ? 'topbar is-stuck' : 'topbar'}>
         <div className="topbar-inner">
           <NavLink to="/" className="wordmark">
-            {/* The favicon's trend line, reused as the mark. */}
-            <svg className="wordmark-glyph" viewBox="0 0 16 16" width="16" height="16" aria-hidden>
-              <path d="M2 12 L6 7 L9 9.5 L14 3" fill="none" stroke="currentColor" strokeWidth="2" />
-            </svg>
-            {(() => {
-              const parts = domain.project.title.split(' ')
-              const last = parts.length > 1 ? parts.pop()! : ''
-              return (
-                <>
-                  {parts.join(' ')} {last && <span className="wordmark-dim">{last}</span>}
-                </>
-              )
-            })()}
+            {/* The instance's seeded velocity-map mark (branding/make_mark.py). */}
+            <img className="wordmark-glyph" src="/brand/mark-dark.svg" width={18} height={18} alt="" />
+            lensing <span className="wordmark-dim">· {domain.project.title}</span>
           </NavLink>
           {/* The pipeline spine, in pipeline order: build → train → promote. */}
           <nav aria-label="Primary">

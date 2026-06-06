@@ -1,14 +1,12 @@
-import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { DatasetBuildForm } from '../components/DatasetBuildForm'
 import ViewHeader from '../components/ViewHeader'
+import { useDocTitle } from '../lib/DomainContext'
 
 /** Dedicated build page: datasets are first-class, so creating one doesn't
  *  require setting up a run. On completion, lands on the new dataset. */
 export default function NewDatasetView() {
-  useEffect(() => {
-    document.title = 'Build dataset · Price Guesser Models'
-  }, [])
+  useDocTitle('Build dataset')
   const navigate = useNavigate()
 
   return (

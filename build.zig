@@ -1,4 +1,4 @@
-//! Project runner for price-guesser-models, written against Zig 0.15.
+//! Project runner for the lensing workspace, written against Zig 0.15.
 //!
 //! This repo is polyglot: a Rust workspace (pipeline, server, burn predictor),
 //! a Vite + React UI, a Python predictor and a Julia predictor. `zig build`
@@ -15,7 +15,8 @@
 //! Options (pass as -Dname=value):
 //!   -Dport=8080                      lensing-server port for `serve`
 //!   -Dqdrant-url=http://host:6333    Qdrant base URL for `serve` / `dataset`
-//!   -Dcollection=properties-tagged   Qdrant collection for `serve` / `dataset`
+//!   -Dcollection=<name>              Qdrant collection for `serve` / `dataset`
+//!                                    (default: domain.toml corpus.collection)
 //!   -Ddatabase-url=postgres://...    metadata database for `serve` / `migrate-data`
 //!
 //! Step graph (A → B means A runs B first):
@@ -41,8 +42,8 @@ pub fn build(b: *std.Build) void {
     const collection = b.option(
         []const u8,
         "collection",
-        "Qdrant collection (default properties-tagged)",
-    ) orelse "properties-tagged";
+        "Qdrant collection (default: domain.toml corpus.collection)",
+    );
     const database_url = b.option(
         []const u8,
         "database-url",
@@ -116,7 +117,7 @@ pub fn build(b: *std.Build) void {
     const run_server = b.addSystemCommand(&.{"target/release/lensing-server"});
     run_server.addArgs(&.{ "--port", b.fmt("{d}", .{port}) });
     run_server.addArgs(&.{ "--qdrant-url", qdrant_url });
-    run_server.addArgs(&.{ "--collection", collection });
+    if (collection) |c| run_server.addArgs(&.{ "--collection", c });
     run_server.addArgs(&.{ "--database-url", database_url });
     run_server.setCwd(b.path(".")); // repo root: registry.toml, data/, ui/dist
     run_server.stdio = .inherit; // long-running; stream logs, allow ctrl-c
@@ -171,7 +172,7 @@ pub fn build(b: *std.Build) void {
     // quality filters, …) call target/release/lensing-pipeline build directly.
     const run_pipeline = b.addSystemCommand(&.{ "target/release/lensing-pipeline", "build" });
     run_pipeline.addArgs(&.{ "--qdrant-url", qdrant_url });
-    run_pipeline.addArgs(&.{ "--collection", collection });
+    if (collection) |c| run_pipeline.addArgs(&.{ "--collection", c });
     run_pipeline.setCwd(b.path("."));
     run_pipeline.stdio = .inherit; // progress lines on stderr
     run_pipeline.step.dependOn(backend);

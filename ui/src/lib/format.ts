@@ -60,7 +60,7 @@ export function fmtTargetDelta(v: number, domain: Domain): string {
   return `${sign}${fmtTarget(Math.abs(v), domain)}`
 }
 
-/** Prices: "$ 1,234,567". Sub-thousand values keep their digits. */
+/** Money-style values: "$ 1,234,567". Sub-thousand values keep their digits. */
 export function fmtMoney(v: number): string {
   return `$${money0.format(Math.round(v))}`
 }

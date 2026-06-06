@@ -1,4 +1,4 @@
-// TypeScript mirror of the serde-serialized pg_core::domain::Domain, served at
+// TypeScript mirror of the serde-serialized lensing_core::domain::Domain, served at
 // GET /api/domain. The whole UI reads its nouns, target formatting, field set
 // and quality labels from this once-at-boot config (see DomainContext).
 
@@ -90,8 +90,10 @@ export interface DomainCurrency {
 }
 
 export interface DomainQuality {
-  outlier_group: string
-  capped_numeric: string
+  /** Grouping field for the target-outlier MAD rule; may be absent. */
+  outlier_group?: string | null
+  /** Numeric field checked by the cap rule; absent disables it. */
+  capped_numeric?: string | null
   rule_labels: Record<string, string>
 }
 
@@ -150,4 +152,39 @@ export function fieldLabel(f: DomainField): string {
 export function vocabTopN(f: DomainField): number | null {
   if (f.vocab && typeof f.vocab === 'object' && 'top_n' in f.vocab) return f.vocab.top_n
   return null
+}
+
+/** Categorical fields ordered for display: the outlier-group field leads,
+ *  then critical fields, then declaration order (stable sort). */
+export function categoricalFields(domain: Domain): DomainField[] {
+  const cats = domain.fields.filter((f) => f.role === 'categorical')
+  const score = (f: DomainField) =>
+    f.name === domain.quality.outlier_group ? 0 : f.critical ? 1 : 2
+  return [...cats].sort((a, b) => score(a) - score(b))
+}
+
+/** The capped-numeric field bound to the cap quality rule, if the domain has one. */
+export function cappedNumericField(domain: Domain): DomainField | null {
+  const name = domain.quality.capped_numeric
+  if (!name) return null
+  return domain.fields.find((f) => f.name === name) ?? null
+}
+
+/** The domain's timestamp field name, if any. */
+export function timestampFieldName(domain: Domain): string | null {
+  return domain.fields.find((f) => f.role === 'timestamp')?.name ?? null
+}
+
+/** A record's target value (e.g. a stored listing's captured ground truth),
+ *  null when absent or nonpositive. */
+export function targetValue(domain: Domain, record: Record<string, unknown>): number | null {
+  const v = record[domain.target.field]
+  return typeof v === 'number' && v > 0 ? v : null
+}
+
+/** A record's currency code, read via the domain's currency field. */
+export function currencyValue(domain: Domain, record: Record<string, unknown>): string | null {
+  const f = domain.currency?.currency_field
+  const v = f ? record[f] : null
+  return typeof v === 'string' && v ? v : null
 }

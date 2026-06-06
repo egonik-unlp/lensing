@@ -11,8 +11,8 @@
 
 use anyhow::{bail, Context, Result};
 use chrono::NaiveDate;
-use pg_core::domain::{CurrencyDomain, Domain};
-use pg_core::{CurrencyConfig, CurrencyMode, CurrencyReport};
+use lensing_core::domain::{CurrencyDomain, Domain};
+use lensing_core::{CurrencyConfig, CurrencyMode, CurrencyReport};
 use serde_json::{json, Value};
 
 use crate::qdrant::{self, RawPoint};
@@ -94,7 +94,7 @@ pub fn filter_desc(cfg: &CurrencyConfig) -> String {
         CurrencyMode::Off => String::new(),
         CurrencyMode::Filter => format!(" && currency==\"{}\"", cfg.keep),
         CurrencyMode::Convert => {
-            format!(" (foreign prices converted to {} @ {} rate)", cfg.keep, cfg.rate_source)
+            format!(" (foreign values converted to {} @ {} rate)", cfg.keep, cfg.rate_source)
         }
     }
 }

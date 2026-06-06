@@ -1,5 +1,5 @@
 use anyhow::{bail, Context, Result};
-use pg_core::domain::{Domain, FieldRole};
+use lensing_core::domain::{Domain, FieldRole};
 use serde::Serialize;
 use serde_json::{json, Map, Value};
 
@@ -777,7 +777,7 @@ mod tests {
 
     #[test]
     fn coords_bounds_check() {
-        let bounds = pg_core::manifest::legacy_coordinate_bounds();
+        let bounds = lensing_core::manifest::legacy_coordinate_bounds();
         let mut p = Payload::default();
         p.set("coordinates", json!({"lat": -34.92, "lon": -57.95}));
         assert_eq!(p.coords_of("coordinates", &bounds), Some((-34.92, -57.95)));

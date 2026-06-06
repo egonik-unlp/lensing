@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use chrono::Utc;
-use pg_core::ModelDefinition;
+use lensing_core::ModelDefinition;
 use serde::{Deserialize, Serialize};
 
 use crate::models::validate_name;
@@ -97,7 +97,7 @@ async fn mutate<T>(
     let mut copy = defs.definitions.clone();
     let out = f(&mut copy)?;
     if let Some(pool) = &state.db {
-        pg_db::queries::replace_definitions(pool, &copy)
+        lensing_db::queries::replace_definitions(pool, &copy)
             .await
             .context("write definitions to database")?;
     }

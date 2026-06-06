@@ -6,6 +6,7 @@ import ErrorHistogram from '../components/charts/ErrorHistogram'
 import ScatterChart, { ScatterDensityLegend } from '../components/charts/ScatterChart'
 import { scatterDensities } from '../components/charts/scatterDensity'
 import { DatasetRef, PredictorRef, RunRef } from '../components/EntityRef'
+import ItemMeta from '../components/ItemMeta'
 import ViewHeader from '../components/ViewHeader'
 import { useAsync } from '../hooks/useAsync'
 import { useDomain } from '../lib/DomainContext'
@@ -468,26 +469,7 @@ function DisRowEl({
             ) : (
               <div className="item-detail">
                 <p className="item-content">{item.content || <span className="muted">No description</span>}</p>
-                <dl className="item-meta">
-                  <div>
-                    <dt>type</dt>
-                    <dd>{item.propertyType}</dd>
-                  </div>
-                  <div>
-                    <dt>bedrooms</dt>
-                    <dd className="num">{item.bedrooms}</dd>
-                  </div>
-                  <div>
-                    <dt>neighborhood</dt>
-                    <dd>{item.neighborhood || '—'}</dd>
-                  </div>
-                  {item.cluster_label && (
-                    <div>
-                      <dt>cluster</dt>
-                      <dd>{item.cluster_label}</dd>
-                    </div>
-                  )}
-                </dl>
+                <ItemMeta item={item} />
               </div>
             )}
           </td>

@@ -1,4 +1,4 @@
-//! Shared types and artifact I/O for the price-guesser workspace.
+//! Shared types and artifact I/O for the lensing workspace.
 //!
 //! A dataset directory contains raw little-endian binaries plus a
 //! `manifest.json` describing them. The format is language-neutral and
@@ -6,6 +6,7 @@
 //! and writer for it.
 
 pub mod artifact;
+pub mod best_models;
 pub mod currency;
 pub mod domain;
 pub mod definition;
@@ -19,6 +20,7 @@ pub mod run;
 pub mod shuffle;
 
 pub use artifact::{Dataset, InferenceInput};
+pub use best_models::*;
 pub use currency::*;
 pub use definition::*;
 pub use manifest::*;

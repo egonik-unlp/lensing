@@ -1,5 +1,5 @@
 //! Model definition and hand-written training loop (burn 0.21, ndarray CPU).
-//! Loss values are MSE in transformed (log-price) target space.
+//! Loss values are MSE in transformed (log) target space.
 
 use std::path::Path;
 
@@ -14,7 +14,7 @@ use burn::record::CompactRecorder;
 use burn::tensor::backend::Backend;
 use burn::tensor::{activation, Tensor, TensorData};
 
-use pg_core::shuffle::SplitMix64;
+use lensing_core::shuffle::SplitMix64;
 
 pub type Inner = NdArray<f32>;
 pub type Auto = Autodiff<Inner>;
@@ -107,8 +107,10 @@ impl<B: Backend> Mlp<B> {
 pub struct TrainInputs<'a> {
     pub train_x: &'a [f32],
     pub train_y: &'a [f32],
-    pub test_x: &'a [f32],
-    pub test_y: &'a [f32],
+    /// Monitored split for the per-epoch val_loss: the early-stop validation
+    /// carve-out when `patience > 0`, else the dataset's test split.
+    pub val_x: &'a [f32],
+    pub val_y: &'a [f32],
     pub n_cols: usize,
 }
 
@@ -123,6 +125,10 @@ pub struct TrainConfig {
     /// Save a loadable checkpoint every N epochs (0 = only at the end), so a
     /// killed run can still be promoted from its last saved params.
     pub checkpoint_every: usize,
+    /// Early stopping: break once val_loss hasn't improved in this many
+    /// epochs and return the best-epoch weights instead of the last ones
+    /// (0 = off, train the full budget and return the final weights).
+    pub patience: usize,
 }
 
 fn batch_tensor<B: Backend>(
@@ -161,14 +167,25 @@ pub fn run_training(
     let mut order: Vec<usize> = (0..n_train).collect();
     let mut rng = SplitMix64(cfg.seed ^ 0xA5A5_A5A5);
 
+    // Best-checkpoint tracking (patience > 0): (val_loss, epoch, weights) of
+    // the best epoch seen so far; restored on every exit path — patience
+    // exhausted, STOP file, or the full budget — so the run never keeps
+    // weights from past the validation optimum.
+    let mut best: Option<(f64, usize, Mlp<Auto>)> = None;
+
     for epoch in 1..=cfg.epochs {
         // Graceful stop (contract v2): the server drops a STOP file into the
         // run dir; finish early and let the caller run the normal
         // end-of-training path (eval + metrics + final checkpoint).
         if run_dir.join("STOP").exists() {
             emit(serde_json::json!({"event":"stopping"}));
-            emit(serde_json::json!({"event":"log","msg":format!(
-                "stop requested; evaluating with params as of epoch {}", epoch - 1)}));
+            if cfg.patience == 0 {
+                emit(serde_json::json!({"event":"log","msg":format!(
+                    "stop requested; evaluating with params as of epoch {}", epoch - 1)}));
+            } else {
+                // The best-epoch restore below logs which weights are used.
+                emit(serde_json::json!({"event":"log","msg":"stop requested"}));
+            }
             break;
         }
 
@@ -194,13 +211,13 @@ pub fn run_training(
 
         // Validation on the inner backend: no autodiff, dropout inactive.
         let val_model = model.valid();
-        let val_pred = predict_inner(&val_model, inputs.test_x, inputs.n_cols, cfg.batch_size);
+        let val_pred = predict_inner(&val_model, inputs.val_x, inputs.n_cols, cfg.batch_size);
         let val_loss = val_pred
             .iter()
-            .zip(inputs.test_y)
+            .zip(inputs.val_y)
             .map(|(p, a)| (*p as f64 - *a as f64).powi(2))
             .sum::<f64>()
-            / inputs.test_y.len() as f64;
+            / inputs.val_y.len() as f64;
 
         emit(serde_json::json!({
             "event": "epoch",
@@ -210,15 +227,38 @@ pub fn run_training(
             "val_loss": val_loss,
         }));
 
+        if cfg.patience > 0 && best.as_ref().is_none_or(|(b, _, _)| val_loss < *b) {
+            best = Some((val_loss, epoch, model.clone()));
+        }
+
         // Periodic checkpoint: after this event the run is promotable even
         // if the process is later killed. The final epoch is skipped — the
-        // caller saves right after training anyway.
+        // caller saves right after training anyway. With patience tracking
+        // on, checkpoint the best-so-far weights, not the current ones.
         if cfg.checkpoint_every > 0 && epoch % cfg.checkpoint_every == 0 && epoch < cfg.epochs {
-            save_atomic(&model, run_dir)?;
+            save_atomic(best.as_ref().map_or(&model, |(_, _, m)| m), run_dir)?;
             emit(serde_json::json!({"event":"checkpoint","epoch":epoch}));
+        }
+
+        // Patience exhausted: the val curve hasn't improved in `patience`
+        // epochs — further training only fits noise.
+        if let Some((_, best_epoch, _)) = &best {
+            if epoch - best_epoch >= cfg.patience {
+                emit(serde_json::json!({"event":"log","msg":format!(
+                    "early stop at epoch {epoch}: no val improvement in {} epochs",
+                    cfg.patience)}));
+                break;
+            }
         }
     }
 
+    // Best-checkpoint restore: hand the caller the lowest-val-loss weights
+    // (only set when patience > 0; None also covers a STOP before epoch 1).
+    if let Some((best_val, best_epoch, best_model)) = best {
+        emit(serde_json::json!({"event":"log","msg":format!(
+            "restoring best epoch {best_epoch} (val_loss {best_val:.6})")}));
+        return Ok(best_model);
+    }
     Ok(model)
 }
 

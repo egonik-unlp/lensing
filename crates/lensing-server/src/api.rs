@@ -8,11 +8,12 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 use chrono::Utc;
 use futures::stream::{self, Stream, StreamExt};
-use pg_core::Manifest;
+use lensing_core::Manifest;
 use serde::Deserialize;
 use serde_json::json;
 use tokio_stream::wrappers::BroadcastStream;
 
+use crate::best_models;
 use crate::definitions::{self, DefError};
 use crate::models;
 use crate::runs;
@@ -71,7 +72,7 @@ pub async fn swagger_ui() -> Response {
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>price-guesser API docs</title>
+  <title>lensing API docs</title>
   <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
   <style>body { margin: 0; }</style>
 </head>
@@ -163,7 +164,7 @@ pub async fn get_dataset_split(
         return Err(not_found("dataset"));
     }
     let body = tokio::task::spawn_blocking(move || -> anyhow::Result<serde_json::Value> {
-        let row_ids = pg_core::artifact::read_u64(&dir.join("row_ids.u64"))?;
+        let row_ids = lensing_core::artifact::read_u64(&dir.join("row_ids.u64"))?;
         let resolve = |idx: Vec<u32>| -> anyhow::Result<Vec<u64>> {
             idx.iter()
                 .map(|&i| {
@@ -174,8 +175,8 @@ pub async fn get_dataset_split(
                 })
                 .collect()
         };
-        let train = resolve(pg_core::artifact::read_u32(&dir.join("train_idx.u32"))?)?;
-        let test = resolve(pg_core::artifact::read_u32(&dir.join("test_idx.u32"))?)?;
+        let train = resolve(lensing_core::artifact::read_u32(&dir.join("train_idx.u32"))?)?;
+        let test = resolve(lensing_core::artifact::read_u32(&dir.join("test_idx.u32"))?)?;
         Ok(json!({ "train": train, "test": test }))
     })
     .await
@@ -222,13 +223,13 @@ pub struct BuildRequest {
     #[serde(default)]
     pub cluster: bool,
     /// Quality filters (rule toggles + thresholds); defaults exclude only
-    /// nonpositive prices.
+    /// nonpositive target values.
     #[serde(default)]
-    pub quality: pg_core::QualityFilterConfig,
+    pub quality: lensing_core::QualityFilterConfig,
     /// Currency handling (reconcile / hard filter / convert); the default
     /// reconciles from `properties` and hard-filters to USD.
     #[serde(default)]
-    pub currency: pg_core::CurrencyConfig,
+    pub currency: lensing_core::CurrencyConfig,
     /// Source Qdrant collection to build/analyze from. Defaults to the
     /// server's configured collection; set to build off an exported clean one.
     #[serde(default)]
@@ -272,7 +273,7 @@ fn default_top_n() -> usize { 40 }
 impl BuildRequest {
     /// Feature config from the request (generic maps + legacy flags); the
     /// build resolves it against the domain via `normalize_config`.
-    fn feature_config(&self, state: &AppState) -> Result<pg_core::FeatureConfig, ApiError> {
+    fn feature_config(&self, state: &AppState) -> Result<lensing_core::FeatureConfig, ApiError> {
         // Unknown field names are caller typos, not silently-ignored toggles.
         for name in self.fields.keys().chain(self.vocab_top_n.keys()) {
             let known = state.domain.field(name).is_some()
@@ -281,7 +282,7 @@ impl BuildRequest {
                 return Err(bad_request(format!("unknown field {name:?} (see GET /api/domain)")));
             }
         }
-        Ok(pg_core::FeatureConfig {
+        Ok(lensing_core::FeatureConfig {
             pca_dims: self.pca_dims,
             fields: self.fields.clone(),
             vocab_top_n: self.vocab_top_n.clone(),
@@ -322,7 +323,7 @@ pub async fn build_dataset(
         .insert(build_id.clone(), BuildStatus::Building { stage: "queued".into() });
 
     let features = req.feature_config(&state)?;
-    let cfg = pg_pipeline::BuildConfig {
+    let cfg = lensing_pipeline::BuildConfig {
         domain: state.domain.as_ref().clone(),
         qdrant_url: state.qdrant_url.clone(),
         collection: resolve_collection(&state, &req.collection),
@@ -343,7 +344,7 @@ pub async fn build_dataset(
         let st2 = st.clone();
         let id2 = id.clone();
         let result = tokio::task::spawn_blocking(move || {
-            pg_pipeline::build_dataset(&cfg, &move |stage: &str| {
+            lensing_pipeline::build_dataset(&cfg, &move |stage: &str| {
                 st2.builds
                     .lock()
                     .unwrap()
@@ -476,7 +477,7 @@ pub async fn analyze_dataset(
             st2.jobs.lock().unwrap().insert(id2.clone(), JobStatus::Running { stage });
         };
         let result = tokio::task::spawn_blocking(move || -> anyhow::Result<serde_json::Value> {
-            use pg_pipeline::{features::Encoder, pca, qdrant, quality as q, redundancy};
+            use lensing_pipeline::{features::Encoder, pca, qdrant, quality as q, redundancy};
             // Hard shape checks fail here with a clear message, not mid-scroll.
             set_stage("checking collection".into());
             qdrant::ensure_buildable(&qdrant_url, &collection, &domain)?;
@@ -490,7 +491,7 @@ pub async fn analyze_dataset(
             // Same prologue as the build: reconcile/convert currency first so
             // the preview matches what a build would produce.
             let s = set_stage.clone();
-            pg_pipeline::currency::apply(
+            lensing_pipeline::currency::apply(
                 &mut points,
                 &currency,
                 &qdrant_url,
@@ -515,7 +516,7 @@ pub async fn analyze_dataset(
             // Same as the build: reconcile raw numerics before encoding so
             // the redundancy preview sees the columns a build would produce.
             let s = set_stage.clone();
-            pg_pipeline::numerics::apply(
+            lensing_pipeline::numerics::apply(
                 &mut points,
                 &features,
                 &numerics_collection,
@@ -526,7 +527,7 @@ pub async fn analyze_dataset(
 
             let n = points.len();
             let d = points[0].vector.len();
-            let (train_idx, _test_idx) = pg_core::shuffle::train_test_split(n, test_ratio, seed);
+            let (train_idx, _test_idx) = lensing_core::shuffle::train_test_split(n, test_ratio, seed);
 
             set_stage("computing eigen-spectrum (train rows)".into());
             let mut vectors = Vec::with_capacity(n * d);
@@ -570,7 +571,7 @@ pub async fn list_collections(
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let qdrant_url = state.qdrant_url.clone();
     let source = state.collection.clone();
-    let mut collections = tokio::task::spawn_blocking(move || pg_pipeline::qdrant::list_collections(&qdrant_url))
+    let mut collections = tokio::task::spawn_blocking(move || lensing_pipeline::qdrant::list_collections(&qdrant_url))
         .await
         .map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, format!("list collections panicked: {e}")))??;
     collections.sort();
@@ -590,12 +591,12 @@ pub struct ValidateCollectionRequest {
 pub async fn validate_collection(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ValidateCollectionRequest>,
-) -> Result<Json<pg_pipeline::qdrant::CollectionValidation>, ApiError> {
+) -> Result<Json<lensing_pipeline::qdrant::CollectionValidation>, ApiError> {
     let qdrant_url = state.qdrant_url.clone();
     let collection = resolve_collection(&state, &req.collection);
     let domain = state.domain.clone();
     let report = tokio::task::spawn_blocking(move || {
-        pg_pipeline::qdrant::validate_collection(&qdrant_url, &collection, &domain)
+        lensing_pipeline::qdrant::validate_collection(&qdrant_url, &collection, &domain)
     })
     .await
     .map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, format!("validate collection panicked: {e}")))??;
@@ -604,15 +605,15 @@ pub async fn validate_collection(
 
 #[derive(Deserialize)]
 pub struct ExportRequest {
-    /// Slug appended to `properties-tagged-clean-`.
+    /// Slug appended to `<source-collection>-clean-`.
     pub name_suffix: String,
     #[serde(default)]
-    pub quality: pg_core::QualityFilterConfig,
-    /// Currency handling. Reconciled currency (and Convert-mode prices) are
+    pub quality: lensing_core::QualityFilterConfig,
+    /// Currency handling. Reconciled currency (and Convert-mode target values) are
     /// stamped into the exported payloads, so clean collections are
     /// self-contained.
     #[serde(default)]
-    pub currency: pg_core::CurrencyConfig,
+    pub currency: lensing_core::CurrencyConfig,
     /// Source collection to filter from; defaults to the server's.
     #[serde(default)]
     pub source: Option<String>,
@@ -628,8 +629,8 @@ pub async fn export_collection(
         return Err(bad_request("name suffix must be at most 40 characters".into()));
     }
     models::validate_name(&req.name_suffix).map_err(|e| bad_request(format!("{e:#}")))?;
-    let target = format!("properties-tagged-clean-{}", req.name_suffix);
     let source = resolve_collection(&state, &req.source);
+    let target = format!("{source}-clean-{}", req.name_suffix);
     if target == source {
         return Err(bad_request("refusing to export onto the source collection".into()));
     }
@@ -638,7 +639,7 @@ pub async fn export_collection(
     let probe_url = state.qdrant_url.clone();
     let probe_target = target.clone();
     let exists = tokio::task::spawn_blocking(move || {
-        pg_pipeline::qdrant::get_collection_params(&probe_url, &probe_target).is_ok()
+        lensing_pipeline::qdrant::get_collection_params(&probe_url, &probe_target).is_ok()
     })
     .await
     .unwrap_or(false);
@@ -668,7 +669,7 @@ pub async fn export_collection(
         };
         let target_for_job = target.clone();
         let result = tokio::task::spawn_blocking(move || -> anyhow::Result<serde_json::Value> {
-            use pg_pipeline::qdrant;
+            use lensing_pipeline::qdrant;
             set_stage("reading source params".into());
             let (size, distance) = qdrant::get_collection_params(&qdrant_url, &source)?;
 
@@ -694,20 +695,20 @@ pub async fn export_collection(
                 })
                 .collect();
             let s = set_stage.clone();
-            pg_pipeline::currency::apply(
+            lensing_pipeline::currency::apply(
                 &mut typed,
                 &currency,
                 &qdrant_url,
                 &domain,
                 &move |stage: &str| s(stage.into()),
             )?;
-            let analysis = pg_pipeline::quality::evaluate(&typed, &quality, &currency, &domain);
+            let analysis = lensing_pipeline::quality::evaluate(&typed, &quality, &currency, &domain);
             let excluded = analysis.excluded(&quality);
             let n_excluded = excluded.len();
             // Stamp the reconciled currency (and Convert-mode target values)
             // into the exported payloads: the clean collection is
             // self-contained. Field paths follow the domain's metadata root.
-            let convert = currency.mode == pg_core::CurrencyMode::Convert;
+            let convert = currency.mode == lensing_core::CurrencyMode::Convert;
             let root = domain.corpus.metadata_root.clone();
             let stamp = |payload: &mut serde_json::Value, key: &str, value: serde_json::Value| {
                 let slot = if root.is_empty() { &mut *payload } else { &mut payload[root.as_str()] };
@@ -782,7 +783,7 @@ pub async fn list_runs(State(state): State<Arc<AppState>>) -> Json<serde_json::V
     }
     // Database rows cover queued + remote-worker runs that have no local dir.
     if let Some(db) = &state.db {
-        if let Ok(rows) = pg_db::queries::load_runs(db).await {
+        if let Ok(rows) = lensing_db::queries::load_runs(db).await {
             for meta in rows {
                 if !seen.contains(&meta.run_id) {
                     metas.push(meta);
@@ -797,12 +798,12 @@ pub async fn list_runs(State(state): State<Arc<AppState>>) -> Json<serde_json::V
 pub async fn get_run(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-) -> Result<Json<pg_core::RunMeta>, ApiError> {
+) -> Result<Json<lensing_core::RunMeta>, ApiError> {
     if let Ok(meta) = runs::read_meta(&state.runs_dir().join(&id)) {
         return Ok(Json(meta));
     }
     if let Some(db) = &state.db {
-        if let Ok(Some(meta)) = pg_db::queries::load_run(db, &id).await {
+        if let Ok(Some(meta)) = lensing_db::queries::load_run(db, &id).await {
             return Ok(Json(meta));
         }
     }
@@ -909,7 +910,7 @@ pub async fn delete_run(
     // in that window (or against a zombie the sweep hasn't seen) is caught
     // by the on-disk status.
     if let Ok(meta) = runs::read_meta(&state.runs_dir().join(&id)) {
-        if meta.status == pg_core::RunStatus::Running {
+        if meta.status == lensing_core::RunStatus::Running {
             return Err(conflict(format!("run {id} is still running; stop it first")));
         }
     }
@@ -919,12 +920,12 @@ pub async fn delete_run(
     }
     // Database-only run (queued, or executed by a remote worker).
     if let Some(db) = &state.db {
-        match pg_db::queries::load_run(db, &id).await {
-            Ok(Some(meta)) if meta.status == pg_core::RunStatus::Running => {
+        match lensing_db::queries::load_run(db, &id).await {
+            Ok(Some(meta)) if meta.status == lensing_core::RunStatus::Running => {
                 return Err(conflict(format!("run {id} is running on a worker; let it finish")));
             }
             Ok(Some(_)) => {
-                pg_db::queries::delete_run(db, &id).await.map_err(ApiError::from)?;
+                lensing_db::queries::delete_run(db, &id).await.map_err(ApiError::from)?;
                 return Ok(Json(json!({ "ok": true })));
             }
             _ => {}
@@ -941,7 +942,7 @@ async fn run_file(state: &AppState, id: &str, name: &str) -> Option<Vec<u8>> {
         return Some(bytes);
     }
     let db = state.db.as_ref()?;
-    pg_db::queries::load_run_artifact(db, id, name).await.ok().flatten()
+    lensing_db::queries::load_run_artifact(db, id, name).await.ok().flatten()
 }
 
 pub async fn get_predictions(
@@ -977,7 +978,7 @@ pub struct BlendRequest {
     pub sweep: bool,
 }
 
-fn load_run_predictions(state: &AppState, id: &str) -> Result<Vec<pg_core::Prediction>, ApiError> {
+fn load_run_predictions(state: &AppState, id: &str) -> Result<Vec<lensing_core::Prediction>, ApiError> {
     let path = state.runs_dir().join(id).join("predictions.json");
     let bytes =
         std::fs::read(&path).map_err(|_| not_found(&format!("predictions for run {id}")))?;
@@ -986,7 +987,7 @@ fn load_run_predictions(state: &AppState, id: &str) -> Result<Vec<pg_core::Predi
 }
 
 /// Pearson correlation between two legs' residuals (predicted − actual).
-fn residual_correlation(a: &[pg_core::Prediction], b: &[pg_core::Prediction]) -> f64 {
+fn residual_correlation(a: &[lensing_core::Prediction], b: &[lensing_core::Prediction]) -> f64 {
     let n = a.len() as f64;
     let ea: Vec<f64> = a.iter().map(|p| p.predicted - p.actual).collect();
     let eb: Vec<f64> = b.iter().map(|p| p.predicted - p.actual).collect();
@@ -999,7 +1000,7 @@ fn residual_correlation(a: &[pg_core::Prediction], b: &[pg_core::Prediction]) ->
     cov / (va.sqrt() * vb.sqrt())
 }
 
-fn blend_metrics(legs: &[Vec<pg_core::Prediction>], weights: &[f64]) -> pg_core::Metrics {
+fn blend_metrics(legs: &[Vec<lensing_core::Prediction>], weights: &[f64]) -> lensing_core::Metrics {
     let pairs: Vec<(f64, f64)> = (0..legs[0].len())
         .map(|i| {
             let blended: f64 =
@@ -1007,7 +1008,7 @@ fn blend_metrics(legs: &[Vec<pg_core::Prediction>], weights: &[f64]) -> pg_core:
             (legs[0][i].actual, blended)
         })
         .collect();
-    pg_core::compute_metrics(&pairs)
+    lensing_core::compute_metrics(&pairs)
 }
 
 /// Blend the test-split predictions of two or more finished runs and report
@@ -1034,7 +1035,7 @@ pub async fn blend_runs(
         None => vec![1.0 / req.run_ids.len() as f64; req.run_ids.len()],
     };
 
-    let mut legs: Vec<Vec<pg_core::Prediction>> = Vec::with_capacity(req.run_ids.len());
+    let mut legs: Vec<Vec<lensing_core::Prediction>> = Vec::with_capacity(req.run_ids.len());
     for id in &req.run_ids {
         let mut preds = load_run_predictions(&state, id)?;
         preds.sort_by_key(|p| p.row_id);
@@ -1072,7 +1073,7 @@ pub async fn blend_runs(
         .zip(&weights)
         .map(|((leg, id), w)| {
             let pairs: Vec<(f64, f64)> = leg.iter().map(|p| (p.actual, p.predicted)).collect();
-            json!({ "run_id": id, "weight": w, "metrics": pg_core::compute_metrics(&pairs) })
+            json!({ "run_id": id, "weight": w, "metrics": lensing_core::compute_metrics(&pairs) })
         })
         .collect();
 
@@ -1218,6 +1219,43 @@ pub async fn get_model_viz(
         .into_response())
 }
 
+/// `blend.json` written by the blend predictor at the end of training:
+/// per-member kind/predictor/source, fitted weights, exclude_blocks and solo
+/// test metrics. Only blend runs have it; 404 otherwise.
+pub async fn get_run_blend(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Response, ApiError> {
+    let bytes =
+        run_file(&state, &id, "blend.json").await.ok_or_else(|| not_found("blend record"))?;
+    Ok((
+        [
+            (header::CONTENT_TYPE, "application/json"),
+            // Appears when the run finishes; don't cache the 404 era.
+            (header::CACHE_CONTROL, "no-cache"),
+        ],
+        bytes,
+    )
+        .into_response())
+}
+
+pub async fn get_model_blend(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+) -> Result<Response, ApiError> {
+    let path = state.models_dir().join(&name).join("blend.json");
+    let bytes = tokio::fs::read(&path).await.map_err(|_| not_found("blend record"))?;
+    Ok((
+        [
+            (header::CONTENT_TYPE, "application/json"),
+            // Model dirs are immutable snapshots.
+            (header::CACHE_CONTROL, "private, max-age=86400"),
+        ],
+        bytes,
+    )
+        .into_response())
+}
+
 /// SSE: replay recorded progress, then stream live events until terminal.
 /// Local runs stream from the in-memory handle (or the progress file);
 /// queued/remote-worker runs replay the database rows, polling for new ones
@@ -1226,7 +1264,7 @@ pub async fn run_events(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, ApiError> {
-    use pg_core::RunStatus;
+    use lensing_core::RunStatus;
     let run_dir = state.runs_dir().join(&id);
     let local_meta = runs::read_meta(&run_dir).ok();
     let live = state.live_runs.lock().unwrap().get(&id).cloned();
@@ -1256,7 +1294,7 @@ pub async fn run_events(
             // Database-backed run (queued / remote worker): replay rows and
             // poll for new ones until the run is terminal.
             let db = state.db.clone().ok_or_else(|| not_found("run"))?;
-            let meta = pg_db::queries::load_run(&db, &id)
+            let meta = lensing_db::queries::load_run(&db, &id)
                 .await
                 .ok()
                 .flatten()
@@ -1271,7 +1309,7 @@ pub async fn run_events(
                     }
                     loop {
                         let rows =
-                            pg_db::queries::load_events(&db, &run_id, seq).await.unwrap_or_default();
+                            lensing_db::queries::load_events(&db, &run_id, seq).await.unwrap_or_default();
                         if !rows.is_empty() {
                             let lines: Vec<String> =
                                 rows.iter().map(|(_, line)| line.clone()).collect();
@@ -1283,7 +1321,7 @@ pub async fn run_events(
                         if !in_flight {
                             // Finished without a recorded terminal line: emit
                             // one so clients refetch the meta and close.
-                            let status = pg_db::queries::load_run(&db, &run_id)
+                            let status = lensing_db::queries::load_run(&db, &run_id)
                                 .await
                                 .ok()
                                 .flatten()
@@ -1294,11 +1332,11 @@ pub async fn run_events(
                         }
                         // Still queued/running on a worker: poll.
                         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                        if let Ok(Some(m)) = pg_db::queries::load_run(&db, &run_id).await {
+                        if let Ok(Some(m)) = lensing_db::queries::load_run(&db, &run_id).await {
                             if !matches!(m.status, RunStatus::Queued | RunStatus::Running) {
                                 // Terminal now; loop once more to drain rows,
                                 // then the empty-read path emits the status.
-                                let rows = pg_db::queries::load_events(&db, &run_id, seq)
+                                let rows = lensing_db::queries::load_events(&db, &run_id, seq)
                                     .await
                                     .unwrap_or_default();
                                 let mut lines: Vec<String> =
@@ -1369,11 +1407,11 @@ pub async fn dataset_archive(
 #[derive(Deserialize)]
 pub struct PreflightRequest {
     #[serde(default)]
-    pub quality: pg_core::QualityFilterConfig,
+    pub quality: lensing_core::QualityFilterConfig,
     /// Currency handling; reconciled before the rules run so the preview
     /// matches what a build would produce.
     #[serde(default)]
-    pub currency: pg_core::CurrencyConfig,
+    pub currency: lensing_core::CurrencyConfig,
     /// Sample flagged items returned per rule.
     #[serde(default = "default_sample")]
     pub sample: usize,
@@ -1401,10 +1439,10 @@ pub async fn preflight(
     let domain = state.domain.clone();
     let result = tokio::task::spawn_blocking(move || -> anyhow::Result<serde_json::Value> {
         let mut points =
-            pg_pipeline::qdrant::scroll_payloads(&qdrant_url, &collection, &domain, &|_| {})?;
+            lensing_pipeline::qdrant::scroll_payloads(&qdrant_url, &collection, &domain, &|_| {})?;
         let currency_report =
-            pg_pipeline::currency::apply(&mut points, &currency, &qdrant_url, &domain, &|_| {})?;
-        let analysis = pg_pipeline::quality::evaluate(&points, &cfg, &currency, &domain);
+            lensing_pipeline::currency::apply(&mut points, &currency, &qdrant_url, &domain, &|_| {})?;
+        let analysis = lensing_pipeline::quality::evaluate(&points, &cfg, &currency, &domain);
         let report = analysis.report(&cfg);
         Ok(json!({
             "n_total": points.len(),
@@ -1436,7 +1474,7 @@ pub struct PromoteRequest {
 pub async fn promote_model(
     State(state): State<Arc<AppState>>,
     Json(req): Json<PromoteRequest>,
-) -> Result<(StatusCode, Json<pg_core::ModelRecord>), ApiError> {
+) -> Result<(StatusCode, Json<lensing_core::ModelRecord>), ApiError> {
     if state.models_dir().join(&req.name).exists() {
         return Err(ApiError(
             StatusCode::CONFLICT,
@@ -1453,6 +1491,8 @@ pub async fn promote_model(
     }
     let record = models::promote(&state, &req.name, &req.run_id, req.notes)
         .map_err(|e| bad_request(format!("{e:#}")))?;
+    // A manual promotion may belong in the best-models group.
+    best_models::spawn_recompute(state.clone());
     Ok((StatusCode::CREATED, Json(record)))
 }
 
@@ -1483,7 +1523,7 @@ pub async fn rename_model(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
     Json(req): Json<RenameRequest>,
-) -> Result<Json<pg_core::ModelRecord>, ApiError> {
+) -> Result<Json<lensing_core::ModelRecord>, ApiError> {
     if !state.models_dir().join(&name).join("record.json").is_file() {
         return Err(not_found("model"));
     }
@@ -1500,6 +1540,10 @@ pub async fn delete_model(
     Path(name): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     models::delete_model(&state, &name).map_err(|_| not_found("model"))?;
+    // A deleted group member gets backfilled by the next-best candidate.
+    // (To keep a top-ranked run OUT of the group, exclude it via
+    // PUT /api/best-models — deletion alone would just re-promote it.)
+    best_models::spawn_recompute(state.clone());
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -1515,7 +1559,7 @@ pub async fn get_model_contract(
 
 /// The caller-relevant slice of a contract (the 1536-float PCA mean and the
 /// full column list stay server-side).
-fn contract_summary(c: &pg_core::Contract) -> serde_json::Value {
+fn contract_summary(c: &lensing_core::Contract) -> serde_json::Value {
     json!({
         "contract_version": c.contract_version,
         "n_cols": c.n_cols,
@@ -1532,6 +1576,56 @@ pub async fn predict_model(
     Json(req): Json<models::PredictRequest>,
 ) -> Result<Json<models::PredictResponse>, ApiError> {
     match models::predict(state, name, req).await {
+        Ok(resp) => Ok(Json(resp)),
+        Err(models::PredictError::NotFound) => Err(not_found("model")),
+        Err(models::PredictError::BadInput(msg)) => Err(bad_request(msg)),
+        Err(models::PredictError::Internal(e)) => Err(e.into()),
+    }
+}
+
+// ---------- best-models group ----------
+
+pub async fn get_best_models(
+    State(state): State<Arc<AppState>>,
+) -> Json<lensing_core::BestModelGroup> {
+    Json(best_models::read_group(&state))
+}
+
+pub async fn recompute_best_models(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<lensing_core::BestModelGroup>, ApiError> {
+    Ok(Json(best_models::recompute(&state).await?))
+}
+
+/// Curation deltas for the group: pins force-include promoted models,
+/// excludes (run ids or model names) bar candidates from auto-selection.
+#[derive(Deserialize)]
+pub struct CurateRequest {
+    #[serde(default)]
+    pub pin: Vec<String>,
+    #[serde(default)]
+    pub exclude: Vec<String>,
+    #[serde(default)]
+    pub unpin: Vec<String>,
+    #[serde(default)]
+    pub unexclude: Vec<String>,
+}
+
+pub async fn put_best_models(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<CurateRequest>,
+) -> Result<Json<lensing_core::BestModelGroup>, ApiError> {
+    let group = best_models::curate(&state, req.pin, req.exclude, req.unpin, req.unexclude)
+        .await
+        .map_err(|e| bad_request(format!("{e:#}")))?;
+    Ok(Json(group))
+}
+
+pub async fn predict_best_models(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<models::PredictRequest>,
+) -> Result<Json<best_models::GroupPredictResponse>, ApiError> {
+    match best_models::predict_group(state, req).await {
         Ok(resp) => Ok(Json(resp)),
         Err(models::PredictError::NotFound) => Err(not_found("model")),
         Err(models::PredictError::BadInput(msg)) => Err(bad_request(msg)),
@@ -1565,11 +1659,11 @@ fn listing_embed_text(content: &str) -> String {
 /// are omitted, matching how absent fields look on the corpus; the domain's
 /// timestamp field is stamped now when absent.
 fn listing_payload(
-    domain: &pg_core::domain::Domain,
+    domain: &lensing_core::domain::Domain,
     req: &CreateListingRequest,
     content: &str,
 ) -> Result<serde_json::Value, ApiError> {
-    use pg_core::domain::FieldRole;
+    use lensing_core::domain::FieldRole;
     let mut md = serde_json::Map::new();
     for (key, value) in &req.fields {
         if value.is_null() {
@@ -1612,7 +1706,7 @@ fn listing_payload(
 /// The API view of a stored listing payload: `{id, content, metadata}`,
 /// resolving the domain's metadata root and content field.
 fn listing_view(
-    domain: &pg_core::domain::Domain,
+    domain: &lensing_core::domain::Domain,
     id: u64,
     payload: &serde_json::Value,
 ) -> serde_json::Value {
@@ -1667,17 +1761,17 @@ pub async fn create_listing(
     let view = listing_view(&state.domain, id, &payload);
 
     let stored = tokio::task::spawn_blocking(move || -> Result<serde_json::Value, ApiError> {
-        let vector = pg_pipeline::openai::embed(&api_key, &model, &openai_base_url, &content)
+        let vector = lensing_pipeline::openai::embed(&api_key, &model, &openai_base_url, &content)
             .map_err(|e| ApiError(StatusCode::BAD_GATEWAY, format!("{e:#}")))?;
         if vector.len() != embedding_dim {
             return Err(bad_request(format!(
                 "embedding model {model} returned {} dims; models require {embedding_dim} \
-                 (set PG_EMBEDDING_MODEL to a {embedding_dim}-dim model)",
+                 (set LENSING_EMBEDDING_MODEL to a {embedding_dim}-dim model)",
                 vector.len()
             )));
         }
-        if pg_pipeline::qdrant::get_collection_params(&qdrant_url, &collection).is_err() {
-            pg_pipeline::qdrant::create_collection(
+        if lensing_pipeline::qdrant::get_collection_params(&qdrant_url, &collection).is_err() {
+            lensing_pipeline::qdrant::create_collection(
                 &qdrant_url,
                 &collection,
                 embedding_dim as u64,
@@ -1685,8 +1779,8 @@ pub async fn create_listing(
             )
             .map_err(ApiError::from)?;
         }
-        let point = pg_pipeline::qdrant::RawJsonPoint { id, vector, payload: payload.clone() };
-        pg_pipeline::qdrant::upsert_raw(&qdrant_url, &collection, std::slice::from_ref(&point))
+        let point = lensing_pipeline::qdrant::RawJsonPoint { id, vector, payload: payload.clone() };
+        lensing_pipeline::qdrant::upsert_raw(&qdrant_url, &collection, std::slice::from_ref(&point))
             .map_err(ApiError::from)?;
         Ok(view)
     })
@@ -1719,7 +1813,7 @@ pub async fn update_listing(
     let mut payload = listing_payload(&domain, &req, &content)?;
 
     let stored = tokio::task::spawn_blocking(move || -> Result<serde_json::Value, ApiError> {
-        let existing = pg_pipeline::qdrant::get_point_raw(&qdrant_url, &collection, id)
+        let existing = lensing_pipeline::qdrant::get_point_raw(&qdrant_url, &collection, id)
             .map_err(ApiError::from)?
             .ok_or_else(|| not_found("listing"))?;
         // The timestamp field is preserved — editing does not make it newer.
@@ -1728,7 +1822,7 @@ pub async fn update_listing(
         if let Some(ts) = domain
             .fields
             .iter()
-            .find(|f| f.role == pg_core::domain::FieldRole::Timestamp)
+            .find(|f| f.role == lensing_core::domain::FieldRole::Timestamp)
         {
             let key = ts.name.as_str();
             let created = if root.is_empty() {
@@ -1755,19 +1849,19 @@ pub async fn update_listing(
                 )
             })?;
             let vector =
-                pg_pipeline::openai::embed(&api_key, &model, &openai_base_url, &content)
+                lensing_pipeline::openai::embed(&api_key, &model, &openai_base_url, &content)
                     .map_err(|e| ApiError(StatusCode::BAD_GATEWAY, format!("{e:#}")))?;
             if vector.len() != embedding_dim {
                 return Err(bad_request(format!(
                     "embedding model {model} returned {} dims; models require {embedding_dim} \
-                     (set PG_EMBEDDING_MODEL to a {embedding_dim}-dim model)",
+                     (set LENSING_EMBEDDING_MODEL to a {embedding_dim}-dim model)",
                     vector.len()
                 )));
             }
             vector
         };
-        let point = pg_pipeline::qdrant::RawJsonPoint { id, vector, payload: payload.clone() };
-        pg_pipeline::qdrant::upsert_raw(&qdrant_url, &collection, std::slice::from_ref(&point))
+        let point = lensing_pipeline::qdrant::RawJsonPoint { id, vector, payload: payload.clone() };
+        lensing_pipeline::qdrant::upsert_raw(&qdrant_url, &collection, std::slice::from_ref(&point))
             .map_err(ApiError::from)?;
         Ok(listing_view(&domain, id, &payload))
     })
@@ -1785,10 +1879,10 @@ pub async fn list_listings(
     let domain = state.domain.clone();
     let mut listings = tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<serde_json::Value>> {
         // No collection yet (nothing ever created) is just an empty list.
-        if pg_pipeline::qdrant::get_collection_params(&qdrant_url, &collection).is_err() {
+        if lensing_pipeline::qdrant::get_collection_params(&qdrant_url, &collection).is_err() {
             return Ok(Vec::new());
         }
-        let points = pg_pipeline::qdrant::scroll_collection_raw(&qdrant_url, &collection)?;
+        let points = lensing_pipeline::qdrant::scroll_collection_raw(&qdrant_url, &collection)?;
         Ok(points
             .into_iter()
             .map(|p| listing_view(&domain, p.id, &p.payload))
@@ -1808,7 +1902,7 @@ pub async fn get_listing(
     let qdrant_url = state.qdrant_url.clone();
     let collection = state.manual_collection.clone();
     let point = tokio::task::spawn_blocking(move || {
-        pg_pipeline::qdrant::get_point_raw(&qdrant_url, &collection, id)
+        lensing_pipeline::qdrant::get_point_raw(&qdrant_url, &collection, id)
     })
     .await
     .map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, format!("get listing panicked: {e}")))??
@@ -1826,13 +1920,13 @@ pub async fn delete_listing(
     let qdrant_url = state.qdrant_url.clone();
     let collection = state.manual_collection.clone();
     tokio::task::spawn_blocking(move || -> Result<(), ApiError> {
-        if pg_pipeline::qdrant::get_point_raw(&qdrant_url, &collection, id)
+        if lensing_pipeline::qdrant::get_point_raw(&qdrant_url, &collection, id)
             .map_err(ApiError::from)?
             .is_none()
         {
             return Err(not_found("listing"));
         }
-        pg_pipeline::qdrant::delete_point(&qdrant_url, &collection, id).map_err(ApiError::from)
+        lensing_pipeline::qdrant::delete_point(&qdrant_url, &collection, id).map_err(ApiError::from)
     })
     .await
     .map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, format!("delete listing panicked: {e}")))??;
@@ -1848,7 +1942,7 @@ pub async fn list_definitions(State(state): State<Arc<AppState>>) -> Json<serde_
 pub async fn get_definition(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
-) -> Result<Json<pg_core::ModelDefinition>, ApiError> {
+) -> Result<Json<lensing_core::ModelDefinition>, ApiError> {
     definitions::get(&state, &name)
         .await
         .map(Json)
@@ -1870,7 +1964,7 @@ pub struct CreateDefinitionRequest {
 pub async fn create_definition(
     State(state): State<Arc<AppState>>,
     Json(req): Json<CreateDefinitionRequest>,
-) -> Result<(StatusCode, Json<pg_core::ModelDefinition>), ApiError> {
+) -> Result<(StatusCode, Json<lensing_core::ModelDefinition>), ApiError> {
     let def = definitions::create(
         &state,
         &req.name,
@@ -1898,7 +1992,7 @@ pub async fn update_definition(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
     Json(req): Json<UpdateDefinitionRequest>,
-) -> Result<Json<pg_core::ModelDefinition>, ApiError> {
+) -> Result<Json<lensing_core::ModelDefinition>, ApiError> {
     let def = definitions::update(&state, &name, req.hyperparams, req.dataset_tags, req.notes).await?;
     Ok(Json(def))
 }
@@ -1907,7 +2001,7 @@ pub async fn rename_definition(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
     Json(req): Json<RenameRequest>,
-) -> Result<Json<pg_core::ModelDefinition>, ApiError> {
+) -> Result<Json<lensing_core::ModelDefinition>, ApiError> {
     Ok(Json(definitions::rename(&state, &name, &req.new_name).await?))
 }
 
@@ -1920,7 +2014,7 @@ pub async fn clone_definition(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
     Json(req): Json<CloneDefinitionRequest>,
-) -> Result<(StatusCode, Json<pg_core::ModelDefinition>), ApiError> {
+) -> Result<(StatusCode, Json<lensing_core::ModelDefinition>), ApiError> {
     let def = definitions::clone_def(&state, &name, &req.new_name).await?;
     Ok((StatusCode::CREATED, Json(def)))
 }
@@ -1938,7 +2032,7 @@ pub async fn delete_definition(
 /// The domain configuration (`domain.toml`): corpus schema, target spec,
 /// field descriptors, quality-rule labels, metrics display, UI vocabulary.
 /// The UI renders labels, forms and formatters from this.
-pub async fn get_domain(State(state): State<Arc<AppState>>) -> Json<pg_core::domain::Domain> {
+pub async fn get_domain(State(state): State<Arc<AppState>>) -> Json<lensing_core::domain::Domain> {
     Json(state.domain.as_ref().clone())
 }
 

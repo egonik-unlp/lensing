@@ -1,4 +1,4 @@
-//! MLP price predictor on the language-neutral dataset artifact.
+//! MLP target-value predictor on the language-neutral dataset artifact.
 //! burn 0.21, ndarray CPU backend, hand-written training loop.
 
 mod model;
@@ -13,7 +13,7 @@ use clap::{Parser, Subcommand};
 use serde::Deserialize;
 use serde_json::json;
 
-use pg_core::{compute_metrics, Dataset, InferenceInput, InferencePrediction, Prediction};
+use lensing_core::{compute_metrics, Dataset, InferenceInput, InferencePrediction, Prediction};
 
 #[derive(Parser)]
 #[command(name = "predictor-burn-mlp")]
@@ -33,7 +33,7 @@ enum Command {
         #[arg(long)]
         hyperparams: PathBuf,
     },
-    /// Predict prices for a server-featurized input mini-artifact using a
+    /// Predict target values for a server-featurized input mini-artifact using a
     /// promoted model directory (checkpoint + scaler + hyperparams snapshot).
     Predict {
         #[arg(long)]
@@ -64,8 +64,18 @@ struct Hyperparams {
     /// Save a loadable checkpoint every N epochs (0 = end only).
     #[serde(default)]
     checkpoint_every: usize,
+    /// Early stopping: stop once val loss hasn't improved in this many
+    /// epochs and restore the best-epoch weights (0 = off). The monitored
+    /// split is a `val_fraction` carve-out of the train split — never the
+    /// test split, which stays untouched for final metrics.
+    #[serde(default)]
+    patience: usize,
+    /// Fraction of the train split held out as the early-stop validation
+    /// set. Only used when `patience > 0`.
+    #[serde(default = "d_val_fraction")]
+    val_fraction: f64,
     /// Cap transformed-space predictions at the train-target max + ln(2)
-    /// (≈ 2× the highest train price): defuses the expm1 blowup mode that
+    /// (≈ 2× the highest train target): defuses the expm1 blowup mode that
     /// makes shallow nets unusable. Off by default.
     #[serde(default)]
     clamp_output: bool,
@@ -76,6 +86,7 @@ fn d_lr() -> f64 { 1e-3 }
 fn d_batch() -> usize { 256 }
 fn d_hidden() -> Vec<usize> { vec![256, 128] }
 fn d_dropout() -> f64 { 0.1 }
+fn d_val_fraction() -> f64 { 0.15 }
 
 /// Contract: progress as JSON-lines on stdout.
 fn emit(v: serde_json::Value) {
@@ -168,21 +179,60 @@ fn train(dataset_dir: PathBuf, run_dir: PathBuf, hp_path: PathBuf) -> Result<()>
     // before the first epoch so the live run view can show it immediately.
     viz::write_viz(&run_dir.join("viz.svg"), n_cols, &hp.hidden, hp.dropout, hp.activation.name())?;
 
-    let (train_x_raw, train_y) = ds.gather(&ds.train_idx);
+    // Early stopping (patience > 0): carve a held-out validation set from
+    // the TRAIN split to monitor — never the test split, which stays
+    // untouched for final metrics. Deterministic carve via the same seeded
+    // splitter that produced the dataset's train/test split.
+    let (fit_idx, val_idx) = if hp.patience > 0 {
+        anyhow::ensure!(
+            hp.val_fraction > 0.0 && hp.val_fraction < 1.0,
+            "val_fraction must be in (0, 1) when patience > 0"
+        );
+        let (fit_pos, val_pos) =
+            lensing_core::shuffle::train_test_split(ds.train_idx.len(), hp.val_fraction, 1337);
+        anyhow::ensure!(
+            !val_pos.is_empty() && !fit_pos.is_empty(),
+            "early-stop carve left an empty split; adjust val_fraction"
+        );
+        let map = |pos: Vec<u32>| -> Vec<u32> {
+            pos.into_iter().map(|p| ds.train_idx[p as usize]).collect()
+        };
+        (map(fit_pos), map(val_pos))
+    } else {
+        (ds.train_idx.clone(), Vec::new())
+    };
+    if hp.patience > 0 {
+        emit(json!({"event":"log","msg":format!(
+            "early stopping: patience {}, monitoring {} held-out train rows \
+             (val_fraction {}); test split untouched",
+            hp.patience, val_idx.len(), hp.val_fraction)}));
+    }
+
+    let (train_x_raw, train_y) = ds.gather(&fit_idx);
+    let (val_x_raw, val_y) = ds.gather(&val_idx);
     let (test_x_raw, test_y) = ds.gather(&ds.test_idx);
 
-    // Standardize features with train-split statistics only.
+    // Standardize features with train-split (fit-slice) statistics only.
     let scaler = scaler::Scaler::fit(&train_x_raw, n_cols);
     scaler.save(&run_dir.join("scaler.json"))?;
     let train_x = scaler.transform(&train_x_raw);
+    let val_x = scaler.transform(&val_x_raw);
     let test_x = scaler.transform(&test_x_raw);
+
+    // Monitored split: the early-stop carve-out when patience > 0, else the
+    // test split (legacy val curve).
+    let (mon_x, mon_y): (&[f32], &[f32]) = if hp.patience > 0 {
+        (&val_x, &val_y)
+    } else {
+        (&test_x, &test_y)
+    };
 
     let trained = model::run_training(
         model::TrainInputs {
             train_x: &train_x,
             train_y: &train_y,
-            test_x: &test_x,
-            test_y: &test_y,
+            val_x: mon_x,
+            val_y: mon_y,
             n_cols,
         },
         model::TrainConfig {
@@ -194,12 +244,13 @@ fn train(dataset_dir: PathBuf, run_dir: PathBuf, hp_path: PathBuf) -> Result<()>
             activation: hp.activation,
             seed: 1337,
             checkpoint_every: hp.checkpoint_every,
+            patience: hp.patience,
         },
         &run_dir,
         &emit,
     )?;
 
-    // Predictions in price space (optionally clamped in transformed space).
+    // Predictions in target space (optionally clamped in transformed space).
     let transform = ds.manifest.target.transform;
     let mut predicted_t = model::predict(&trained, &test_x, n_cols, hp.batch_size);
     if hp.clamp_output {
@@ -210,7 +261,7 @@ fn train(dataset_dir: PathBuf, run_dir: PathBuf, hp_path: PathBuf) -> Result<()>
             *p = p.min(max_t);
         }
         emit(json!({"event":"log","msg":format!(
-            "output clamp at t={max_t:.3} (~2x max train price): {n_clamped} test predictions capped")}));
+            "output clamp at t={max_t:.3} (~2x max train target): {n_clamped} test predictions capped")}));
     }
     let mut predictions = Vec::with_capacity(ds.test_idx.len());
     let mut pairs = Vec::with_capacity(ds.test_idx.len());

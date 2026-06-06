@@ -23,6 +23,7 @@ hyperparameters + dataset tags) for this repo's price-prediction experiments.
 | **Predictor** | training code + param *schema* | `registry.toml` (hand-edited) | — |
 | **Definition** | named preset: predictor + concrete hyperparam *values* + dataset tags | `models.toml` (repo root, server-managed) | definitions |
 | **Promoted model** | frozen weights snapshot of a succeeded/stopped run (or any run with a saved checkpoint) | `data/models/<name>/` (gitignored) | models |
+| **Best-models group** | server-maintained top-12 by MAE over runs + promoted models; recomputed automatically on run completion and promotion | `GET /api/best-models` (mirrored in `data/best-models.json` + Postgres) | — |
 
 Definitions and promoted models have **separate namespaces**; renaming one never
 touches the other. Names must match `^[a-z0-9][a-z0-9-]{0,63}$` — validate before
@@ -89,6 +90,23 @@ Any existing dataset works (`GET /api/datasets` to list). Optional `hyperparams`
 overlay the definition's for a one-off tweak (the definition itself is not
 modified). The run's meta records `from_definition`; watch progress at
 `GET /api/runs/<run_id>/events` (SSE) or in the UI at `/runs/<run_id>`.
+
+### Promote a run / the best-models group
+
+```sh
+curl -s localhost:8080/api/models -H content-type:application/json \
+  -d '{"name":"<name>","run_id":"<run_id>","notes":"..."}'
+```
+
+Promotion (and every run completion) automatically triggers the server's
+best-models recompute — the top-12-by-MAE
+group at `GET localhost:8080/api/best-models` stays current on its own, and
+top runs nobody promoted get auto-promoted as `best-<predictor>-<run-slug>`.
+For judgment calls on the group (pin a confirmed champion, exclude a
+suspicious fluke, family diversity), hand off to the **best-model-selector**
+agent rather than curating by hand; to remove a member, exclude it via
+`PUT /api/best-models` — deleting the model alone just gets its run
+re-promoted.
 
 ### Stop a running run
 

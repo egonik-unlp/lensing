@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { ModelDefinition } from '../api/types'
@@ -11,13 +11,12 @@ import { useAsync } from '../hooks/useAsync'
 import { fmtDateTime } from '../lib/format'
 import './models.css'
 import './definitions.css'
+import { useDocTitle } from '../lib/DomainContext'
 
 const NAME_RE = /^[a-z0-9][a-z0-9-]{0,63}$/
 
 export default function DefinitionsView() {
-  useEffect(() => {
-    document.title = 'Definitions · Price Guesser Models'
-  }, [])
+  useDocTitle('Definitions')
   const defs = useAsync(() => api.listDefinitions(), [])
   const [showNew, setShowNew] = useState(false)
 

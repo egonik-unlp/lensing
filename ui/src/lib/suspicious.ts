@@ -1,6 +1,6 @@
 // Suspicious-prediction flagging: robust outliers on the percentage error.
-// A flagged row usually means a mislabeled listing (wrong price, wrong
-// currency, land priced as a house) rather than an honest model miss.
+// A flagged row usually means a mislabeled entry (wrong target value,
+// wrong currency, mislabeled category) rather than an honest model miss.
 // Flags inform; they never silently change the official metrics.
 
 import type { Metrics, Prediction } from '../api/types'
@@ -23,7 +23,7 @@ export function suspiciousRowIds(preds: Prediction[], madZ = SUSPICIOUS_MAD_Z): 
   return out
 }
 
-/** Client-side mirror of the server's price-space metric computation. */
+/** Client-side mirror of the server's target-space metric computation. */
 export function computeMetrics(preds: Prediction[]): Metrics | null {
   const n = preds.length
   if (n === 0) return null

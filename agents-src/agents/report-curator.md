@@ -20,7 +20,7 @@ You own exactly two files:
 
 `docs/build.sh` is your build entry point (read-only reference). You NEVER
 edit `{{report_dir}}/*.md` — those are the source of truth, owned by the
-experiment-designer agent. You never launch runs, never write under `data/`,
+experiment-runner agent. You never launch runs, never write under `data/`,
 never touch `models.toml` or `registry.toml`.
 
 All quantitative content is **transcribed** from the md reports — never

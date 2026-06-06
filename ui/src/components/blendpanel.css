@@ -1,0 +1,110 @@
+/* Blend panel: member fan-in diagram + the members table. The table reuses
+   the entity-table vocabulary; the blend row at the bottom is the verdict. */
+
+.blend-panel {
+  margin-block: var(--sp-4);
+}
+
+.blend-members {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-dense);
+  margin-top: var(--sp-2);
+}
+
+.blend-members th {
+  text-align: left;
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+  font-weight: 600;
+  color: var(--ink-secondary);
+  background: var(--surface);
+  padding: 0.3rem 0.6rem;
+  border-bottom: 1px solid var(--hairline-strong);
+  white-space: nowrap;
+}
+
+.blend-members td {
+  padding: 0.35rem 0.6rem;
+  border-bottom: 1px solid var(--hairline);
+  vertical-align: baseline;
+}
+
+.blend-members th.num-col,
+.blend-members td.num-col {
+  text-align: right;
+}
+
+.blend-members .col-group-start {
+  border-left: 1px solid var(--hairline);
+}
+
+.blend-member-row.is-excluded {
+  opacity: 0.55;
+}
+
+.blend-member-row.is-excluded td:first-child {
+  text-decoration: none;
+}
+
+.blend-flag {
+  margin-left: 0.6ch;
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+  color: var(--ink-faint);
+}
+
+.blend-blocks {
+  margin-left: 0.8ch;
+  font-size: var(--text-label);
+  color: var(--ink-secondary);
+}
+
+/* Weight cell: a quiet bar with the percentage beside it. */
+.blend-weight {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7ch;
+  justify-content: flex-end;
+}
+
+.blend-weight-bar {
+  display: inline-block;
+  width: 52px;
+  height: 5px;
+  border-radius: 2.5px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--hairline);
+  overflow: hidden;
+}
+
+.blend-weight-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--ink-secondary);
+}
+
+/* The blend itself: the row everything above answers to. */
+.blend-total-row td {
+  border-top: 1px solid var(--hairline-strong);
+  border-bottom: none;
+  background: var(--surface);
+  font-weight: 600;
+}
+
+.blend-total-row td.muted {
+  font-weight: 400;
+}
+
+.blend-verdict {
+  margin: var(--sp-2) 0 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-secondary);
+}
+
+.blend-pending {
+  margin-top: var(--sp-2);
+  font-size: var(--text-dense);
+}

@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>lensing — logo candidates</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@1,400;1,500;1,600&family=Familjen+Grotesk:wght@500;600;700&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600&family=Sora:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --chrome: oklch(0.27 0.025 250);
+    --chrome-raised: oklch(0.32 0.025 250);
+    --chrome-border: oklch(0.42 0.025 250);
+    --on-chrome: oklch(0.96 0.008 250);
+    --on-chrome-dim: oklch(0.78 0.015 250);
+    --bg: oklch(0.992 0 0);
+    --surface: oklch(0.972 0.002 250);
+    --hairline: oklch(0.9 0.003 250);
+    --ink: oklch(0.24 0.01 250);
+    --ink-secondary: oklch(0.45 0.012 250);
+    --ink-faint: oklch(0.56 0.01 250);
+    --accent: oklch(0.68 0.18 47);
+    --accent-on-chrome: oklch(0.78 0.16 55);
+    --mono: 'JetBrains Mono', ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    font-family: 'Inter Variable', Inter, system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    padding: 0 0 4rem;
+  }
+  header.page {
+    background: var(--chrome);
+    color: var(--on-chrome);
+    padding: 1.25rem 2rem;
+    border-bottom: 1px solid var(--chrome-border);
+  }
+  header.page h1 { font-size: 1.125rem; font-weight: 650; letter-spacing: -0.01em; }
+  header.page p { color: var(--on-chrome-dim); font-size: 0.8125rem; margin-top: 0.25rem; }
+  main { max-width: 1320px; margin: 0 auto; padding: 0 2rem; }
+
+  section.candidate { padding: 2.5rem 0 2rem; border-bottom: 1px solid var(--hairline); }
+  .cand-head { display: flex; align-items: baseline; gap: 1rem; margin-bottom: 0.4rem; }
+  .cand-head .key {
+    font-family: var(--mono); font-size: 0.78125rem; font-weight: 600;
+    color: var(--accent); letter-spacing: 0.02em;
+  }
+  .cand-head h2 { font-size: 1.125rem; font-weight: 650; letter-spacing: -0.01em; }
+  .concept { font-size: 0.8125rem; color: var(--ink-secondary); max-width: 70ch; margin-bottom: 1.5rem; }
+
+  .contexts { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--hairline); border: 1px solid var(--hairline); }
+  .ctx { padding: 1.5rem; display: flex; flex-direction: column; gap: 1.25rem; }
+  .ctx.paper { background: var(--bg); color: var(--ink); }
+  .ctx.dark  { background: var(--chrome); color: var(--on-chrome); }
+  .ctx-label { font-family: var(--mono); font-size: 0.71875rem; opacity: 0.55; }
+
+  .sizes { display: flex; align-items: flex-end; gap: 2rem; flex-wrap: wrap; }
+  .size-item { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; }
+  .size-item .px { font-family: var(--mono); font-size: 0.71875rem; opacity: 0.5; }
+
+  .lockup { display: inline-flex; align-items: center; gap: 0.55rem; }
+  .lockup .word { font-family: 'Sora', sans-serif; font-size: 1.55rem; font-weight: 550; letter-spacing: -0.025em; }
+
+  /* Real-proportion topbar simulation: 44px bar, 13px wordmark */
+  .topbar-sim {
+    background: var(--chrome); color: var(--on-chrome);
+    height: 44px; display: flex; align-items: center; gap: 2rem;
+    padding: 0 1.5rem; border-bottom: 1px solid var(--chrome-border);
+  }
+  .topbar-sim .wordmark { display: inline-flex; align-items: center; gap: 0.5ch; font-family: 'Sora', sans-serif; font-weight: 550; font-size: 0.8125rem; letter-spacing: -0.025em; }
+  .topbar-sim nav { display: flex; gap: 1rem; font-size: 0.8125rem; font-weight: 500; color: var(--on-chrome-dim); }
+  .topbar-sim nav .active { color: var(--on-chrome); }
+
+  /* Wordmark font studies */
+  .fontstudy { padding: 2.5rem 0 2rem; border-bottom: 1px solid var(--hairline); }
+  .fontstudy h2 { font-size: 1.125rem; font-weight: 650; letter-spacing: -0.01em; margin-bottom: 0.4rem; }
+  .fontstudy .note { font-size: 0.8125rem; color: var(--ink-secondary); max-width: 70ch; margin-bottom: 1.5rem; }
+  .study-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--hairline); border: 1px solid var(--hairline); }
+  .study-cell { padding: 1.1rem 1.5rem; display: flex; align-items: center; gap: 0.9rem; }
+  .study-cell.paper { background: var(--bg); color: var(--ink); }
+  .study-cell.dark { background: var(--chrome); color: var(--on-chrome); }
+  .study-cell .word { font-size: 2rem; }
+  .study-cell .fname { font-family: var(--mono); font-size: 0.71875rem; opacity: 0.5; margin-left: auto; text-align: right; }
+
+  /* Browser-tab favicon simulation */
+  .tabstrip { background: oklch(0.2 0.015 250); padding: 6px 8px 0; display: flex; }
+  .tab {
+    background: var(--chrome-raised); color: var(--on-chrome-dim);
+    border-radius: 8px 8px 0 0; padding: 6px 14px 7px 10px;
+    display: inline-flex; align-items: center; gap: 7px; font-size: 12px;
+  }
+</style>
+</head>
+<body>
+<header class="page">
+  <h1>lensing — logo candidates</h1>
+  <p>Light as a long exposure: trails, pileups and image tracks, computed through the lens. The data is the mass (signal orange); everything else is accumulated light.</p>
+</header>
+<main id="main"></main>
+
+<script src="marks.js"></script>
+<script>
+// Each candidate is a function (ink, orange, faint) -> inner SVG markup, viewBox 0 0 48 48.
+// Candidates come from marks.js (MARKS); bodies carry {ink}/{orange}/{faint} placeholders.
+const candidates = MARKS.map(m => ({
+  key: m.key, name: m.name, concept: m.concept,
+  svg: (ink, orange, faint, isDark) => ((isDark && m.bodyDark) ? m.bodyDark : m.body)
+    .replaceAll('{ink}', ink).replaceAll('{orange}', orange).replaceAll('{faint}', faint),
+}));
+
+const PAPER = { ink: 'oklch(0.24 0.01 250)', orange: 'oklch(0.68 0.18 47)', faint: 'oklch(0.62 0.01 250)' };
+const DARK  = { ink: 'oklch(0.96 0.008 250)', orange: 'oklch(0.78 0.16 55)', faint: 'oklch(0.6 0.02 250)' };
+
+function mark(c, size, pal) {
+  return `<svg width="${size}" height="${size}" viewBox="0 0 48 48" aria-hidden="true">${c.svg(pal.ink, pal.orange, pal.faint, pal === DARK)}</svg>`;
+}
+
+function ctxBlock(c, pal, cls) {
+  return `
+  <div class="ctx ${cls}">
+    <span class="ctx-label">${cls === 'paper' ? 'on paper' : 'on chrome'}</span>
+    <div class="sizes">
+      ${[160, 96, 48, 24, 16].map(s => `
+        <div class="size-item">${mark(c, s, pal)}<span class="px">${s}</span></div>`).join('')}
+      <div class="size-item" style="margin-left:auto">
+        <span class="lockup">${mark(c, 34, pal)}<span class="word">lensing</span></span>
+        <span class="px">lockup</span>
+      </div>
+    </div>
+  </div>`;
+}
+
+function topbarSim(c) {
+  return `
+  <div class="topbar-sim">
+    <span class="wordmark">${mark(c, 16, DARK)} lensing</span>
+    <nav><span>Datasets</span><span class="active">Runs</span><span>Compare</span><span>Definitions</span><span>Models</span></nav>
+  </div>`;
+}
+
+function tabSim(c) {
+  return `
+  <div class="tabstrip">
+    <span class="tab">${mark(c, 16, DARK)} lensing · runs</span>
+  </div>`;
+}
+
+// Wordmark font studies, paired with the X mark (the current favorite).
+const FONTS = [
+  { css: "650 2rem 'Inter Variable', Inter, system-ui, sans-serif", ls: '-0.015em', name: 'Inter 650 (current)' },
+  { css: "italic 500 2.15rem 'STIX Two Text', serif", ls: '0', name: 'STIX Two Text italic 500' },
+  { css: "600 2rem 'Familjen Grotesk', sans-serif", ls: '-0.01em', name: 'Familjen Grotesk 600' },
+  { css: "600 2rem 'Bricolage Grotesque', sans-serif", ls: '-0.015em', name: 'Bricolage Grotesque 600' },
+  { css: "550 1.9rem 'Sora', sans-serif", ls: '-0.025em', name: 'Sora 550' },
+];
+function fontStudy(c) {
+  return `
+  <section class="fontstudy">
+    <h2>Wordmark studies</h2>
+    <p class="note">The ${c.name} mark with five wordmark faces. STIX Two is the typeface physics journals typeset in; the italic reads as a variable name. The grotesks trade Inter's neutrality for a voice.</p>
+    <div class="study-grid">
+      ${FONTS.map(f => ['paper', 'dark'].map(cls => `
+        <div class="study-cell ${cls}">
+          ${mark(c, 40, cls === 'dark' ? DARK : PAPER)}
+          <span class="word" style="font: ${f.css}; letter-spacing: ${f.ls}">lensing</span>
+          <span class="fname">${f.name}</span>
+        </div>`).join('')).join('')}
+    </div>
+  </section>`;
+}
+
+// ?only=F (comma-separated keys) filters the page to specific candidates.
+const only = new URLSearchParams(location.search).get('only');
+const shown = only ? candidates.filter(c => only.toUpperCase().split(',').includes(c.key)) : candidates;
+const xMark = candidates.find(c => c.key === 'X');
+document.getElementById('main').innerHTML = (xMark && !only ? fontStudy(xMark) : '') + shown.map(c => `
+  <section class="candidate">
+    <div class="cand-head"><span class="key">${c.key}</span><h2>${c.name}</h2></div>
+    <p class="concept">${c.concept}</p>
+    <div class="contexts">
+      ${ctxBlock(c, PAPER, 'paper')}
+      ${ctxBlock(c, DARK, 'dark')}
+    </div>
+    <div style="margin-top:1px">${topbarSim(c)}</div>
+    <div style="margin-top:10px">${tabSim(c)}</div>
+  </section>`).join('');
+</script>
+</body>
+</html>

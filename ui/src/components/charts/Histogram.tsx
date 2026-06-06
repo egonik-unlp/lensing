@@ -23,7 +23,7 @@ interface Props {
   /** First series defines the bins; overlays count into the same edges. */
   series: HistogramSeries[]
   bins?: number
-  /** Log-10 x binning (prices). Values ≤ 0 are dropped from the chart. */
+  /** Log-10 x binning (money-style values). Values ≤ 0 are dropped from the chart. */
   log?: boolean
   xLabel: string
   tickFormat: (v: number) => string

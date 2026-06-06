@@ -51,7 +51,7 @@ pub enum RunStatus {
     Stopped,
 }
 
-/// `metrics.json` written by a predictor. All values in price space.
+/// `metrics.json` written by a predictor. All values in target space.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Metrics {
     pub mae: f64,
@@ -68,13 +68,13 @@ pub struct Metrics {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Prediction {
     pub row_id: u64,
-    /// Price space.
+    /// Target space.
     pub actual: f64,
-    /// Price space.
+    /// Target space.
     pub predicted: f64,
 }
 
-/// One element of a predict subcommand's output file. Price space; there is
+/// One element of a predict subcommand's output file. Target space; there is
 /// no ground truth at inference time.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InferencePrediction {
@@ -111,7 +111,7 @@ pub fn compute_metrics(pairs: &[(f64, f64)]) -> Metrics {
         abs_err += e.abs();
         sq_err += e * e;
         ss_tot += (actual - mean_actual).powi(2);
-        // actual is never 0 here (dataset filter excludes price==0)
+        // actual is never 0 here (dataset filter excludes target==0)
         apes.push((e / actual).abs());
     }
     apes.sort_by(|a, b| a.total_cmp(b));

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""1D CNN price predictor (PyTorch, CPU). Implements the predictor contract
+"""1D CNN target-value predictor (PyTorch, CPU). Implements the predictor contract
 in README.md; mirrors crates/predictor-burn-cnn (burn) and
 predictors/flux-cnn (Flux.jl) layer for layer.
 
 The leading PCA columns of the feature vector are convolved as a 1-channel
 signal; the metadata tail (numeric + one-hots) joins the dense head after
-global pooling. Loss values are MSE in transformed (log-price) target space.
+global pooling. Loss values are MSE in transformed (log) target space.
 
 Run from the repo's shared predictor venv (predictors/.venv, see
 `zig build py-setup`)."""
@@ -82,7 +82,7 @@ def invert_target(y: np.ndarray, transform: str) -> np.ndarray:
 
 
 def compute_metrics(actual: np.ndarray, predicted: np.ndarray) -> dict:
-    """Price-space metrics, formula identical to pg-core::compute_metrics
+    """Target-space metrics, formula identical to lensing-core::compute_metrics
     (medape for even n = mean of the two middle APEs)."""
     n = len(actual)
     err = predicted - actual
@@ -290,7 +290,7 @@ def train(dataset: Path, run_dir: Path, hp_path: Path) -> None:
             save_atomic(model, run_dir)
             emit({"event": "checkpoint", "epoch": epoch})
 
-    # Predictions in price space.
+    # Predictions in target space.
     model.eval()
     with torch.no_grad():
         predicted_t = predict_batched(model, test_x, batch_size)
@@ -323,7 +323,7 @@ def predict_batched(model: Cnn, x: torch.Tensor, batch_size: int) -> np.ndarray:
 def predict(model_dir: Path, input_dir: Path, output: Path) -> None:
     """Contract v2 predict: rebuild the module from the hyperparams snapshot,
     load the trained weights, standardize the input mini-artifact, write
-    price-space predictions."""
+    target-space predictions."""
     hp = load_hp(model_dir / "hyperparams.json")
     scaler = json.loads((model_dir / "scaler.json").read_text())
     mean = np.asarray(scaler["mean"])

@@ -104,7 +104,7 @@ Ask only what you cannot infer; propose defaults for everything else:
 7. **[agents]**: API port, naming convention, `ingestion` on/off (decided
    properly in Phase 3).
 
-Then: write `domain.toml`, validate via `cargo test -p pg-core` (the
+Then: write `domain.toml`, validate via `cargo test -p lensing-core` (the
 embedded-domain tests re-read it) — fix anything it rejects, and run
 `zig build render-agents` so the skills/agents speak the new domain.
 `zig build check` must pass before moving on.
@@ -170,7 +170,8 @@ explain why:
 
 Launch one run each on the first dataset, watch them complete, then seed
 `{{facts_file}}`'s leaderboard with the results. Hand the user off to the
-**experiment-designer** agent for the first real campaign.
+**experiment-designer** agent to design the first real campaign (the
+**experiment-runner** agent executes the approved design).
 
 ## Ground rules
 

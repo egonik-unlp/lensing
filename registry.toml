@@ -30,6 +30,22 @@ min = 0
 max = 100000
 
 [[predictors.params]]
+name = "patience"
+label = "early-stop patience (epochs, 0 = off)"
+type = "int"
+default = 0
+min = 0
+max = 10000
+
+[[predictors.params]]
+name = "val_fraction"
+label = "early-stop validation fraction (of train)"
+type = "float"
+default = 0.15
+min = 0.05
+max = 0.5
+
+[[predictors.params]]
 name = "lr"
 label = "learning rate"
 type = "float"
@@ -67,7 +83,7 @@ options = ["relu", "gelu", "silu", "mish", "tanh", "leaky_relu", "selu", "elu"]
 
 [[predictors.params]]
 name = "clamp_output"
-label = "clamp predictions at ~2x max train price"
+label = "clamp predictions at ~2x max train target"
 type = "bool"
 default = false
 
@@ -348,7 +364,7 @@ name = "ridge"
 display_name = "Ridge (scikit-learn)"
 language = "Python"
 framework = "scikit-learn"
-description = "L2-regularized linear regression on PCA embeddings + metadata one-hots, adapted to this corpus: CV-selected alpha, optional price-proportional sample weights against tail compression bias, optional Huber loss. Python, CPU."
+description = "L2-regularized linear regression on PCA embeddings + metadata one-hots, adapted to this corpus: CV-selected alpha, optional target-proportional sample weights against tail compression bias, optional Huber loss. Python, CPU."
 command = "predictors/.venv/bin/python"
 args = ["predictors/ridge/ridge.py", "train", "--dataset", "{dataset}", "--output", "{run_dir}", "--hyperparams", "{hyperparams}"]
 predict_args = ["predictors/ridge/ridge.py", "predict", "--model", "{model}", "--input", "{input}", "--output", "{output}"]
@@ -369,7 +385,7 @@ max = 100000.0
 
 [[predictors.params]]
 name = "weight_gamma"
-label = "price weight exponent"
+label = "target weight exponent"
 type = "float"
 default = 0.0
 min = 0.0
@@ -554,18 +570,18 @@ min = 0
 max = 1000000
 
 [[predictors]]
-name = "svm-price-moe"
-display_name = "SVM price mixture (quantile experts)"
+name = "svm-quantile-moe"
+display_name = "SVM quantile mixture (banded experts)"
 language = "Python"
 framework = "scikit-learn"
-description = "Supervised regime split: quantile price bands with one rbf SVR expert per band, blended by a logistic gate's band probabilities. The direct test of the expensive-tail hypothesis. Python, CPU."
+description = "Supervised regime split: quantile target bands with one rbf SVR expert per band, blended by a logistic gate's band probabilities. The direct test of the high-tail hypothesis. Python, CPU."
 command = "predictors/.venv/bin/python"
-args = ["predictors/svm-price-moe/train.py", "train", "--dataset", "{dataset}", "--output", "{run_dir}", "--hyperparams", "{hyperparams}"]
-predict_args = ["predictors/svm-price-moe/train.py", "predict", "--model", "{model}", "--input", "{input}", "--output", "{output}"]
+args = ["predictors/svm-quantile-moe/train.py", "train", "--dataset", "{dataset}", "--output", "{run_dir}", "--hyperparams", "{hyperparams}"]
+predict_args = ["predictors/svm-quantile-moe/train.py", "predict", "--model", "{model}", "--input", "{input}", "--output", "{output}"]
 
 [[predictors.params]]
 name = "n_bands"
-label = "price quantile bands"
+label = "target quantile bands"
 type = "int"
 default = 4
 min = 2
@@ -631,6 +647,22 @@ min = 10
 max = 10000
 
 [[predictors.params]]
+name = "early_stopping_rounds"
+label = "early-stop rounds (0 = off)"
+type = "int"
+default = 0
+min = 0
+max = 1000
+
+[[predictors.params]]
+name = "val_fraction"
+label = "early-stop validation fraction (of train)"
+type = "float"
+default = 0.15
+min = 0.05
+max = 0.5
+
+[[predictors.params]]
 name = "max_depth"
 label = "tree depth"
 type = "int"
@@ -687,7 +719,7 @@ max = 1000000
 
 [[predictors.params]]
 name = "weight_gamma"
-label = "price weight exponent"
+label = "target weight exponent"
 type = "float"
 default = 0.0
 min = 0.0
@@ -711,6 +743,22 @@ type = "int"
 default = 500
 min = 10
 max = 10000
+
+[[predictors.params]]
+name = "early_stopping_rounds"
+label = "early-stop rounds (0 = off)"
+type = "int"
+default = 0
+min = 0
+max = 1000
+
+[[predictors.params]]
+name = "val_fraction"
+label = "early-stop validation fraction (of train)"
+type = "float"
+default = 0.15
+min = 0.05
+max = 0.5
 
 [[predictors.params]]
 name = "num_leaves"
@@ -777,7 +825,7 @@ max = 1000000
 
 [[predictors.params]]
 name = "weight_gamma"
-label = "price weight exponent"
+label = "target weight exponent"
 type = "float"
 default = 0.0
 min = 0.0
@@ -836,7 +884,7 @@ max = 1000000
 name = "baseline-median"
 display_name = "Median baseline"
 language = "Python"
-description = "Predicts the train-split median price per property type. The floor every model must beat."
+description = "Predicts the train-split median target per outlier-group category. The floor every model must beat."
 command = "python3"
 args = ["predictors/baseline-median/predict.py", "train", "--dataset", "{dataset}", "--output", "{run_dir}", "--hyperparams", "{hyperparams}"]
 predict_args = ["predictors/baseline-median/predict.py", "predict", "--model", "{model}", "--input", "{input}", "--output", "{output}"]
@@ -846,7 +894,7 @@ params = []
 name = "blend"
 display_name = "Blend (ensemble)"
 language = "Rust"
-description = "Meta-predictor: combines member models' price-space predictions by weighted mean or median vote. Members are frozen promoted models ({\"model\": …}), models.toml definitions trained inside the run ({\"definition\": …}), or inline recipes ({\"predictor\": …, \"hyperparams\": …}); each takes an optional weight and exclude_blocks column mask."
+description = "Meta-predictor: combines member models' target-space predictions by weighted mean or median vote. Members are frozen promoted models ({\"model\": …}), models.toml definitions trained inside the run ({\"definition\": …}), or inline recipes ({\"predictor\": …, \"hyperparams\": …}); each takes an optional weight and exclude_blocks column mask."
 command = "target/release/predictor-blend"
 args = ["train", "--dataset", "{dataset}", "--output", "{run_dir}", "--hyperparams", "{hyperparams}"]
 predict_args = ["predict", "--model", "{model}", "--input", "{input}", "--output", "{output}"]

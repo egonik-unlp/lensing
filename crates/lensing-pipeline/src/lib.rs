@@ -11,7 +11,7 @@ pub mod qdrant;
 pub mod quality;
 pub mod redundancy;
 
-pub use pg_core::shuffle;
+pub use lensing_core::shuffle;
 
 pub use build::{build_dataset, BuildConfig};
 pub use inference::{Featurizer, RawItem};

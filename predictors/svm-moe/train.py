@@ -3,7 +3,7 @@
 README.md: a Gaussian mixture model soft-clusters the standardized feature
 space, one epsilon-SVR (rbf) expert is trained per component with
 responsibility sample weights, and predictions are the responsibility-
-weighted blend of the experts (in log-price space). Motivation: the worst
+weighted blend of the experts (in log-target space). Motivation: the worst
 errors of the global models concentrate on atypical segments (very
 expensive / very cheap commercial sites); per-regime experts may fit those
 better than one global function. A per-cluster test breakdown is written to
@@ -67,14 +67,14 @@ def fit_scaler(x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 
 
 def invert_target(y: np.ndarray, transform: str) -> np.ndarray:
-    """Map transformed-space targets back to price space."""
+    """Map transformed-space targets back to target space."""
     if transform == "log1p":
         return np.expm1(y)
     return y
 
 
 def compute_metrics(actual: np.ndarray, predicted: np.ndarray) -> dict:
-    """Price-space metrics, formula identical to pg-core::compute_metrics
+    """Target-space metrics, formula identical to lensing-core::compute_metrics
     (medape for even n = mean of the two middle APEs)."""
     n = len(actual)
     err = predicted - actual
@@ -248,8 +248,8 @@ def train(dataset: Path, output: Path, hp_path: Path) -> None:
         clusters.append({
             "cluster": k,
             "n_test": int(sel.sum()),
-            "median_price": float(np.median(actual[sel])),
-            "mean_price": float(actual[sel].mean()),
+            "median_target": float(np.median(actual[sel])),
+            "mean_target": float(actual[sel].mean()),
             "mae": m["mae"],
             "medape": m["medape"],
             "share_of_sq_err": float(
@@ -257,7 +257,7 @@ def train(dataset: Path, output: Path, hp_path: Path) -> None:
                 / np.sum((predicted - actual) ** 2)),
         })
         emit({"event": "log", "msg": f"cluster {k}: {clusters[-1]['n_test']} "
-              f"test rows, median ${clusters[-1]['median_price']:,.0f}, "
+              f"test rows, median {clusters[-1]['median_target']:,.0f}, "
               f"MAE {m['mae']:,.0f}, medAPE {m['medape']:.1%}, "
               f"{clusters[-1]['share_of_sq_err']:.0%} of sq err"})
     (output / "cluster_report.json").write_text(json.dumps(clusters))
@@ -271,7 +271,7 @@ def train(dataset: Path, output: Path, hp_path: Path) -> None:
 def predict(model_dir: Path, input_dir: Path, output: Path) -> None:
     """Contract v2 predict: standardize the input mini-artifact with the
     trained scaler, evaluate the stored GMM + expert mixture with numpy,
-    write price-space predictions."""
+    write target-space predictions."""
     model = json.loads((model_dir / "model.json").read_text())
     scaler = json.loads((model_dir / "scaler.json").read_text())
     mean = np.asarray(scaler["mean"], dtype=np.float64)

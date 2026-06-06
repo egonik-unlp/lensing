@@ -69,7 +69,7 @@ impl MemberSpec {
 pub enum Rule {
     #[default]
     Mean,
-    /// Per-row median in price space — the voting committee. Weights are
+    /// Per-row median in target space — the voting committee. Weights are
     /// rejected: every voter counts once.
     Median,
 }
@@ -116,7 +116,7 @@ pub struct BlendMember {
     /// False when a graceful stop landed before this member trained; the
     /// blend then combines over the included members only.
     pub included: bool,
-    /// Solo test metrics in price space (absent if excluded).
+    /// Solo test metrics in target space (absent if excluded).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub solo_metrics: Option<pg_core::Metrics>,
+    pub solo_metrics: Option<lensing_core::Metrics>,
 }

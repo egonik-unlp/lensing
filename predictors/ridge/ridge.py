@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Ridge regression predictor, adapted to this dataset's limitations.
 Implements the predictor contract in README.md with numpy + scikit-learn:
-standardize on the train split, fit a linear model in transformed (log-price)
-target space, report price-space metrics. Adaptations:
+standardize on the train split, fit a linear model in transformed (log)
+target space, report target-space metrics. Adaptations:
 
 - auto alpha (default): the feature matrix is ~200 correlated columns (PCA
   dims capture only ~77% embedding variance), so a fixed alpha is arbitrary —
   RidgeCV picks one by efficient LOOCV over a log-spaced grid.
-- weight_gamma: every model on this corpus underpredicts the expensive tail
-  (~-34% medbias >$500k); price-proportional sample weights counter that
+- weight_gamma: every model on this corpus underpredicts the high tail
+  (~-34% medbias on the high tail); target-proportional sample weights counter that
   compression bias.
 - loss=huber: the cheap/luxury tails are outlier-heavy even after quality
   filters; Huber loss resists them at the cost of an iterative solver.
@@ -59,14 +59,14 @@ def fit_scaler(x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 
 
 def invert_target(y: np.ndarray, transform: str) -> np.ndarray:
-    """Map transformed-space targets back to price space."""
+    """Map transformed-space targets back to target space."""
     if transform == "log1p":
         return np.expm1(y)
     return y
 
 
 def compute_metrics(actual: np.ndarray, predicted: np.ndarray) -> dict:
-    """Price-space metrics, formula identical to pg-core::compute_metrics
+    """Target-space metrics, formula identical to lensing-core::compute_metrics
     (medape for even n = mean of the two middle APEs)."""
     n = len(actual)
     err = predicted - actual
@@ -85,13 +85,13 @@ def compute_metrics(actual: np.ndarray, predicted: np.ndarray) -> dict:
 
 
 def sample_weights(train_y: np.ndarray, transform: str, gamma: float) -> np.ndarray | None:
-    """Price-proportional weights w = (price / median)^gamma, clipped so no
+    """Target-proportional weights w = (target / median)^gamma, clipped so no
     row carries more than MAX_WEIGHT_RATIO x the median weight, normalized to
     mean 1. gamma=0 (default) means uniform weights (returns None)."""
     if gamma <= 0.0:
         return None
-    price = np.maximum(invert_target(train_y, transform), 0.0)
-    w = (price / np.median(price)) ** gamma
+    target = np.maximum(invert_target(train_y, transform), 0.0)
+    w = (target / np.median(target)) ** gamma
     w = np.minimum(w, np.median(w) * MAX_WEIGHT_RATIO)
     return w / w.mean()
 
@@ -155,7 +155,7 @@ def train(dataset: Path, output: Path, hp_path: Path) -> None:
     train_y = target[train_idx]
     weights = sample_weights(train_y, transform, weight_gamma)
     if weights is not None:
-        emit({"event": "log", "msg": f"price weights: gamma {weight_gamma}, "
+        emit({"event": "log", "msg": f"target weights: gamma {weight_gamma}, "
               f"max {weights.max():.1f}x mean (clipped at "
               f"{MAX_WEIGHT_RATIO:.0f}x median)"})
 
@@ -205,7 +205,7 @@ def train(dataset: Path, output: Path, hp_path: Path) -> None:
 
 def predict(model_dir: Path, input_dir: Path, output: Path) -> None:
     """Contract v2 predict: standardize the input mini-artifact with the
-    trained scaler, apply the stored linear model, write price-space
+    trained scaler, apply the stored linear model, write target-space
     predictions."""
     model = json.loads((model_dir / "model.json").read_text())
     scaler = json.loads((model_dir / "scaler.json").read_text())

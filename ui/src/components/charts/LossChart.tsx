@@ -96,7 +96,7 @@ export default function LossChart({ epochs, totalEpochs, live = false }: Props) 
           epoch
         </text>
         <text className="axis-title" x={M.left} y={M.top - 2} textAnchor="start">
-          MSE, log-price space
+          MSE, log-target space
         </text>
 
         {/* Train rides in the ramp's teal; val keeps the lead in graphite

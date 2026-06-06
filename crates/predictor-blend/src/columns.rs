@@ -3,7 +3,7 @@
 //! contract's columns) or by block exclusion (trained members).
 
 use anyhow::{bail, Result};
-use pg_core::{ColumnDesc, ColumnKind};
+use lensing_core::{ColumnDesc, ColumnKind};
 
 /// The lat/lon/indicator triple `FeatureConfig.coordinates` produces.
 const COORDINATE_FIELDS: [&str; 3] = ["lat", "lon", "coords_missing"];

@@ -23,6 +23,17 @@ entity_noun = "listing"
 entity_noun_plural = "listings"
 target_noun = "price"
 
+# Instance personality inside the lensing brand grammar. The velocity-map
+# mark (dark sphere + red/blue shifted trail swarm) and the Sora wordmark
+# are constants; an instance reseeds the arc arrangement and may rotate the
+# ramp hue. The server ignores this section — it is read by the generator:
+#   python3 branding/make_mark.py --install
+# mark_seed "lensing" is the canonical mark; bootstrapped instances usually
+# set it to their project name.
+[branding]
+mark_seed = "lensing"
+mark_hue_shift = 0
+
 [corpus]
 qdrant_url = "http://localhost:6333"
 collection = "properties-tagged"
@@ -54,6 +65,8 @@ primary = "MAE"
 columns = ["MAE", "medAPE", "R²"]
 percent = ["MAPE", "medAPE"]
 value_unit = "USD"
+# Size cap of the auto-maintained best-models group (pins may exceed it).
+best_models_size = 12
 
 # ---- Fields: the corpus payload schema ----
 # roles: target | categorical | numeric | coordinates | filter_only |

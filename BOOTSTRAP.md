@@ -35,6 +35,12 @@ Day-1 checklist for a new project (e.g. used-car prices, salaries):
    domain. Replace it with your domain's, or set `[agents] ingestion = false`
    to drop the agent. Also skim PRODUCT.md / DESIGN.md.
 
+3b. **Brand the instance** — set `[branding]` in `domain.toml` (`mark_seed`,
+   usually your project name, and optionally `mark_hue_shift`) and run
+   `python3 branding/make_mark.py --install`. Your instance keeps the lensing
+   grammar (dark sphere, velocity swarm, Sora wordmark, `lensing · <title>`
+   topbar) with its own arc arrangement and ramp hue. See DESIGN.md §3b.
+
 4. **Reset the empirical record** — this repo ships the original project's
    campaign history. For a fresh project: archive or delete
    `experiments/*.md`, and seed `experiments/PROJECT-FACTS.md` with empty
@@ -60,14 +66,15 @@ Day-1 checklist for a new project (e.g. used-car prices, salaries):
    `baseline-median` (the floor) plus one real family (xgboost is the
    low-drama default).
 
-9. **First campaign** — `/model-definitions experiment` or the
-   experiment-designer agent. The report it writes seeds the first
+9. **First campaign** — `/model-definitions experiment`, or the
+   experiment-designer agent (design) handing off to the experiment-runner
+   agent (execution). The report the runner writes seeds the first
    PROJECT-FACTS leaderboard row.
 
 10. **First report sync** — `/report-curator sync` folds the report into
     the PDF.
 
-What you should NOT need to touch: the Rust crates (pg-core/pg-db/
+What you should NOT need to touch: the Rust crates (lensing-core/lensing-db/
 lensing-pipeline/lensing-server), the predictor plugins + `registry.toml` (generic
 regressors over the artifact format), the UI (renders from `GET
 /api/domain`), `docker-compose.yml`, `build.zig`. If your domain needs a

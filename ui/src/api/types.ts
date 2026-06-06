@@ -125,20 +125,12 @@ export interface FeatureConfig {
   coordinate_bounds?: { lat_range: [number, number]; lon_range: [number, number] } | null
 }
 
-/** One corpus row, mirroring the collection's metadata schema. Loosened to a
- *  record so views can iterate domain fields; the well-known keys below stay
- *  typed for the existing EDA panels. */
+/** One corpus row, mirroring the collection's metadata schema. A record so
+ *  views can read domain fields by name (GET /api/domain drives which); only
+ *  the framework-owned keys are typed. */
 export interface Item extends Record<string, unknown> {
   content: string
   cluster_label: string | null
-  propertyType: string
-  price: number
-  /** Reconciled listing currency; null on datasets built without it. */
-  currency?: string | null
-  city: string
-  neighborhood: string
-  bedrooms: number
-  province: string
 }
 
 export type Items = Record<string, Item>
@@ -172,7 +164,7 @@ export interface BuildRequest {
   /** Lat/lon from the raw collection (raw degrees + missing indicator). */
   coordinates: boolean
   /** With raw_numerics: impute missing numerics with train-split
-   *  propertyType medians and drop the missing-indicator columns. */
+   *  outlier-group medians and drop the missing-indicator columns. */
   impute_numerics: boolean
   quality: QualityFilterConfig
   currency: CurrencyConfig
@@ -266,14 +258,10 @@ export interface QualityReport {
   n_excluded_total: number
 }
 
-export interface PreflightSample {
+/** Sample flagged row: row_id plus the domain's target, critical/grouping
+ *  and currency fields, keyed by their domain field names. */
+export interface PreflightSample extends Record<string, unknown> {
   row_id: number
-  propertyType: string
-  neighborhood: string
-  city: string
-  bedrooms: number
-  price: number
-  currency?: string | null
 }
 
 export interface PreflightResponse {
@@ -326,7 +314,7 @@ export interface CollectionValidation {
   count_filtered: number | null
   sample_size: number
   /** Domain field name (plus pseudo-keys like "content", "vector",
-   *  "price>0", `operation=="sale"`) → fraction (0..1) present in the sample. */
+   *  `target>0`, a pinned filter value) → fraction (0..1) present in the sample. */
   coverage: Record<string, number> | null
   vector_dims_in_sample: number[]
   errors: string[]
@@ -385,6 +373,77 @@ export interface PredictResponse {
   warnings: string[]
 }
 
+/* ---------------- blend record (blend.json) ---------------- */
+
+/** One member of a blend, as recorded by the blend predictor. */
+export interface BlendMemberRecord {
+  index: number
+  /** "model" | "definition" | "inline". */
+  kind: string
+  predictor: string
+  /** Model or definition name; absent for inline members. */
+  source?: string | null
+  columns: string[]
+  n_cols: number
+  exclude_blocks?: string[]
+  frozen: boolean
+  /** False when a graceful stop landed before this member trained. */
+  included: boolean
+  /** Solo test metrics in target space (absent if excluded). */
+  solo_metrics?: Metrics | null
+}
+
+/** `blend.json`: how the blend was assembled, served for blend runs/models. */
+export interface BlendFile {
+  contract_version: number
+  rule: 'mean' | 'median'
+  weight_fit: 'none' | 'grid'
+  /** Final (post-grid, renormalized) weights, parallel to `members`. */
+  weights: number[]
+  members: BlendMemberRecord[]
+}
+
+/* ---------------- best-models group ---------------- */
+
+export interface BestModelEntry {
+  name: string
+  rank: number
+  metric: string
+  metric_value: number
+  run_id: string
+  predictor: string
+  dataset_id: string
+  source: 'auto' | 'pinned'
+  selected_at: string
+}
+
+export interface BestModelGroup {
+  primary_metric: string
+  size: number
+  entries: BestModelEntry[]
+  pinned: string[]
+  excluded: string[]
+  updated_at: string
+}
+
+export interface MemberPredictions {
+  name: string
+  rank: number
+  predictions: InferencePrediction[]
+}
+
+export interface ConsensusPoint {
+  row_id: number
+  predicted: number
+  n_models: number
+}
+
+export interface GroupPredictResponse {
+  members: MemberPredictions[]
+  consensus: ConsensusPoint[]
+  warnings: string[]
+}
+
 /* ---------------- manual listings ---------------- */
 
 export interface ListingCoordinates {
@@ -395,21 +454,9 @@ export interface ListingCoordinates {
 /** Corpus payload `metadata` keys, verbatim (camelCase as stored in Qdrant).
  *  Mirrors the domain field set; loosened to a record so generic views can
  *  read arbitrary domain fields while the well-known keys stay typed. */
+/** Stored listing metadata: domain fields keyed by their domain names (read
+ *  them via GET /api/domain), plus the framework-owned display extras. */
 export interface ListingMetadata extends Record<string, unknown> {
-  propertyType: string
-  operation: string
-  price: number
-  city: string
-  neighborhood: string
-  province: string
-  bedrooms: number
-  currency?: string | null
-  createdAt?: string | null
-  totalArea?: number | null
-  coveredArea?: number | null
-  bathrooms?: number | null
-  garages?: number | null
-  rooms?: number | null
   coordinates?: ListingCoordinates | null
   /** Photo URLs from the source page; display-only, never a model input. */
   images?: string[] | null
@@ -429,23 +476,10 @@ export interface Listing extends ListingSummary {
 }
 
 /** Create/update body: content is required; metadata fields are FLAT by
- *  domain field name and all optional. The known keys stay typed; generic
- *  forms add arbitrary domain fields via the index signature. */
+ *  domain field name and all optional (set via the index signature). Only
+ *  the framework-owned keys stay typed. */
 export interface CreateListingRequest extends Record<string, unknown> {
   content: string
-  propertyType?: string
-  operation?: string
-  price?: number
-  city?: string
-  neighborhood?: string
-  province?: string
-  bedrooms?: number
-  currency?: string
-  totalArea?: number
-  coveredArea?: number
-  bathrooms?: number
-  garages?: number
-  rooms?: number
   coordinates?: ListingCoordinates
   images?: string[]
   sourceUrl?: string

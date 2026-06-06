@@ -92,6 +92,7 @@ currency domains ignore it): `mode` `"filter"` (default; also `"off"` |
 `"convert"`), `keep` `"USD"`, `reconcile_collection`
 `"properties"`, `rate_source` (the rate series for `convert`).
 
+
 ## Workflows
 
 ### Preflight quality filters (no build)
@@ -138,9 +139,26 @@ new id. Builds queue behind any in-flight one.
 curl -s localhost:8080/api/datasets/<id>/rename -H content-type:application/json -d '{"name":"<display name>"}'
 ```
 
+## Delegate to the dataset-architect agent
+
+The workflows above are for quick, user-driven operations (one preflight, an
+inspect, a rename, a single agreed build). For bigger jobs — several dataset
+variants for a scan, lineage-aware design (what already exists, what fed the
+champions), or anything the user doesn't want to drive call-by-call — spawn
+the **dataset-architect** agent with the brief instead:
+
+- Default is **design mode**: it mines `experiments/PROJECT-FACTS.md`'s dataset lineage,
+  preflights, runs EVR/redundancy analysis, and returns a proposal with exact
+  build bodies — building nothing. Relay the proposal to the user.
+- To iterate, continue the SAME agent (SendMessage) with the feedback; once
+  the user approves, continue it with the approval and it builds, verifies
+  the manifests, and records the new datasets in `experiments/PROJECT-FACTS.md`.
+
 ## Relation to experiments
 
 The **model-definitions** skill's experiment workflow scans hyperparameters on
 *existing* datasets. When a scan's axis is dataset-level (PCA dims, quality
-filters, features like `raw_numerics`), use this skill to build one dataset
-per axis value first, then hand the `ds-…` ids to the scan.
+filters, features like `raw_numerics`), build one dataset per axis value
+first — inline via this skill, or via the dataset-architect agent — then hand
+the `ds-…` ids to the scan. The experiment-designer agent consults the
+architect directly for the same purpose.

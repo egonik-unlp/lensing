@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { Listing, PredictResponse } from '../api/types'
@@ -7,14 +7,22 @@ import ListingImage from '../components/ListingImage'
 import SubmitRow from '../components/SubmitRow'
 import ViewHeader from '../components/ViewHeader'
 import { useAsync } from '../hooks/useAsync'
-import { useDomain } from '../lib/DomainContext'
-import { fmtDateTime, fmtMoney, fmtSignedPct } from '../lib/format'
-import { bestModels, invalidateConsensus, median, toPredictItem } from '../lib/listingPredict'
+import { useDomain, useDocTitle } from '../lib/DomainContext'
+import {
+  categoricalFields,
+  currencyValue,
+  fieldLabel,
+  targetValue,
+  timestampFieldName,
+} from '../lib/domain'
+import { cap, fmtDateTime, fmtMoney, fmtSignedPct } from '../lib/format'
+import { invalidateConsensus, median, resolvePredictGroup, toPredictItem } from '../lib/listingPredict'
 import './models.css'
 import './newrun.css'
 import './listings.css'
 
 export default function ListingDetailView() {
+  const domain = useDomain()
   const { id } = useParams<{ id: string }>()
   const listingId = Number(id)
   const navigate = useNavigate()
@@ -22,9 +30,7 @@ export default function ListingDetailView() {
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
-  useEffect(() => {
-    document.title = `Listing ${id} · Price Guesser Models`
-  }, [id])
+  useDocTitle(id ? `${cap(domain.project.entity_noun)} ${id}` : null)
 
   if (listing.error) {
     return (
@@ -55,6 +61,13 @@ export default function ListingDetailView() {
 
   const l = listing.data
   const md = l.metadata
+  const listed = targetValue(domain, md)
+  const currency = currencyValue(domain, md)
+  const tsField = timestampFieldName(domain)
+  const created = tsField ? md[tsField] : null
+  const cats = categoricalFields(domain)
+  const lead = cats[0] ? md[cats[0].name] : null
+  const sub = cats[1] ? md[cats[1].name] : null
   const images = md.images ?? []
   const sourceHost = (() => {
     if (!md.sourceUrl) return null
@@ -66,7 +79,7 @@ export default function ListingDetailView() {
   })()
 
   const remove = async () => {
-    if (!window.confirm(`Delete listing ${l.id}? Its stored embedding is removed too.`)) return
+    if (!window.confirm(`Delete ${domain.project.entity_noun} ${l.id}? Its stored embedding is removed too.`)) return
     setDeleting(true)
     setDeleteError(null)
     try {
@@ -87,19 +100,22 @@ export default function ListingDetailView() {
         title={<ListingRef id={l.id} self />}
         meta={
           <span>
-            {md.propertyType || 'listing'}
-            {md.neighborhood ? <> in {md.neighborhood}</> : null}
-            {md.price > 0 ? (
+            {typeof lead === 'string' && lead ? lead : domain.project.entity_noun}
+            {typeof sub === 'string' && sub ? <> · {sub}</> : null}
+            {listed != null ? (
               <>
                 {' '}
                 · listed at{' '}
                 <span className="num">
-                  {fmtMoney(md.price)}
-                  {md.currency ? ` ${md.currency}` : ''}
+                  {fmtMoney(listed)}
+                  {currency ? ` ${currency}` : ''}
                 </span>
               </>
             ) : null}{' '}
-            · created <span className="num">{md.createdAt ? fmtDateTime(md.createdAt) : '—'}</span>
+            · created{' '}
+            <span className="num">
+              {typeof created === 'string' && created ? fmtDateTime(created) : '—'}
+            </span>
           </span>
         }
         actions={
@@ -124,43 +140,32 @@ export default function ListingDetailView() {
           {images.length > 0 && <Gallery images={images} listingId={l.id} />}
 
           <dl className="run-meta listing-meta">
+            {domain.fields
+              .filter((f) => f.role === 'categorical' || f.role === 'filter_only')
+              .map((f) => {
+                const v = md[f.name]
+                return (
+                  <div key={f.name}>
+                    <dt>{cap(fieldLabel(f))}</dt>
+                    <dd>{typeof v === 'string' && v ? v : '—'}</dd>
+                  </div>
+                )
+              })}
+            {domain.fields
+              .filter((f) => f.role === 'numeric')
+              .map((f) => {
+                const v = md[f.name]
+                return (
+                  <div key={f.name}>
+                    <dt>{cap(fieldLabel(f))}</dt>
+                    <dd className="num">{typeof v === 'number' && v ? v : '—'}</dd>
+                  </div>
+                )
+              })}
             <div>
-              <dt>Type</dt>
-              <dd>{md.propertyType || '—'}</dd>
-            </div>
-            <div>
-              <dt>Operation</dt>
-              <dd>{md.operation || '—'}</dd>
-            </div>
-            <div>
-              <dt>Location</dt>
-              <dd>{[md.neighborhood, md.city, md.province].filter(Boolean).join(', ') || '—'}</dd>
-            </div>
-            <div>
-              <dt>Bedrooms</dt>
-              <dd className="num">{md.bedrooms || '—'}</dd>
-            </div>
-            <div>
-              <dt>Bathrooms</dt>
-              <dd className="num">{md.bathrooms ?? '—'}</dd>
-            </div>
-            <div>
-              <dt>Rooms / garages</dt>
+              <dt>Listed {domain.project.target_noun}</dt>
               <dd className="num">
-                {md.rooms ?? '—'} / {md.garages ?? '—'}
-              </dd>
-            </div>
-            <div>
-              <dt>Area (total / covered)</dt>
-              <dd className="num">
-                {md.totalArea ? `${md.totalArea} m²` : '—'} /{' '}
-                {md.coveredArea ? `${md.coveredArea} m²` : '—'}
-              </dd>
-            </div>
-            <div>
-              <dt>Listed price</dt>
-              <dd className="num">
-                {md.price > 0 ? `${fmtMoney(md.price)} ${md.currency ?? ''}` : '— (unpriced)'}
+                {listed != null ? `${fmtMoney(listed)} ${currency ?? ''}` : '— (no value)'}
               </dd>
             </div>
             {md.coordinates && (md.coordinates.lat != null || md.coordinates.lon != null) && (
@@ -247,15 +252,22 @@ type ModelResult =
 
 function PredictPanel({ listing }: { listing: Listing }) {
   const domain = useDomain()
-  const models = useAsync(() => api.listModels(), [])
+  // One load: every promoted model (the picker) plus the best-models group
+  // (the default selection; server-maintained, heuristic fallback).
+  const models = useAsync(async () => {
+    const all = await api.listModels()
+    const group = await resolvePredictGroup(all)
+    return { all, group }
+  }, [])
   // null until the user touches the picker: the default (the best-model
   // group) is derived from the loaded list, not stored.
   const [chosen, setChosen] = useState<Set<string> | null>(null)
   const [busy, setBusy] = useState(false)
   const [results, setResults] = useState<Record<string, ModelResult> | null>(null)
 
-  const all = models.data ?? []
-  const selectedNames = chosen ?? new Set(bestModels(all).map((m) => m.name))
+  const all = models.data?.all ?? []
+  const groupNames = models.data?.group.names ?? []
+  const selectedNames = chosen ?? new Set(groupNames)
   const selected = all.filter((m) => selectedNames.has(m.name))
 
   const toggle = (name: string) =>
@@ -272,7 +284,7 @@ function PredictPanel({ listing }: { listing: Listing }) {
     setResults(Object.fromEntries(selected.map((m) => [m.name, { state: 'pending' } as ModelResult])))
     // The stored listing already holds its embedding, so each prediction is
     // one inline-items call. The item deliberately excludes the listed
-    // price — it is the answer key, not an input. Calls go out together;
+    // target value — it is the answer key, not an input. Calls go out together;
     // the server's run-slot semaphore paces the predictors.
     const item = toPredictItem(listing, domain)
     await Promise.all(
@@ -298,11 +310,11 @@ function PredictPanel({ listing }: { listing: Listing }) {
     : []
   const consensus = median(done.map((r) => r.predicted))
   const warnings = results ? [...new Set(done.flatMap((r) => r.warnings))] : []
-  const listed = listing.metadata.price > 0 ? listing.metadata.price : null
+  const listed = targetValue(domain, listing.metadata)
 
   return (
     <div className="panel">
-      <h2>Predict price</h2>
+      <h2>Predict {domain.project.target_noun}</h2>
       {models.error ? (
         <div className="error-block" role="alert">
           Could not load models: {models.error}{' '}
@@ -315,7 +327,7 @@ function PredictPanel({ listing }: { listing: Listing }) {
       ) : all.length === 0 ? (
         <p className="muted">
           No promoted models yet. <Link to="/">Train a run</Link> and promote it, then come back to
-          predict this listing's price.
+          predict this {domain.project.entity_noun}&rsquo;s {domain.project.target_noun}.
         </p>
       ) : (
         <>
@@ -327,7 +339,7 @@ function PredictPanel({ listing }: { listing: Listing }) {
               <span>
                 <button
                   className="btn-link"
-                  onClick={() => setChosen(new Set(bestModels(all).map((m) => m.name)))}
+                  onClick={() => setChosen(new Set(groupNames))}
                   disabled={busy}
                 >
                   best
@@ -361,7 +373,7 @@ function PredictPanel({ listing }: { listing: Listing }) {
             </div>
           </div>
           <SubmitRow
-            label={selected.length > 1 ? `Predict with ${selected.length} models` : 'Predict price'}
+            label={selected.length > 1 ? `Predict with ${selected.length} models` : `Predict ${domain.project.target_noun}`}
             busyLabel="Predicting…"
             busy={busy}
             disabled={selected.length === 0}
@@ -442,7 +454,7 @@ function PredictPanel({ listing }: { listing: Listing }) {
           )}
           <p className="hp-hint listing-embed-note">
             The embedding was computed server-side at creation time; predictions assume the
-            training corpus used the same embedding model. The listed price, photos, and source
+            training corpus used the same embedding model. The listed {domain.project.target_noun}, photos, and source
             URL are never part of the predict payload.
           </p>
         </>

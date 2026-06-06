@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 
-use pg_core::{ModelRecord, RunMeta};
+use lensing_core::{BestModelEntry, ModelRecord, RunMeta};
 use tokio::sync::mpsc;
 
 use crate::queries;
@@ -24,6 +24,7 @@ enum Op {
     ModelArtifacts { name: String, files: Vec<(String, Vec<u8>)> },
     ModelArtifactsDelete(String),
     ModelArtifactsRename { old: String, new: String },
+    BestModelsReplace(Vec<BestModelEntry>),
 }
 
 #[derive(Clone)]
@@ -80,6 +81,10 @@ impl DbSink {
             new: new.to_string(),
         });
     }
+    /// Replace the best-models group member set (whole-table swap).
+    pub fn best_models_replace(&self, entries: &[BestModelEntry]) {
+        let _ = self.tx.send(Op::BestModelsReplace(entries.to_vec()));
+    }
 }
 
 async fn worker(db: crate::Db, mut rx: mpsc::UnboundedReceiver<Op>) {
@@ -96,7 +101,7 @@ async fn worker(db: crate::Db, mut rx: mpsc::UnboundedReceiver<Op>) {
                     None => match queries::next_event_seq(&db, &run_id).await {
                         Ok(s) => s,
                         Err(e) => {
-                            eprintln!("[pg-db] event seq for {run_id}: {e:#}");
+                            eprintln!("[lensing-db] event seq for {run_id}: {e:#}");
                             continue;
                         }
                     },
@@ -124,9 +129,10 @@ async fn worker(db: crate::Db, mut rx: mpsc::UnboundedReceiver<Op>) {
             Op::ModelArtifactsRename { old, new } => {
                 queries::rename_model_artifacts(&db, &old, &new).await
             }
+            Op::BestModelsReplace(entries) => queries::replace_best_models(&db, &entries).await,
         };
         if let Err(e) = result {
-            eprintln!("[pg-db] mirror write failed (backfill will heal at next startup): {e:#}");
+            eprintln!("[lensing-db] mirror write failed (backfill will heal at next startup): {e:#}");
         }
     }
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Random forest predictor. Implements the predictor contract in README.md
 with numpy + scikit-learn: a bagged tree ensemble fit in transformed
-(log-price) target space, price-space metrics on the test split. Tree
+(log) target space, target-space metrics on the test split. Tree
 ensembles are scale-invariant, so there is no standardization step and no
 scaler.json.
 
@@ -43,14 +43,14 @@ def read_features(dir: Path, n_rows: int, n_cols: int) -> np.ndarray:
 
 
 def invert_target(y: np.ndarray, transform: str) -> np.ndarray:
-    """Map transformed-space targets back to price space."""
+    """Map transformed-space targets back to target space."""
     if transform == "log1p":
         return np.expm1(y)
     return y
 
 
 def compute_metrics(actual: np.ndarray, predicted: np.ndarray) -> dict:
-    """Price-space metrics, formula identical to pg-core::compute_metrics
+    """Target-space metrics, formula identical to lensing-core::compute_metrics
     (medape for even n = mean of the two middle APEs)."""
     n = len(actual)
     err = predicted - actual
@@ -122,7 +122,7 @@ def train(dataset: Path, output: Path, hp_path: Path) -> None:
 
 def predict(model_dir: Path, input_dir: Path, output: Path) -> None:
     """Contract v2 predict: load the joblib model, predict on the
-    server-featurized mini-artifact, write price-space predictions."""
+    server-featurized mini-artifact, write target-space predictions."""
     model = joblib.load(model_dir / "model.joblib")
 
     manifest = json.loads((input_dir / "manifest.json").read_text())

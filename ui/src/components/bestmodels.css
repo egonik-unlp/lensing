@@ -1,0 +1,79 @@
+/* Best-models group: the ranked panel above the promoted-models table. */
+
+.best-models {
+  margin-bottom: var(--sp-6);
+}
+
+.best-models-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2) var(--sp-3);
+  margin-bottom: var(--sp-2);
+}
+
+.best-models-head .section-title {
+  margin: 0;
+}
+
+.best-models-meta {
+  font-size: var(--text-dense);
+  font-weight: 400;
+  margin-left: var(--sp-2);
+}
+
+.best-models-empty {
+  font-size: var(--text-dense);
+  max-width: 64ch;
+}
+
+.best-rank-col {
+  width: 2.4rem;
+}
+
+.best-rank {
+  color: var(--ink-secondary);
+}
+
+/* A pinned member: curated in by hand (or the selector agent). */
+.best-pin {
+  margin-left: 0.8ch;
+  padding: 0.05rem 0.4rem;
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+  color: var(--ink-secondary);
+  background: var(--select-tint);
+  border: 1px solid var(--select-border);
+  border-radius: var(--radius);
+  white-space: nowrap;
+}
+
+.best-excluded {
+  margin-top: var(--sp-2);
+  font-size: var(--text-dense);
+}
+
+.best-excluded summary {
+  cursor: pointer;
+  color: var(--ink-secondary);
+}
+
+.best-excluded p {
+  margin: var(--sp-1) 0 0;
+  color: var(--ink-secondary);
+}
+
+/* Rank badge inside the promoted-models table: membership at a glance. */
+.model-rank-badge {
+  margin-left: 0.8ch;
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-secondary);
+  padding: 0.05rem 0.4rem;
+  background: var(--surface);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius);
+  white-space: nowrap;
+}

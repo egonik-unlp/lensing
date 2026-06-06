@@ -188,7 +188,7 @@
   max-width: 22ch;
 }
 
-/* Paired threshold fields (e.g. price min/max) share a row. */
+/* Paired threshold fields (e.g. target min/max) share a row. */
 .quality-range {
   display: flex;
   gap: var(--sp-4);

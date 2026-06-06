@@ -74,8 +74,11 @@
   --good: oklch(0.5 0.105 155);
   --good-soft: oklch(0.94 0.025 155);
 
-  /* Type — denser than before; this is an instrument for the hundredth visit */
+  /* Type — denser than before; this is an instrument for the hundredth visit.
+     Display (Sora) carries the brand: wordmark, page titles, section titles.
+     Body stays Inter for dense-table legibility; every number stays mono. */
   --font-ui: 'Inter Variable', system-ui, sans-serif;
+  --font-display: 'Sora Variable', 'Inter Variable', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
   --text-label: 0.71875rem; /* 11.5 — labels, units, axis ticks */
   --text-dense: 0.78125rem; /* 12.5 — dense tables, logs */

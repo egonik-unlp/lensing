@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """XGBoost predictor. Implements the predictor contract in README.md with
-numpy + xgboost: gradient-boosted trees fit in transformed (log-price) target
-space, price-space metrics on the test split. Tree ensembles are
+numpy + xgboost: gradient-boosted trees fit in transformed (log) target
+space, target-space metrics on the test split. Tree ensembles are
 scale-invariant, so there is no standardization step and no scaler.json.
 
 The model file is XGBoost's native UBJSON format (model.ubj), which is stable
@@ -9,6 +9,11 @@ across library versions — predict needs no pickle/version pinning.
 
 Boosting rounds are reported as epoch events so the UI loss chart works, and
 the server's STOP file is honored between rounds (supports_stop = true).
+
+Early stopping (early_stopping_rounds > 0): a val_fraction slice of the TRAIN
+rows is held out as the monitored set — the test split stays untouched for
+final metrics — and the saved ensemble is truncated at best_iteration, so the
+artifact keeps only the trees up to the validation optimum.
 
 Run from the repo's shared predictor venv (predictors/.venv, see
 `zig build py-setup`)."""
@@ -23,6 +28,8 @@ import xgboost as xgb
 
 DEFAULTS = {
     "n_estimators": 500,
+    "early_stopping_rounds": 0,  # 0 = off
+    "val_fraction": 0.15,  # train-carved monitored split (early stopping only)
     "max_depth": 6,
     "learning_rate": 0.05,
     "subsample": 0.8,
@@ -48,27 +55,27 @@ def read_features(dir: Path, n_rows: int, n_cols: int) -> np.ndarray:
 
 
 def invert_target(y: np.ndarray, transform: str) -> np.ndarray:
-    """Map transformed-space targets back to price space."""
+    """Map transformed-space targets back to target space."""
     if transform == "log1p":
         return np.expm1(y)
     return y
 
 
 def sample_weights(train_y: np.ndarray, transform: str, gamma: float) -> np.ndarray | None:
-    """Price-proportional weights w = (price / median)^gamma, clipped so no
+    """Target-proportional weights w = (target / median)^gamma, clipped so no
     row carries more than MAX_WEIGHT_RATIO x the median weight, normalized to
-    mean 1 — counters the corpus-wide expensive-tail underprediction.
+    mean 1 — counters the corpus-wide high-tail underprediction.
     gamma=0 (default) means uniform weights (returns None)."""
     if gamma <= 0.0:
         return None
-    price = np.maximum(invert_target(train_y.astype(np.float64), transform), 0.0)
-    w = (price / np.median(price)) ** gamma
+    target = np.maximum(invert_target(train_y.astype(np.float64), transform), 0.0)
+    w = (target / np.median(target)) ** gamma
     w = np.minimum(w, np.median(w) * MAX_WEIGHT_RATIO)
     return w / w.mean()
 
 
 def compute_metrics(actual: np.ndarray, predicted: np.ndarray) -> dict:
-    """Price-space metrics, formula identical to pg-core::compute_metrics
+    """Target-space metrics, formula identical to lensing-core::compute_metrics
     (medape for even n = mean of the two middle APEs)."""
     n = len(actual)
     err = predicted - actual
@@ -129,10 +136,28 @@ def train(dataset: Path, output: Path, hp_path: Path) -> None:
     train_x, train_y = features[train_idx], target[train_idx]
     test_x, test_y = features[test_idx], target[test_idx]
 
+    # Early stopping: carve a held-out validation set from the TRAIN rows to
+    # monitor — never the test split, which stays untouched for final
+    # metrics. xgboost monitors the last eval_set entry.
+    es_rounds = int(hp["early_stopping_rounds"])
+    if es_rounds > 0:
+        n_val = max(1, round(len(train_idx) * float(hp["val_fraction"])))
+        assert n_val < len(train_idx), "early-stop carve left no training rows"
+        perm = np.random.default_rng(int(hp["seed"])).permutation(len(train_idx))
+        val_pos, fit_pos = perm[:n_val], perm[n_val:]
+        fit_x, fit_y = train_x[fit_pos], train_y[fit_pos]
+        val_x, val_y = train_x[val_pos], train_y[val_pos]
+        emit({"event": "log", "msg": f"early stopping: {es_rounds} rounds "
+              f"patience, monitoring {n_val} held-out train rows "
+              f"(val_fraction {hp['val_fraction']}); test split untouched"})
+    else:
+        fit_x, fit_y = train_x, train_y
+        val_x, val_y = test_x, test_y
+
     transform = manifest["target"]["transform"]
-    weights = sample_weights(train_y, transform, float(hp["weight_gamma"]))
+    weights = sample_weights(fit_y, transform, float(hp["weight_gamma"]))
     if weights is not None:
-        emit({"event": "log", "msg": f"price weights: gamma {hp['weight_gamma']}, "
+        emit({"event": "log", "msg": f"target weights: gamma {hp['weight_gamma']}, "
               f"max {weights.max():.1f}x mean (clipped at "
               f"{MAX_WEIGHT_RATIO:.0f}x median)"})
 
@@ -147,13 +172,25 @@ def train(dataset: Path, output: Path, hp_path: Path) -> None:
         reg_lambda=float(hp["reg_lambda"]),
         random_state=int(hp["seed"]),
         eval_metric="rmse",
+        early_stopping_rounds=es_rounds if es_rounds > 0 else None,
         callbacks=[ProgressCallback(output, int(hp["n_estimators"]))],
         n_jobs=-1,
     )
-    model.fit(train_x, train_y, sample_weight=weights,
-              eval_set=[(train_x, train_y), (test_x, test_y)], verbose=False)
+    model.fit(fit_x, fit_y, sample_weight=weights,
+              eval_set=[(fit_x, fit_y), (val_x, val_y)], verbose=False)
 
-    predicted = np.maximum(invert_target(model.predict(test_x), transform), 0.0)
+    # Best-checkpoint restore: predict with and save only the trees up to the
+    # best validation round (defensive fallback to all rounds in case a STOP
+    # arrived before the early-stopping callback recorded a best iteration).
+    best = getattr(model, "best_iteration", None) if es_rounds > 0 else None
+    if best is not None:
+        n_total = model.get_booster().num_boosted_rounds()
+        emit({"event": "log", "msg": f"early stop: best iteration "
+              f"{best + 1} of {n_total} rounds; saving truncated ensemble"})
+        predicted_t = model.predict(test_x, iteration_range=(0, best + 1))
+    else:
+        predicted_t = model.predict(test_x)
+    predicted = np.maximum(invert_target(predicted_t, transform), 0.0)
     actual = invert_target(test_y.astype(np.float64), transform)
 
     metrics = compute_metrics(actual, predicted)
@@ -163,7 +200,10 @@ def train(dataset: Path, output: Path, hp_path: Path) -> None:
     ]
     (output / "metrics.json").write_text(json.dumps(metrics))
     (output / "predictions.json").write_text(json.dumps(predictions))
-    model.save_model(output / "model.ubj")
+    if best is not None:
+        model.get_booster()[: best + 1].save_model(output / "model.ubj")
+    else:
+        model.save_model(output / "model.ubj")
 
     emit({"event": "log", "msg": f"MAE {metrics['mae']:,.0f}  "
           f"RMSE {metrics['rmse']:,.0f}  medAPE {metrics['medape']:.1%}  "
@@ -173,7 +213,7 @@ def train(dataset: Path, output: Path, hp_path: Path) -> None:
 
 def predict(model_dir: Path, input_dir: Path, output: Path) -> None:
     """Contract v2 predict: load the native-format booster, predict on the
-    server-featurized mini-artifact, write price-space predictions."""
+    server-featurized mini-artifact, write target-space predictions."""
     model = xgb.XGBRegressor()
     model.load_model(model_dir / "model.ubj")
 

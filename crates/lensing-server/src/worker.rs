@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 use chrono::Utc;
-use pg_core::{Metrics, ProgressEvent, RunMeta, RunStatus};
+use lensing_core::{Metrics, ProgressEvent, RunMeta, RunStatus};
 use serde_json::json;
 
 use crate::registry::Registry;
@@ -32,7 +32,7 @@ pub async fn run(
     once: bool,
     poll_secs: u64,
 ) -> Result<()> {
-    let db = pg_db::connect(&database_url).await?;
+    let db = lensing_db::connect(&database_url).await?;
     let registry = Registry::load(&root.join("registry.toml"))?;
     let worker_id = format!(
         "{}:{}",
@@ -45,7 +45,7 @@ pub async fn run(
 
     loop {
         let claimed =
-            pg_db::queries::claim_queued_run(&db, &worker_id, &Utc::now().to_rfc3339()).await?;
+            lensing_db::queries::claim_queued_run(&db, &worker_id, &Utc::now().to_rfc3339()).await?;
         match claimed {
             Some(meta) => {
                 eprintln!("[worker {worker_id}] claimed {}", meta.run_id);
@@ -55,7 +55,7 @@ pub async fn run(
                     failed.status = RunStatus::Failed;
                     failed.finished_at = Some(Utc::now().to_rfc3339());
                     failed.stderr_tail = Some(format!("worker error: {e:#}"));
-                    let _ = pg_db::queries::upsert_run(&db, &failed).await;
+                    let _ = lensing_db::queries::upsert_run(&db, &failed).await;
                 }
                 if once {
                     return Ok(());
@@ -73,7 +73,7 @@ pub async fn run(
 }
 
 async fn process(
-    db: &pg_db::Db,
+    db: &lensing_db::Db,
     registry: &Registry,
     root: &Path,
     hub_url: &str,
@@ -95,7 +95,7 @@ async fn process(
     std::fs::write(run_dir.join("hp.json"), serde_json::to_vec_pretty(&meta.hyperparams)?)?;
 
     // Progress lines stream to the database through the ordered sink.
-    let sink = pg_db::sink::DbSink::spawn(db.clone());
+    let sink = lensing_db::sink::DbSink::spawn(db.clone());
     let run_id = meta.run_id.clone();
     let sink2 = sink.clone();
     let on_line = move |line: &str| {
@@ -141,8 +141,8 @@ async fn process(
     // host's disk. meta/hp/progress live in the runs tables already.
     let files = collect_artifacts(&run_dir)?;
     let n = files.len();
-    pg_db::queries::put_run_artifacts(db, &meta.run_id, &files).await?;
-    pg_db::queries::upsert_run(db, &meta).await?;
+    lensing_db::queries::put_run_artifacts(db, &meta.run_id, &files).await?;
+    lensing_db::queries::upsert_run(db, &meta).await?;
     sink.run_event(
         &meta.run_id,
         &json!({"event":"status","status":meta.status}).to_string(),

@@ -1,10 +1,10 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
-use pg_pipeline::{build_dataset, BuildConfig};
+use lensing_pipeline::{build_dataset, BuildConfig};
 
 #[derive(Parser)]
-#[command(name = "lensing-pipeline", about = "Build price-guesser dataset artifacts from Qdrant")]
+#[command(name = "lensing-pipeline", about = "Build dataset artifacts from a Qdrant corpus")]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -16,8 +16,9 @@ enum Command {
     Build {
         #[arg(long, default_value = "http://localhost:6333")]
         qdrant_url: String,
-        #[arg(long, default_value = "properties-tagged")]
-        collection: String,
+        /// Qdrant collection (default: domain.toml `corpus.collection`).
+        #[arg(long)]
+        collection: Option<String>,
         #[arg(long, default_value = "data/datasets")]
         out: std::path::PathBuf,
         #[arg(long, default_value_t = 32)]
@@ -55,9 +56,10 @@ enum Command {
         /// in the listing text.
         #[arg(long)]
         area_content_backfill: bool,
-        /// Companion collection for the raw-numerics join ("" disables).
-        #[arg(long, default_value = "properties")]
-        numerics_collection: String,
+        /// Companion collection for the raw-numerics join ("" disables;
+        /// default: domain.toml `currency.reconcile_collection`).
+        #[arg(long)]
+        numerics_collection: Option<String>,
         /// Disable the nonpositive-price quality filter.
         #[arg(long)]
         no_filter_nonpositive_price: bool,
@@ -83,9 +85,10 @@ enum Command {
         /// (ARS→USD @ per-date rate), or off.
         #[arg(long, default_value = "filter")]
         currency_mode: String,
-        /// Companion collection for the currency reconcile join ("" disables).
-        #[arg(long, default_value = "properties")]
-        currency_reconcile: String,
+        /// Companion collection for the currency reconcile join ("" disables;
+        /// default: domain.toml `currency.reconcile_collection`).
+        #[arg(long)]
+        currency_reconcile: Option<String>,
         /// Exchange-rate series for convert mode: blue or oficial.
         #[arg(long, default_value = "blue")]
         currency_rate_source: String,
@@ -124,21 +127,35 @@ fn main() -> Result<()> {
             currency_rate_source,
         } => {
             let mode = match currency_mode.as_str() {
-                "off" => pg_core::CurrencyMode::Off,
-                "filter" => pg_core::CurrencyMode::Filter,
-                "convert" => pg_core::CurrencyMode::Convert,
+                "off" => lensing_core::CurrencyMode::Off,
+                "filter" => lensing_core::CurrencyMode::Filter,
+                "convert" => lensing_core::CurrencyMode::Convert,
                 other => anyhow::bail!("unknown currency mode {other:?} (off|filter|convert)"),
             };
+            // domain.toml at the CWD (repo root), else the embedded default.
+            // Collection flags fall back to the domain's corpus config.
+            let domain = lensing_core::domain::Domain::load_or_default(std::path::Path::new("."))?;
+            let collection =
+                collection.unwrap_or_else(|| domain.corpus.collection.clone());
+            let companion_default =
+                || domain.currency.as_ref().and_then(|c| c.reconcile_collection.clone());
+            let numerics_collection = match numerics_collection {
+                Some(c) => (!c.is_empty()).then_some(c),
+                None => companion_default(),
+            };
+            let currency_reconcile = match currency_reconcile {
+                Some(c) => (!c.is_empty()).then_some(c),
+                None => companion_default(),
+            };
             let cfg = BuildConfig {
-                // domain.toml at the CWD (repo root), else the embedded default.
-                domain: pg_core::domain::Domain::load_or_default(std::path::Path::new("."))?,
+                domain,
                 qdrant_url,
                 collection,
                 out_root: out,
                 test_ratio,
                 seed,
                 log_target: !no_log_target,
-                features: pg_core::FeatureConfig {
+                features: lensing_core::FeatureConfig {
                     pca_dims,
                     bedrooms: !no_bedrooms,
                     property_type: !no_property_type,
@@ -151,7 +168,7 @@ fn main() -> Result<()> {
                     // API-driven options; the CLI keeps defaults.
                     ..Default::default()
                 },
-                quality: pg_core::QualityFilterConfig {
+                quality: lensing_core::QualityFilterConfig {
                     nonpositive_price: !no_filter_nonpositive_price,
                     price_outlier: filter_price_outliers,
                     price_outlier_mad_z,
@@ -163,15 +180,13 @@ fn main() -> Result<()> {
                     // short content) are API-driven; the CLI keeps defaults.
                     ..Default::default()
                 },
-                currency: pg_core::CurrencyConfig {
+                currency: lensing_core::CurrencyConfig {
                     mode,
-                    reconcile_collection: (!currency_reconcile.is_empty())
-                        .then_some(currency_reconcile),
+                    reconcile_collection: currency_reconcile,
                     rate_source: currency_rate_source,
                     ..Default::default()
                 },
-                numerics_collection: (!numerics_collection.is_empty())
-                    .then_some(numerics_collection),
+                numerics_collection,
             };
             let manifest = build_dataset(&cfg, &|stage| eprintln!("[build] {stage}"))?;
             println!("{}", serde_json::to_string_pretty(&serde_json::json!({

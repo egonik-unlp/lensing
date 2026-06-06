@@ -1,4 +1,4 @@
--- Metadata/parameter state for price-guesser-models.
+-- Metadata/parameter state for the lensing server.
 --
 -- Timestamps are stored as TEXT (RFC 3339, exactly as the Rust structs carry
 -- them): Postgres TIMESTAMPTZ truncates to microseconds, which would change
@@ -99,3 +99,20 @@ CREATE TABLE IF NOT EXISTS model_artifacts (
     bytes BYTEA NOT NULL,
     PRIMARY KEY (name, path)
 );
+
+-- The best-models group: a flat snapshot of the current member set, rewritten
+-- wholesale on each recompute (definitions-style full swap). The JSON mirror
+-- under data/best-models.json is the file copy on the backfill path and also
+-- carries the group's pinned/excluded curation lists.
+CREATE TABLE IF NOT EXISTS best_models (
+    name         TEXT PRIMARY KEY,
+    rank         INTEGER NOT NULL,
+    metric       TEXT NOT NULL,
+    metric_value DOUBLE PRECISION NOT NULL,
+    run_id       TEXT NOT NULL,
+    predictor    TEXT NOT NULL,
+    dataset_id   TEXT NOT NULL,
+    source       TEXT NOT NULL,            -- 'auto' | 'pinned'
+    selected_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS best_models_rank_idx ON best_models (rank);

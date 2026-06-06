@@ -6,8 +6,8 @@
 use std::collections::HashMap;
 
 use anyhow::{ensure, Result};
-use pg_core::domain::{Domain, NumericEncode};
-use pg_core::{ColumnDesc, ColumnKind, FeatureConfig};
+use lensing_core::domain::{Domain, NumericEncode};
+use lensing_core::{ColumnDesc, ColumnKind, FeatureConfig};
 
 use crate::qdrant::RawPoint;
 
@@ -203,7 +203,7 @@ impl Encoder {
     /// consecutive one-hot columns regroup into vocabularies, a trailing
     /// `__other__` value marking the catch-all bucket.
     pub fn from_columns(columns: &[ColumnDesc]) -> Result<Self> {
-        Self::from_columns_with_bounds(columns, pg_core::manifest::legacy_coordinate_bounds())
+        Self::from_columns_with_bounds(columns, lensing_core::manifest::legacy_coordinate_bounds())
     }
 
     /// Like [`Encoder::from_columns`], with explicit coordinate bounds (new
@@ -463,7 +463,7 @@ pub fn assemble(projected: &[f32], k: usize, encoder: &Encoder, points: &[RawPoi
 mod tests {
     use super::*;
     use crate::qdrant::Payload;
-    use pg_core::domain::Domain;
+    use lensing_core::domain::Domain;
     use serde_json::json;
 
     fn pt(total_area: Option<f64>, bathrooms: Option<f64>) -> RawPoint {

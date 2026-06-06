@@ -3,8 +3,8 @@
 //! dims, so they are deliberately excluded — both for correctness (no spurious
 //! correlations) and to keep the pairwise scan O(p²n) over a small p.
 
-use pg_core::redundancy::{CorrelatedPair, NearZeroColumn, OnehotGroupStat, RedundancyReport};
-use pg_core::ColumnKind;
+use lensing_core::redundancy::{CorrelatedPair, NearZeroColumn, OnehotGroupStat, RedundancyReport};
+use lensing_core::ColumnKind;
 
 use crate::features::Encoder;
 use crate::qdrant::RawPoint;

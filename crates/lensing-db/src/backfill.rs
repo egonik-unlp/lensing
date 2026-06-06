@@ -9,7 +9,7 @@
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use pg_core::{ModelDefinition, ModelRecord, RunMeta};
+use lensing_core::{ModelDefinition, ModelRecord, RunMeta};
 use serde::Deserialize;
 
 
@@ -24,6 +24,7 @@ pub struct BackfillReport {
     pub models_found: usize,
     pub datasets_found: usize,
     pub presets_found: usize,
+    pub best_models_found: usize,
     /// Files that could not be read/parsed: (path, error). Skipped, kept on disk.
     pub problems: Vec<(String, String)>,
 }
@@ -56,6 +57,10 @@ impl BackfillReport {
             "  hp presets:  {:>6} on disk                            | {:>6} in db\n",
             self.presets_found, db.hp_presets
         ));
+        out.push_str(&format!(
+            "  best models: {:>6} on disk                            | {:>6} in db\n",
+            self.best_models_found, db.best_models
+        ));
         if self.problems.is_empty() {
             out.push_str("  problems: none\n");
         } else {
@@ -76,6 +81,7 @@ impl BackfillReport {
             && db.models >= self.models_found as i64
             && db.datasets >= self.datasets_found as i64
             && db.hp_presets >= self.presets_found as i64
+            && db.best_models >= self.best_models_found as i64
     }
 }
 
@@ -87,6 +93,7 @@ pub struct TableCounts {
     pub models: i64,
     pub datasets: i64,
     pub hp_presets: i64,
+    pub best_models: i64,
 }
 
 pub async fn table_counts(db: &crate::Db) -> Result<TableCounts> {
@@ -97,6 +104,7 @@ pub async fn table_counts(db: &crate::Db) -> Result<TableCounts> {
         models: queries::count(db, "models").await?,
         datasets: queries::count(db, "datasets").await?,
         hp_presets: queries::count(db, "hp_presets").await?,
+        best_models: queries::count(db, "best_models").await?,
     })
 }
 
@@ -220,6 +228,20 @@ pub async fn backfill(db: &crate::Db, root: &Path) -> Result<BackfillReport> {
         let created_at = manifest.get("created_at").and_then(|v| v.as_str()).map(str::to_string);
         if let Err(e) = queries::upsert_dataset(db, &id, created_at.as_deref(), &manifest).await {
             report.problems.push((manifest_path.display().to_string(), format!("{e:#}")));
+        }
+    }
+
+    // -------- best-models group (file wins; whole-document swap) --------
+    let group_path = root.join("data/best-models.json");
+    if group_path.is_file() {
+        match read_json::<lensing_core::BestModelGroup>(&group_path) {
+            Ok(group) => {
+                report.best_models_found = group.entries.len();
+                if let Err(e) = queries::replace_best_models(db, &group.entries).await {
+                    report.problems.push((group_path.display().to_string(), format!("{e:#}")));
+                }
+            }
+            Err(e) => report.problems.push((group_path.display().to_string(), format!("{e:#}"))),
         }
     }
 

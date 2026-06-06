@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use chrono::Utc;
-use pg_core::{Metrics, ProgressEvent, RunMeta, RunStatus};
+use lensing_core::{Metrics, ProgressEvent, RunMeta, RunStatus};
 use serde_json::json;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 use tokio::process::Command;
@@ -108,11 +108,11 @@ pub async fn enqueue_run(
         exit_code: None,
         stderr_tail: None,
         metrics: None,
-        contract_version: pg_core::CONTRACT_VERSION,
+        contract_version: lensing_core::CONTRACT_VERSION,
         has_checkpoint: false,
         from_definition,
     };
-    pg_db::queries::upsert_run(db, &meta).await?;
+    lensing_db::queries::upsert_run(db, &meta).await?;
     Ok(run_id)
 }
 
@@ -122,10 +122,10 @@ pub async fn enqueue_run(
 /// unknown to the database too.
 pub async fn materialize_run(state: &AppState, id: &str) -> Result<bool> {
     let Some(db) = &state.db else { return Ok(false) };
-    let Some(meta) = pg_db::queries::load_run(db, id).await? else {
+    let Some(meta) = lensing_db::queries::load_run(db, id).await? else {
         return Ok(false);
     };
-    let files = pg_db::queries::load_run_artifacts(db, id).await?;
+    let files = lensing_db::queries::load_run_artifacts(db, id).await?;
     let run_dir = state.runs_dir().join(id);
     std::fs::create_dir_all(&run_dir)?;
     std::fs::write(run_dir.join("meta.json"), serde_json::to_vec_pretty(&meta)?)?;
@@ -179,7 +179,7 @@ pub fn start_run(
         exit_code: None,
         stderr_tail: None,
         metrics: None,
-        contract_version: pg_core::CONTRACT_VERSION,
+        contract_version: lensing_core::CONTRACT_VERSION,
         has_checkpoint: false,
         from_definition,
     };
@@ -272,6 +272,12 @@ async fn orchestrate(
     // Terminal line: tells SSE clients to refetch meta and close.
     push(json!({"event":"status","status":meta.status}));
     state.live_runs.lock().unwrap().remove(&meta.run_id);
+
+    // A finished run with metrics may belong in the best-models group;
+    // recompute is spawned so run finalization never blocks on it.
+    if matches!(meta.status, RunStatus::Succeeded | RunStatus::Stopped) {
+        crate::best_models::spawn_recompute(state.clone());
+    }
 }
 
 async fn run_predictor(

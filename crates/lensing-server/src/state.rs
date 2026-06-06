@@ -13,7 +13,7 @@ pub struct AppState {
     pub root: PathBuf,
     /// The domain configuration (`domain.toml`): corpus schema, target,
     /// feature fields, quality bindings, UI vocabulary.
-    pub domain: Arc<pg_core::domain::Domain>,
+    pub domain: Arc<lensing_core::domain::Domain>,
     pub registry: Registry,
     pub qdrant_url: String,
     pub collection: String,
@@ -28,9 +28,9 @@ pub struct AppState {
     /// Metadata database. `None` means the server runs file-only (degraded:
     /// Postgres unreachable at startup); everything still works off `data/`
     /// and `models.toml`, and the next startup's backfill heals the mirror.
-    pub db: Option<pg_db::Db>,
+    pub db: Option<lensing_db::Db>,
     /// Ordered async mirror for run/model/dataset file writes.
-    pub db_sink: Option<pg_db::sink::DbSink>,
+    pub db_sink: Option<lensing_db::sink::DbSink>,
     /// Model definitions. The database is authoritative (when up); every
     /// mutation also re-exports `models.toml` as the git-diffable snapshot.
     /// tokio Mutex: held across the database write so mutations serialize.
@@ -45,6 +45,9 @@ pub struct AppState {
     pub run_slots: Arc<Semaphore>,
     /// Caps concurrent dataset builds.
     pub build_slots: Arc<Semaphore>,
+    /// Serializes best-models recomputes (a burst of run completions must
+    /// not race on the group document).
+    pub best_models_lock: tokio::sync::Mutex<()>,
 }
 
 impl AppState {

@@ -98,7 +98,7 @@ pub enum TargetTransform {
 }
 
 impl TargetTransform {
-    /// Map a transformed target value back to price space.
+    /// Map a transformed target value back to target space.
     pub fn invert(&self, y: f64) -> f64 {
         match self {
             TargetTransform::Log1p => y.exp_m1(),
@@ -106,10 +106,10 @@ impl TargetTransform {
         }
     }
 
-    pub fn apply(&self, price: f64) -> f64 {
+    pub fn apply(&self, value: f64) -> f64 {
         match self {
-            TargetTransform::Log1p => price.ln_1p(),
-            TargetTransform::None => price,
+            TargetTransform::Log1p => value.ln_1p(),
+            TargetTransform::None => value,
         }
     }
 }
@@ -164,7 +164,7 @@ pub struct FeatureConfig {
     pub area_content_backfill: bool,
     /// Latitude/longitude from the raw collection's `metadata.coordinates`,
     /// reconciled by point id like the numeric fields: raw-degree lat/lon
-    /// columns plus a single pair-missing indicator. Out-of-Argentina values
+    /// columns plus a single pair-missing indicator. Out-of-bounds values
     /// are treated as missing (mis-geocodes).
     #[serde(default)]
     pub coordinates: bool,
@@ -185,7 +185,7 @@ fn default_top_n_40() -> usize {
 }
 
 /// Coordinate bounds of artifacts frozen before the domain configuration
-/// existed (the original corpus: Argentina). Pre-domain contracts encoded
+/// existed (the original example corpus). Pre-domain contracts encoded
 /// out-of-bounds geocodes as missing against exactly these ranges, so the
 /// inference path must keep reproducing them.
 pub fn legacy_coordinate_bounds() -> [[f64; 2]; 2] {

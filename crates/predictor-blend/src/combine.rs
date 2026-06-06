@@ -1,11 +1,11 @@
-//! Prediction combination (price space) and the validation-split weight grid.
+//! Prediction combination (target space) and the validation-split weight grid.
 
 use anyhow::{ensure, Result};
 
 use crate::spec::Rule;
 
 /// Combine per-member predictions row-wise. `preds[m][r]` = member m's
-/// price-space prediction for row r; `weights` are pre-normalized and only
+/// target-space prediction for row r; `weights` are pre-normalized and only
 /// used for `mean`.
 pub fn combine(rule: Rule, preds: &[Vec<f64>], weights: &[f64]) -> Vec<f64> {
     let n_rows = preds[0].len();
@@ -74,7 +74,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn mean_and_median_combine_in_price_space() {
+    fn mean_and_median_combine_in_target_space() {
         let preds = vec![vec![100.0, 10.0], vec![200.0, 20.0], vec![600.0, 90.0]];
         let mean = combine(Rule::Mean, &preds, &[0.5, 0.25, 0.25]);
         assert_eq!(mean, vec![250.0, 32.5]);

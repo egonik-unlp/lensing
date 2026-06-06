@@ -104,7 +104,7 @@ export default function ScatterChart({
     <div
       className="chart"
       role="img"
-      aria-label={`${title ?? 'Predicted versus actual price'}, ${predictions.length} test items on log-log axes. Points near the diagonal are accurate; darker points sit in denser regions.`}
+      aria-label={`${title ?? 'Predicted versus actual value'}, ${predictions.length} test items on log-log axes. Points near the diagonal are accurate; darker points sit in denser regions.`}
     >
       <div className="chart-plot">
       <svg

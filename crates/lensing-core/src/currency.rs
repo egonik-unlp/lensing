@@ -9,7 +9,7 @@ pub enum CurrencyMode {
     /// Hard filter: rows whose currency differs from `keep` are excluded
     /// (via the `foreign-currency` quality rule).
     Filter,
-    /// Convert foreign prices into `keep` using per-date exchange rates.
+    /// Convert foreign target values into `keep` using per-date exchange rates.
     Convert,
 }
 
@@ -28,8 +28,8 @@ pub struct CurrencyConfig {
     /// relies on currency already inline in the source collection.
     #[serde(default = "default_reconcile")]
     pub reconcile_collection: Option<String>,
-    /// Exchange-rate series for `Convert`: "blue" or "oficial"
-    /// (api.argentinadatos.com). Real estate convention is blue.
+    /// Exchange-rate series for `Convert`, substituted into the domain's
+    /// `rate_url_template` (e.g. "blue" or "oficial" in the example domain).
     #[serde(default = "default_rate_source")]
     pub rate_source: String,
 }
@@ -66,7 +66,7 @@ pub struct CurrencyReport {
     pub n_foreign: usize,
     /// Rows with no currency after reconciliation (kept, never dropped).
     pub n_missing: usize,
-    /// Rows whose price was converted into `keep` (Convert mode only).
+    /// Rows whose target value was converted into `keep` (Convert mode only).
     pub n_converted: usize,
     /// Range of exchange rates actually applied (Convert mode only).
     #[serde(default, skip_serializing_if = "Option::is_none")]

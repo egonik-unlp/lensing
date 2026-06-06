@@ -55,7 +55,7 @@ pub fn render(members: &[Resolved], rule: Rule) -> String {
 <text x="{cx}" y="{cy2}" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="#6b7280">{rule_label}</text>
 <path d="M {ax} {mid_y} h 50" fill="none" stroke="#9ca3af" stroke-width="1.5" marker-end="url(#a)"/>
 <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#9ca3af"/></marker></defs>
-<text x="{px}" y="{py}" font-family="ui-monospace,monospace" font-size="12" fill="#111827">price</text>
+<text x="{px}" y="{py}" font-family="ui-monospace,monospace" font-size="12" fill="#111827">target</text>
 </svg>"##,
         w = comb_x + 140.0,
         cx = comb_x + 26.0,

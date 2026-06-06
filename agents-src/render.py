@@ -136,6 +136,7 @@ def placeholders(d: dict) -> dict:
         "embedding_dim": str(corpus["embedding_dim"]),
         "content_field": corpus.get("content_field", "content"),
         "primary_metric": metrics["primary"],
+        "best_models_size": str(metrics.get("best_models_size", 12)),
         "metric_columns_md": " | ".join(metrics["columns"]),
         "metric_columns_slash": " / ".join(metrics["columns"]),
         "value_unit": metrics["value_unit"],

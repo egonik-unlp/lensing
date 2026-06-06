@@ -68,41 +68,41 @@ export interface CategoryStat {
   count: number
   /** fraction of the tallied total */
   share: number
-  medianPrice: number
+  medianTarget: number
 }
 
-/** Tally a categorical field with per-category median price; top `n` by
- *  count, the rest folded into an "(other)" bucket when it exists. */
+/** Tally a categorical field with per-category median target value; top `n`
+ *  by count, the rest folded into an "(other)" bucket when it exists. */
 export function topCategories(
-  rows: { key: string; price: number }[],
+  rows: { key: string; value: number }[],
   n: number,
 ): CategoryStat[] {
   const groups = new Map<string, number[]>()
   for (const r of rows) {
     const k = r.key.trim() || '(empty)'
     const g = groups.get(k)
-    if (g) g.push(r.price)
-    else groups.set(k, [r.price])
+    if (g) g.push(r.value)
+    else groups.set(k, [r.value])
   }
-  const stats: CategoryStat[] = [...groups.entries()].map(([value, prices]) => ({
+  const stats: CategoryStat[] = [...groups.entries()].map(([value, values]) => ({
     value,
-    count: prices.length,
-    share: prices.length / rows.length,
-    medianPrice: quantiles(prices, [0.5])[0],
+    count: values.length,
+    share: values.length / rows.length,
+    medianTarget: quantiles(values, [0.5])[0],
   }))
   stats.sort((a, b) => b.count - a.count)
   if (stats.length <= n) return stats
   const head = stats.slice(0, n)
   const tail = stats.slice(n)
-  const tailPrices = tail.flatMap((s) => {
+  const tailValues = tail.flatMap((s) => {
     const g = groups.get(s.value)
     return g ?? []
   })
   head.push({
     value: `(other · ${tail.length})`,
-    count: tailPrices.length,
-    share: tailPrices.length / rows.length,
-    medianPrice: quantiles(tailPrices, [0.5])[0],
+    count: tailValues.length,
+    share: tailValues.length / rows.length,
+    medianTarget: quantiles(tailValues, [0.5])[0],
   })
   return head
 }

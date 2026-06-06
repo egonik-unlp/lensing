@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""Median-by-propertyType baseline. Implements the predictor contract in
+"""Median-by-category baseline. Implements the predictor contract in
 README.md using only the Python stdlib, proving the dataset artifact and
-contract are language-neutral."""
+contract are language-neutral. The target field comes from the dataset
+manifest; rows are grouped by the manifest's first one-hot group (the
+domain's leading categorical), falling back to a single global median."""
 
 import argparse
 import json
@@ -27,6 +29,13 @@ def emit(obj: dict) -> None:
     sys.stdout.flush()
 
 
+def group_of(item: dict, group_field: str | None) -> str:
+    if group_field is None:
+        return ""
+    v = item.get(group_field)
+    return v if isinstance(v, str) else ""
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -50,21 +59,30 @@ def main() -> None:
     train_idx = read_u32(args.dataset / "train_idx.u32")
     test_idx = read_u32(args.dataset / "test_idx.u32")
 
-    emit({"event": "log", "msg": f"dataset {manifest['dataset_id']}: "
-          f"{len(train_idx)} train / {len(test_idx)} test rows"})
+    # The manifest's target field is qualified by the payload root
+    # (e.g. "metadata.price"); items.json keys are unqualified.
+    target_field = manifest["target"]["field"].split(".")[-1]
+    group_field = next(
+        (c["kind"]["group"] for c in manifest["columns"] if c["kind"]["type"] == "onehot"),
+        None,
+    )
 
-    # Median price per propertyType over the train split, in price space.
-    by_type: dict[str, list[float]] = {}
-    train_prices: list[float] = []
+    emit({"event": "log", "msg": f"dataset {manifest['dataset_id']}: "
+          f"{len(train_idx)} train / {len(test_idx)} test rows, "
+          f"target {target_field}, grouped by {group_field or '(none: global median)'}"})
+
+    # Median target per group over the train split, in target space.
+    by_group: dict[str, list[float]] = {}
+    train_targets: list[float] = []
     for i in train_idx:
         item = items[str(row_ids[i])]
-        price = float(item["price"])
-        by_type.setdefault(item["propertyType"], []).append(price)
-        train_prices.append(price)
-    medians = {t: median(v) for t, v in by_type.items()}
-    global_median = median(train_prices)
+        value = float(item[target_field])
+        by_group.setdefault(group_of(item, group_field), []).append(value)
+        train_targets.append(value)
+    medians = {g: median(v) for g, v in by_group.items()}
+    global_median = median(train_targets)
     emit({"event": "log", "msg": "train medians: " + ", ".join(
-        f"{t}={m:,.0f}" for t, m in sorted(medians.items()))})
+        f"{g}={m:,.0f}" for g, m in sorted(medians.items()))})
 
     predictions = []
     abs_err = sq_err = 0.0
@@ -72,8 +90,8 @@ def main() -> None:
     actuals = []
     for i in test_idx:
         item = items[str(row_ids[i])]
-        actual = float(item["price"])
-        predicted = medians.get(item["propertyType"], global_median)
+        actual = float(item[target_field])
+        predicted = medians.get(group_of(item, group_field), global_median)
         predictions.append(
             {"row_id": row_ids[i], "actual": actual, "predicted": predicted})
         e = predicted - actual
@@ -98,7 +116,8 @@ def main() -> None:
     (args.output / "metrics.json").write_text(json.dumps(metrics))
     (args.output / "predictions.json").write_text(json.dumps(predictions))
     (args.output / "model.json").write_text(json.dumps(
-        {"medians": medians, "global_median": global_median}))
+        {"medians": medians, "global_median": global_median,
+         "group_field": group_field}))
 
     emit({"event": "log", "msg": f"MAE {metrics['mae']:,.0f}  "
           f"medAPE {metrics['medape']:.1%}  R² {metrics['r2']:.3f}"})
@@ -108,10 +127,12 @@ def main() -> None:
 def predict(model_dir: Path, input_dir: Path, output: Path) -> None:
     """Contract v2 predict: load the trained medians, read the input
     mini-artifact's items.json (this predictor is payload-based, the feature
-    matrix is irrelevant to it), write price-space predictions."""
+    matrix is irrelevant to it), write target-space predictions."""
     model = json.loads((model_dir / "model.json").read_text())
     medians = model["medians"]
     global_median = model["global_median"]
+    # Models frozen before the field went generic grouped by propertyType.
+    group_field = model.get("group_field", "propertyType")
 
     items = json.loads((input_dir / "items.json").read_text())
     row_ids = read_u64(input_dir / "row_ids.u64")
@@ -120,7 +141,7 @@ def predict(model_dir: Path, input_dir: Path, output: Path) -> None:
 
     predictions = [
         {"row_id": rid,
-         "predicted": medians.get(items[str(rid)]["propertyType"], global_median)}
+         "predicted": medians.get(group_of(items[str(rid)], group_field), global_median)}
         for rid in row_ids
     ]
     output.write_text(json.dumps(predictions))

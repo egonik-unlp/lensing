@@ -15,11 +15,19 @@ Excluded entirely: data/ (binary artifacts), target/, ui/node_modules,
 ui/dist, .git, docker volumes, personal settings. The consumer unpacks,
 runs `/bootstrap` (or follows BOOTSTRAP.md), and owns their own history.
 
+The package also carries `.lensing-upstream.json`: a provenance manifest
+(framework version, source commit, sha256 per framework file) that the
+upstream-sync agent uses downstream to classify framework files 3-way
+(changed upstream / changed locally / both) on later upgrades.
+
 Usage: python3 tools/package.py [--out DIR]   (also: zig build package)
 """
 
 import argparse
+import hashlib
+import json
 import shutil
+import subprocess
 import sys
 import tarfile
 import tomllib
@@ -29,6 +37,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # Framework files/dirs copied verbatim. (path, ignore-glob-patterns)
 INCLUDE: list[tuple[str, tuple[str, ...]]] = [
+    ("VERSION", ()),
     ("Cargo.toml", ()),
     ("build.zig", ()),
     ("docker-compose.yml", ()),
@@ -60,7 +69,7 @@ Living, agent-maintained roll-up of empirical knowledge: the leaderboard,
 noise bands, dataset lineage, per-family field guide and hard-won pitfalls.
 The campaign reports in experiments/*.md are PRIMARY; this file is their
 index. When they disagree, the newest report wins — and this file is stale
-and must be updated. Writers: the experiment-designer agent and the
+and must be updated. Writers: the experiment-runner agent and the
 model-definitions experiment workflow reconcile this file as part of every
 campaign report.
 
@@ -189,8 +198,7 @@ if __name__ == "__main__":
 PRODUCT_STUB = """\
 # {title} — product one-pager
 
-Rewrite me for your project (the original described an internal tool for
-evaluating price-prediction models). Run `/bootstrap` to initialize the
+Rewrite me for your project. Run `/bootstrap` to initialize the
 template around your dataset — it walks you through domain.toml, the
 dataset-pane levers, ingestion, and the starter models.
 """
@@ -200,6 +208,56 @@ MODELS_TOML_STUB = """\
 # and re-exports this file on every mutation). Empty on a fresh template —
 # create definitions via the UI or the model-definitions skill.
 """
+
+
+# Seeded (instance-owned) paths — recorded in the manifest so the
+# upstream-sync agent knows they are never part of a framework sync.
+SEEDED = [
+    "models.toml",
+    "experiments/PROJECT-FACTS.md",
+    "docs/experiments.tex",
+    "docs/figures/make_figures.py",
+    "PRODUCT.md",
+    "data/",
+]
+
+# Rendered agent-layer outputs: shipped for first-boot convenience, but
+# downstream they are re-rendered from the instance's domain.toml and always
+# diverge — the sync agent skips them and re-renders instead.
+RENDERED_PREFIXES = (".claude/", ".agents/", ".gemini/")
+
+
+def framework_version() -> str:
+    try:
+        return (ROOT / "VERSION").read_text().strip()
+    except FileNotFoundError:
+        print("package.py: warning: VERSION file missing; using 0.0.0-unversioned", file=sys.stderr)
+        return "0.0.0-unversioned"
+
+
+def git_provenance() -> tuple[str | None, bool]:
+    """Best-effort (commit, dirty) of the packaging checkout; (None, False) outside git."""
+    try:
+        run = lambda *args: subprocess.run(  # noqa: E731
+            ["git", *args], cwd=ROOT, capture_output=True, text=True, check=True
+        ).stdout.strip()
+        return run("rev-parse", "HEAD"), bool(run("status", "--porcelain"))
+    except Exception:
+        return None, False
+
+
+def file_manifest(pkg: Path) -> dict[str, dict]:
+    """sha256 per packaged file. Called after the INCLUDE copies and before
+    seeding, so instance-owned files and the manifest itself are structurally
+    excluded."""
+    files = {}
+    for p in sorted(pkg.rglob("*")):
+        if not p.is_file():
+            continue
+        rel = p.relative_to(pkg).as_posix()
+        kind = "rendered" if rel.startswith(RENDERED_PREFIXES) else "framework"
+        files[rel] = {"sha256": hashlib.sha256(p.read_bytes()).hexdigest(), "kind": kind}
+    return files
 
 
 def copy_entry(src: Path, dst: Path, ignores: tuple[str, ...]) -> None:
@@ -243,6 +301,21 @@ def main() -> None:
     if missing:
         print(f"package.py: warning: missing entries skipped: {missing}", file=sys.stderr)
 
+    # Provenance manifest: hash the framework files (before seeding, so
+    # instance-owned files never enter the map).
+    version = framework_version()
+    source_commit, source_dirty = git_provenance()
+    manifest = {
+        "framework": name,
+        "version": version,
+        "source_commit": source_commit,
+        "source_dirty": source_dirty,
+        "schema_version": domain.get("schema_version"),
+        "files": file_manifest(pkg),
+        "seeded": SEEDED,
+        "rendered_outputs_excluded": list(RENDERED_PREFIXES),
+    }
+
     # Seeded instance files.
     (pkg / "models.toml").write_text(MODELS_TOML_STUB)
     (pkg / "experiments").mkdir(exist_ok=True)
@@ -260,6 +333,7 @@ def main() -> None:
     (pkg / "PRODUCT.md").write_text(PRODUCT_STUB.format(title=title))
     (pkg / "data").mkdir(exist_ok=True)
     (pkg / "data/.gitkeep").write_text("")
+    (pkg / ".lensing-upstream.json").write_text(json.dumps(manifest, indent=2) + "\n")
 
     tarball = out_root / f"{name}.tar.gz"
     with tarfile.open(tarball, "w:gz") as tf:
@@ -267,7 +341,7 @@ def main() -> None:
 
     n_files = sum(1 for p in pkg.rglob("*") if p.is_file())
     size_mb = tarball.stat().st_size / 1e6
-    print(f"packaged {n_files} files -> {pkg}")
+    print(f"packaged {n_files} files (v{version}) -> {pkg}")
     print(f"tarball: {tarball} ({size_mb:.1f} MB)")
     print("consumer quick start: unpack, then run /bootstrap (or follow BOOTSTRAP.md)")
 

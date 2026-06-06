@@ -25,9 +25,16 @@ runs, promoted models and predictions behind a React UI.
 
 - **Postgres** (docker compose; `zig build db-up`) is the metadata store:
   model definitions (authoritative; `models.toml` is the git-diffable
-  export), runs + metrics, promoted-model records, dataset index, run
-  events. `zig build migrate-data` backfills it from the files and prints a
-  consistency report — it never modifies the files.
+  export), runs + metrics, promoted-model records, the best-models group,
+  dataset index, run events. `zig build migrate-data` backfills it from the
+  files and prints a consistency report — it never modifies the files.
+- The **best-models group** (top-12 by MAE)
+  is server-maintained: recomputed on every run completion and model
+  promotion/deletion, auto-promoting top runs. Served at
+  `GET /api/best-models`; consensus predictions at
+  `POST /api/best-models/predict`; curation (pin/exclude) via
+  `PUT /api/best-models`. Mirror: `data/best-models.json` + the
+  `best_models` table.
 - **`data/`** holds the binary artifacts (datasets, run dirs, model
   snapshots). NEVER write under `data/` by hand.
 - The Qdrant corpus (`properties-tagged` at `http://localhost:6333`) is external;
@@ -58,13 +65,34 @@ runs, promoted models and predictions behind a React UI.
 ## Skills & agents
 
 - **dataset-design** — preflight quality filters, analyze spectra, build and
-  inspect datasets.
+  inspect datasets inline; delegates bigger jobs to the dataset-architect
+  agent.
+- **dataset-architect** (agent) — designs datasets (lineage-mined,
+  preflighted, EVR-justified proposals) and builds them on approval; spawned
+  via the dataset-design skill or by experiment-designer for dataset-level
+  experimental needs.
 - **model-definitions** — define/clone/tag/launch model definitions; the
   experiment workflow (design → launch → collect → report → reconcile
   `experiments/PROJECT-FACTS.md`).
-- **experiment-designer** (agent) — full experiment lifecycle behind a
-  two-phase approval: it proposes, you approve, it executes.
+- **experiment-designer** (agent) — designs the next experiment with you:
+  mines the record, proposes a self-contained design (consulting the
+  dataset-architect for dataset-level axes); iterate via SendMessage.
+  Design-only — it never launches.
+- **experiment-runner** (agent) — executes a user-approved design verbatim:
+  launches, babysits, collects, reports, reconciles the facts file. Refuses
+  incomplete designs.
+- **best-model-selector** (agent) — curates the best-models group with the
+  judgment the deterministic recompute can't apply (family diversity,
+  suspicious-metric exclusion, pinning); spawn after a campaign concludes or
+  new models are registered.
 - **report-curator** — maintains docs/experiments.tex (+ figures) from the
   campaign reports; destructive edits stop for approval.
-- **listing-generator** (agent) — URL → manual listing → predictions
-  from the best-models group.
+- **listing-generator** (agent) — URL → manual listing → consensus
+  predictions via `POST /api/best-models/predict`.
+- **upstream-sync** (agent) — sync upstream lensing framework changes into
+  this instance, stepwise with approval gates: 3-way classification against
+  the `.lensing-upstream.json` provenance manifest (diff-driven when
+  absent), gated batches (build/tooling → rust → predictors → ui →
+  agents-src + re-render → docs) as one git commit each; never touches
+  domain.toml / models.toml / data/ / registry.toml and never restarts the
+  server.

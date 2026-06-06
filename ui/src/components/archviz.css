@@ -1,12 +1,16 @@
-/* Architecture ribbon (ArchViz): layer height encodes activation count.
-   Quiet band + nodes; hover/focus highlights a layer and drives the readout. */
+/* Architecture diagrams (ArchViz): one visual grammar across predictor
+   families — the signal path. Quiet ink-and-hairline geometry on paper;
+   hover/focus highlights an element and drives the mono readout line. */
 
 .arch-viz {
-  margin-block: var(--sp-4);
+  /* figure's UA default adds 40px inline margins; diagrams align with the
+     panel like every other section. */
+  margin: var(--sp-4) 0;
 }
 
 .arch-canvas {
-  /* Deep models grow the canvas and scroll; they never shrink to fit. */
+  /* Diagrams scale down with the panel to ~70% of natural size, then
+     scroll; type never shrinks into illegibility. */
   overflow-x: auto;
 }
 
@@ -14,32 +18,62 @@
   display: block;
 }
 
-.arch-band {
+/* ---------- shared vocabulary ---------- */
+
+.arch-flow {
+  fill: none;
+  stroke: var(--hairline-strong);
+  stroke-width: 1.25;
+}
+
+.arch-arrowhead {
+  fill: none;
+  stroke: var(--hairline-strong);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.arch-slot {
   fill: var(--surface-sunken);
   stroke: var(--hairline-strong);
   stroke-width: 1;
 }
 
-.arch-node {
-  fill: var(--hairline-strong);
-  transition: fill var(--dur-fast) var(--ease-out);
+.arch-tick {
+  stroke: var(--ink-faint);
+  stroke-width: 1.5;
+  stroke-linecap: round;
 }
 
-.arch-hit {
-  outline-offset: 2px;
+.arch-node-dot {
+  fill: var(--ink-secondary);
 }
 
-.arch-hit:focus-visible {
-  outline: 2px solid var(--accent-strong);
+.arch-node-ring {
+  fill: var(--surface-raised);
+  stroke: var(--ink-secondary);
+  stroke-width: 1.4;
+  transition: stroke var(--dur-fast) var(--ease-out);
 }
 
-/* Active layer: ink, not signal — inspection is selection, not liveness. */
-.arch-hit.is-active .arch-node {
+.arch-op {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
   fill: var(--ink);
 }
 
-.arch-hit.is-active .arch-units {
+.arch-op-sm {
+  font-size: 11px;
+}
+
+.arch-count {
+  font-family: var(--font-mono);
+  font-size: 12px;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  fill: var(--ink);
 }
 
 .arch-name {
@@ -55,6 +89,57 @@
   fill: var(--ink);
 }
 
+/* ---------- hover / focus ---------- */
+
+.arch-hit {
+  outline-offset: 2px;
+  cursor: default;
+}
+
+.arch-hit:focus-visible {
+  outline: 2px solid var(--accent-strong);
+}
+
+/* Active element: ink, not signal — inspection is selection, not liveness. */
+.arch-hit.is-active .arch-node,
+.arch-hit:hover .arch-node,
+.arch-hit:focus-visible .arch-node {
+  fill: var(--ink);
+}
+
+.arch-hit.is-active .arch-units {
+  font-weight: 600;
+}
+
+.arch-hit:hover .arch-node-ring,
+.arch-hit:focus-visible .arch-node-ring {
+  stroke: var(--ink);
+  stroke-width: 1.8;
+}
+
+.arch-hit:hover .arch-node-dot,
+.arch-hit:focus-visible .arch-node-dot {
+  fill: var(--ink);
+}
+
+.arch-hit:hover .arch-units,
+.arch-hit:focus-visible .arch-units {
+  font-weight: 600;
+}
+
+/* ---------- ribbon (MLP / CNN) ---------- */
+
+.arch-band {
+  fill: var(--surface-sunken);
+  stroke: var(--hairline-strong);
+  stroke-width: 1;
+}
+
+.arch-node {
+  fill: var(--hairline-strong);
+  transition: fill var(--dur-fast) var(--ease-out);
+}
+
 .arch-meta-path {
   fill: none;
   stroke: var(--series-b);
@@ -68,6 +153,142 @@
   font-weight: 600;
   fill: var(--series-b);
 }
+
+/* ---------- tree ensembles ---------- */
+
+.arch-tree-edge {
+  stroke: var(--ink-secondary);
+  stroke-width: 1.3;
+  stroke-linecap: round;
+}
+
+.arch-tree-canopy {
+  fill: var(--surface-sunken);
+  stroke: var(--hairline-strong);
+  stroke-width: 1;
+  stroke-linejoin: round;
+}
+
+.arch-tree-base {
+  stroke: var(--hairline-strong);
+  stroke-width: 1;
+}
+
+.arch-hit:hover .arch-tree-edge,
+.arch-hit:focus-visible .arch-tree-edge {
+  stroke: var(--ink);
+}
+
+/* ---------- kernel machines ---------- */
+
+.arch-kernel-fit {
+  fill: none;
+  stroke: var(--ink-secondary);
+  stroke-width: 1.6;
+}
+
+.arch-kernel-tube {
+  fill: none;
+  stroke: var(--series-b);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}
+
+.arch-sv-dot {
+  fill: var(--surface-raised);
+  stroke: var(--ink-secondary);
+  stroke-width: 1.3;
+}
+
+.arch-hit:hover .arch-kernel-fit,
+.arch-hit:focus-visible .arch-kernel-fit {
+  stroke: var(--ink);
+}
+
+.arch-hit:hover .arch-sv-dot,
+.arch-hit:focus-visible .arch-sv-dot {
+  stroke: var(--ink);
+}
+
+/* ---------- linear ---------- */
+
+.arch-weight-bar {
+  fill: var(--ink-faint);
+  transition: fill var(--dur-fast) var(--ease-out);
+}
+
+.arch-hit:hover .arch-weight-bar,
+.arch-hit:focus-visible .arch-weight-bar {
+  fill: var(--ink-secondary);
+}
+
+/* ---------- mixture of experts ---------- */
+
+.arch-gate-band {
+  fill: var(--series-b);
+}
+
+.arch-gate-blob {
+  fill: var(--series-b-soft);
+  stroke: var(--series-b);
+  stroke-width: 1.1;
+}
+
+/* ---------- median baseline ---------- */
+
+.arch-median-row {
+  stroke: var(--ink);
+  stroke-width: 2.25;
+  stroke-linecap: round;
+}
+
+/* ---------- blend ---------- */
+
+.arch-member-box {
+  fill: var(--surface);
+  stroke: var(--hairline-strong);
+  stroke-width: 1;
+  transition: stroke var(--dur-fast) var(--ease-out);
+}
+
+.arch-hit:hover .arch-member-box,
+.arch-hit:focus-visible .arch-member-box {
+  stroke: var(--ink-secondary);
+}
+
+.arch-member-name {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  fill: var(--ink);
+}
+
+.arch-member-sub {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  fill: var(--ink-secondary);
+}
+
+.arch-blend-edge {
+  fill: none;
+  stroke: var(--hairline-strong);
+}
+
+.arch-weight-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  fill: var(--ink-secondary);
+}
+
+.arch-blend-excluded {
+  opacity: 0.45;
+}
+
+.arch-blend-excluded .arch-blend-edge {
+  stroke-dasharray: 3 4;
+}
+
+/* ---------- readout ---------- */
 
 .arch-readout {
   margin: var(--sp-2) 0 0;
@@ -90,7 +311,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .arch-node {
+  .arch-node,
+  .arch-node-ring,
+  .arch-weight-bar,
+  .arch-member-box {
     transition: none;
   }
 }
