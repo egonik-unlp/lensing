@@ -4,6 +4,24 @@ import { useDomain } from '../lib/DomainContext'
 import { cap } from '../lib/format'
 import './shell.css'
 
+/* The instance's seeded velocity-map mark (branding/make_mark.py), with the
+ * swarm orbiting the dark sphere. Stacked static layers rotated by page CSS
+ * (shell.css): every in-image mechanism fails somewhere at wordmark size —
+ * CSS inside SVG-as-image doesn't run in Firefox, Chromium freezes composited
+ * transforms on inlined SVG children, and stops driving SMIL in images at
+ * small raster sizes. Compositor transforms on plain HTML elements are the
+ * one size-independent, everywhere-supported primitive. */
+function WordmarkGlyph() {
+  return (
+    <span className="wordmark-glyph" aria-hidden>
+      <img className="glyph-band glyph-band-0" src="/brand/mark-dark-band0.svg" alt="" />
+      <img className="glyph-band glyph-band-1" src="/brand/mark-dark-band1.svg" alt="" />
+      <img className="glyph-band glyph-band-2" src="/brand/mark-dark-band2.svg" alt="" />
+      <img src="/brand/mark-dark-core.svg" alt="" />
+    </span>
+  )
+}
+
 export default function Shell() {
   const domain = useDomain()
   // Tone-step the topbar's bottom hairline once content scrolls under it
@@ -21,8 +39,7 @@ export default function Shell() {
       <header className={stuck ? 'topbar is-stuck' : 'topbar'}>
         <div className="topbar-inner">
           <NavLink to="/" className="wordmark">
-            {/* The instance's seeded velocity-map mark (branding/make_mark.py). */}
-            <img className="wordmark-glyph" src="/brand/mark-dark.svg" width={18} height={18} alt="" />
+            <WordmarkGlyph />
             lensing <span className="wordmark-dim">· {domain.project.title}</span>
           </NavLink>
           {/* The pipeline spine, in pipeline order: build → train → promote. */}

@@ -104,7 +104,12 @@ def doppler_ring(cx, cy, R, basew, phi0_deg, beta, ramp, nseg=64, dim=1.0):
 
 
 def velocity_swarm(rng, ramp):
-    """Tangential trail arcs, magnification-weighted, velocity-colored."""
+    """Tangential trail arcs, magnification-weighted, velocity-colored.
+
+    Arcs are banded by orbital radius into three <g class="sw{0,1,2}"> groups
+    (inner / mid / outer thirds) so the embedded style can spin them at
+    different rates — differential (Keplerian) rotation, inner fastest.
+    """
     arcs = []
     for _ in range(34):
         r = max(12.0, min(22.0, rng.gauss(15.5, 3.6)))
@@ -120,22 +125,67 @@ def velocity_swarm(rng, ramp):
         x1, y1 = 24 + r * math.cos(a0 + span), 24 + r * math.sin(a0 + span)
         large = 1 if span > math.pi else 0
         arcs.append(
-            f'<path d="M{fmt(x0)} {fmt(y0)} A{fmt(r)} {fmt(r)} 0 {large} 1 {fmt(x1)} {fmt(y1)}" '
-            f'stroke="{ramp(t)}" stroke-opacity="{op:.2f}" stroke-width="{sw:.2f}" '
-            f'fill="none" stroke-linecap="round"/>'
+            (
+                r,
+                f'<path d="M{fmt(x0)} {fmt(y0)} A{fmt(r)} {fmt(r)} 0 {large} 1 {fmt(x1)} {fmt(y1)}" '
+                f'stroke="{ramp(t)}" stroke-opacity="{op:.2f}" stroke-width="{sw:.2f}" '
+                f'fill="none" stroke-linecap="round"/>',
+            )
         )
-    return "".join(arcs)
+    radii = sorted(r for r, _ in arcs)
+    lo, hi = radii[len(radii) // 3], radii[2 * len(radii) // 3]
+    bands = ["", "", ""]
+    for r, path in arcs:
+        bands[0 if r < lo else 1 if r < hi else 2] += path
+    return bands
 
 
-def mark_svg(mode: str, seed_int: int, hue_shift: float) -> str:
+# Differential rotation of the swarm: Keplerian shear (inner fastest), with the
+# middle band retrograde — at wordmark sizes, adjacent bands sliding in opposite
+# senses are the legible motion cue; co-rotation reads as static. The shadow and
+# the Doppler rim stay static — the bright side of the flow is fixed by the
+# rotation axis, not by the orbiting material.
+#
+# The full marks carry the choreography as SMIL (runs standalone and in <img>;
+# CSS inside SVG-as-image doesn't run in Firefox). The topbar does NOT use
+# these: Chromium stops driving SVG-image animations at small raster sizes, so
+# the UI stacks the static component files below (mark-*-core/band*.svg) and
+# rotates them with page CSS — see WordmarkGlyph in ui/src/components/Shell.tsx
+# and the matching periods in shell.css. The favicon is generated static.
+SWARM_PERIODS = (("14s", False), ("20s", True), ("40s", False))  # inner, mid (retrograde), outer
+
+
+def spin(dur: str, retrograde: bool) -> str:
+    a, b = ("360 24 24", "0 24 24") if retrograde else ("0 24 24", "360 24 24")
+    return (
+        '<animateTransform attributeName="transform" attributeType="XML" type="rotate" '
+        f'from="{a}" to="{b}" dur="{dur}" repeatCount="indefinite"/>'
+    )
+
+
+def wrap_svg(body: str) -> str:
+    return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">{body}</svg>\n'
+
+
+def mark_parts(mode: str, seed_int: int, hue_shift: float):
+    """(band0, band1, band2, core) bodies sharing one RNG stream."""
     ramp = make_ramp(mode, hue_shift)
     rng = random.Random(seed_int)
-    body = (
-        velocity_swarm(rng, ramp)
-        + doppler_ring(24, 24, 10.0, 1.9, 180, 0.5, ramp, dim=0.9)
+    bands = velocity_swarm(rng, ramp)
+    core = (
+        doppler_ring(24, 24, 10.0, 1.9, 180, 0.5, ramp, dim=0.9)
         + f'<circle cx="24" cy="24" r="8.6" fill="{SHADOW[mode]}"/>'
     )
-    return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">{body}</svg>\n'
+    return bands, core
+
+
+def mark_svg(mode: str, seed_int: int, hue_shift: float, animate: bool = True) -> str:
+    bands, core = mark_parts(mode, seed_int, hue_shift)
+    swarm = "".join(
+        f'<g class="sw{i}">{band}{spin(dur, retro) if animate else ""}</g>'
+        for i, (band, (dur, retro)) in enumerate(zip(bands, SWARM_PERIODS))
+    )
+    return wrap_svg(swarm + core)
 
 
 def seed_to_int(seed: str) -> int:
@@ -181,12 +231,22 @@ def main():
     written = [args.out_dir / "lensing-mark.svg", args.out_dir / "lensing-mark-dark.svg"]
 
     if args.install:
-        (ROOT / "ui/public/favicon.svg").write_text(paper)
+        # Favicon stays static: an animated tab icon is a distraction in the
+        # one browser that honors it.
+        (ROOT / "ui/public/favicon.svg").write_text(mark_svg("paper", seed_int, args.hue_shift, animate=False))
         brand = ROOT / "ui/public/brand"
         brand.mkdir(parents=True, exist_ok=True)
         (brand / "mark.svg").write_text(paper)
         (brand / "mark-dark.svg").write_text(dark)
         written += [ROOT / "ui/public/favicon.svg", brand / "mark.svg", brand / "mark-dark.svg"]
+        # Static component layers for the topbar's CSS-rotated stack
+        # (WordmarkGlyph in ui/src/components/Shell.tsx).
+        bands, core = mark_parts("dark", seed_int, args.hue_shift)
+        for i, band in enumerate(bands):
+            (brand / f"mark-dark-band{i}.svg").write_text(wrap_svg(band))
+            written.append(brand / f"mark-dark-band{i}.svg")
+        (brand / "mark-dark-core.svg").write_text(wrap_svg(core))
+        written.append(brand / "mark-dark-core.svg")
 
     for p in written:
         print(f"wrote {p.relative_to(ROOT) if p.is_relative_to(ROOT) else p}")
