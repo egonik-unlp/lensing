@@ -98,7 +98,7 @@
   --sp-7: 3rem;
 
   /* Chrome geometry: sticky offsets derive from these, never hard-code */
-  --topbar-h: 44px;
+  --topbar-h: 52px;
   --band-h: 52px;
 
   /* Motion: state feedback only, ease-out, 150-250ms */
