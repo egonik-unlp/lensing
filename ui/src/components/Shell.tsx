@@ -1,8 +1,28 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
+import { useActiveJobs } from '../hooks/useActiveJobs'
 import { useDomain } from '../lib/DomainContext'
 import { cap } from '../lib/format'
 import './shell.css'
+
+/* Live-jobs chip: the one accent thing in the chrome, and only while
+ * something is actually training. Click-through lands on the Runs list. */
+function JobsIndicator() {
+  const running = useActiveJobs()
+  if (running === 0) return null
+  return (
+    <NavLink
+      to="/"
+      className="jobs-indicator"
+      title={`${running} training run${running === 1 ? '' : 's'} in progress`}
+    >
+      <span className="jobs-dot" aria-hidden>
+        ●
+      </span>
+      <span className="num">{running}</span> training
+    </NavLink>
+  )
+}
 
 export default function Shell() {
   const domain = useDomain()
@@ -47,7 +67,9 @@ export default function Shell() {
             </NavLink>
           </nav>
           {/* Quiet on purpose: the orange budget belongs to each page's own
-              primary action (Start training, Compare runs, live state). */}
+              primary action (Start training, Compare runs, live state) —
+              and to the jobs chip, which is only there while runs are live. */}
+          <JobsIndicator />
           <NavLink to="/new" className="btn-on-chrome topbar-cta">
             New run
           </NavLink>

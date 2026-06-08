@@ -85,6 +85,40 @@
   outline-color: var(--accent-on-chrome);
 }
 
+/* Live-jobs chip: count of in-flight training runs, visible from every
+   page. Accent dot = live, per the one-accent rule; the chip itself stays
+   on-chrome quiet. Absent entirely when nothing is running. */
+.jobs-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5ch;
+  height: 1.75rem;
+  padding: 0 0.65rem;
+  border: 1px solid var(--chrome-border);
+  border-radius: 999px;
+  color: var(--on-chrome);
+  font-size: var(--text-dense);
+  white-space: nowrap;
+}
+
+.jobs-indicator:hover {
+  text-decoration: none;
+  color: var(--on-chrome);
+  border-color: var(--accent-on-chrome);
+}
+
+.jobs-dot {
+  color: var(--accent-on-chrome);
+  font-size: 0.7em;
+  animation: pulse 1.6s var(--ease-out) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jobs-dot {
+    animation: none;
+  }
+}
+
 .topbar-cta {
   text-decoration: none;
   white-space: nowrap;
