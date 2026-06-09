@@ -20,10 +20,11 @@ use serde::Deserialize;
 use serde_json::json;
 
 use lensing_core::registry::{Predictor, Registry};
+use lensing_core::domain::Task;
 use lensing_core::{
-    artifact, compute_metrics, ColumnDesc, Contract, Dataset, InferenceInput,
-    InferencePrediction, InputManifest, Metrics, ModelDefinition, ModelRecord, Prediction,
-    CONTRACT_VERSION,
+    artifact, compute_binary_metrics, compute_metrics, ColumnDesc, Contract, Dataset,
+    InferenceInput, InferencePrediction, InputManifest, Metrics, ModelDefinition, ModelRecord,
+    Prediction, CONTRACT_VERSION,
 };
 
 use spec::{BlendFile, BlendMember, Hyperparams, MemberSpec, Rule, WeightFit};
@@ -348,6 +349,16 @@ fn train(dataset_dir: PathBuf, run_dir: PathBuf, hp_path: PathBuf) -> Result<()>
     }
 
     let ds = Dataset::load(&dataset_dir)?;
+    // Task-awareness: binary blends P(class==1) (the members' scalar `predicted`)
+    // and scores by logloss/AUC; multiclass needs probability-vector blending,
+    // not yet wired, so refuse it rather than blend argmax ids into nonsense.
+    let task = ds.manifest.target.task;
+    anyhow::ensure!(
+        task != Task::Multiclass,
+        "blend predictor does not yet support multiclass targets \
+         (probability-vector blending pending); regression and binary are supported"
+    );
+    let binary = task == Task::Binary;
     let registry = Registry::load(Path::new("registry.toml"))?;
     let defs = load_definitions()?;
     let members = resolve_members(&hp, &registry, &defs, &ds, &dataset_dir, &run_dir)?;
@@ -444,13 +455,22 @@ fn train(dataset_dir: PathBuf, run_dir: PathBuf, hp_path: PathBuf) -> Result<()>
         let preds = preds_for_rows(&label, &by_row, &ds, &ds.test_idx)?;
         let pairs: Vec<(f64, f64)> =
             actual_test.iter().copied().zip(preds.iter().copied()).collect();
-        let m = compute_metrics(&pairs);
-        emit(json!({"event": "log", "msg": format!(
-            "[{label}] solo test MAE {:.0} medAPE {:.1}% R² {:.3}",
-            m.mae, m.medape * 100.0, m.r2
-        )}));
+        let m = if binary { compute_binary_metrics(&pairs) } else { compute_metrics(&pairs) };
+        if binary {
+            emit(json!({"event": "log", "msg": format!(
+                "[{label}] solo test AUC {:.4} logloss {:.4} acc {:.3}",
+                m.auc.unwrap_or(f64::NAN), m.logloss.unwrap_or(f64::NAN),
+                m.accuracy.unwrap_or(f64::NAN)
+            )}));
+        } else {
+            emit(json!({"event": "log", "msg": format!(
+                "[{label}] solo test MAE {:.0} medAPE {:.1}% R² {:.3}",
+                m.mae.unwrap_or(f64::NAN), m.medape.unwrap_or(f64::NAN) * 100.0, m.r2.unwrap_or(f64::NAN)
+            )}));
+        }
+        let loss = if binary { m.logloss } else { m.mae }.unwrap_or(f64::NAN);
         emit(json!({"event": "epoch", "epoch": member.index + 1,
-            "total_epochs": members.len(), "train_loss": 0.0, "val_loss": m.mae}));
+            "total_epochs": members.len(), "train_loss": 0.0, "val_loss": loss}));
         solo[member.index] = Some(m);
         test_preds[member.index] = Some(preds);
 
@@ -496,9 +516,14 @@ fn train(dataset_dir: PathBuf, run_dir: PathBuf, hp_path: PathBuf) -> Result<()>
                     .iter()
                     .map(|&r| ds.manifest.target.transform.invert(ds.target[r as usize] as f64))
                     .collect();
-                let w = combine::grid_fit(&vp, &actual_val)?;
+                let w = if binary {
+                    combine::grid_fit_with(&vp, &actual_val, combine::logloss_obj)?
+                } else {
+                    combine::grid_fit(&vp, &actual_val)?
+                };
                 emit(json!({"event": "log", "msg": format!(
-                    "grid weight fit on {} val rows: {:?}", val_idx.len(), w
+                    "grid weight fit on {} val rows ({}): {:?}",
+                    val_idx.len(), if binary { "logloss" } else { "MAE" }, w
                 )}));
                 w
             } else {
@@ -517,7 +542,7 @@ fn train(dataset_dir: PathBuf, run_dir: PathBuf, hp_path: PathBuf) -> Result<()>
 
     let pairs: Vec<(f64, f64)> =
         actual_test.iter().copied().zip(blended.iter().copied()).collect();
-    let metrics = compute_metrics(&pairs);
+    let metrics = if binary { compute_binary_metrics(&pairs) } else { compute_metrics(&pairs) };
     let predictions: Vec<Prediction> = ds
         .test_idx
         .iter()
@@ -526,6 +551,8 @@ fn train(dataset_dir: PathBuf, run_dir: PathBuf, hp_path: PathBuf) -> Result<()>
             row_id: ds.row_ids[r as usize],
             actual,
             predicted,
+            // Binary: the blended scalar is P(class==1); surface [p0, p1].
+            proba: if binary { Some(vec![1.0 - predicted, predicted]) } else { None },
         })
         .collect();
     std::fs::write(run_dir.join("predictions.json"), serde_json::to_vec(&predictions)?)?;
@@ -562,10 +589,19 @@ fn train(dataset_dir: PathBuf, run_dir: PathBuf, hp_path: PathBuf) -> Result<()>
         }
     }
 
-    emit(json!({"event": "log", "msg": format!(
-        "blend test MAE {:.0} medAPE {:.1}% R² {:.3} ({} members, rule {:?})",
-        metrics.mae, metrics.medape * 100.0, metrics.r2, included.len(), hp.rule
-    )}));
+    if binary {
+        emit(json!({"event": "log", "msg": format!(
+            "blend test AUC {:.4} logloss {:.4} acc {:.3} ({} members, rule {:?})",
+            metrics.auc.unwrap_or(f64::NAN), metrics.logloss.unwrap_or(f64::NAN),
+            metrics.accuracy.unwrap_or(f64::NAN), included.len(), hp.rule
+        )}));
+    } else {
+        emit(json!({"event": "log", "msg": format!(
+            "blend test MAE {:.0} medAPE {:.1}% R² {:.3} ({} members, rule {:?})",
+            metrics.mae.unwrap_or(f64::NAN), metrics.medape.unwrap_or(f64::NAN) * 100.0,
+            metrics.r2.unwrap_or(f64::NAN), included.len(), hp.rule
+        )}));
+    }
     emit(json!({"event": "done"}));
     Ok(())
 }
@@ -651,7 +687,7 @@ fn predict(model_dir: PathBuf, input_dir: PathBuf, output: PathBuf) -> Result<()
             .row_ids
             .iter()
             .zip(blended)
-            .map(|(&row_id, predicted)| InferencePrediction { row_id, predicted })
+            .map(|(&row_id, predicted)| InferencePrediction { row_id, predicted, proba: None })
             .collect())
     })();
     let _ = std::fs::remove_dir_all(&tmp_base);

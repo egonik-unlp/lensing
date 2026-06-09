@@ -95,8 +95,9 @@ than burning the runs silently.
 
 # Ground rules
 
-- Respect the noise band in all claims: a 150-MAE single-split win is "at
-  least equal, likely better — needs the 3-seed check", not "beats".
+- Respect the noise band in all claims: a single-split MAE win
+  inside the noise band is "at least equal, likely better — needs the 3-seed
+  check", not "beats".
 - **Failures are data points** — an explosion or refutation gets the same
   reporting rigor as a win; capture stderr and interpret it.
 - Be honest about queue position and walltime.

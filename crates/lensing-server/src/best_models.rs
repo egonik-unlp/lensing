@@ -121,10 +121,11 @@ struct Candidate {
 
 async fn recompute_locked(state: &Arc<AppState>) -> Result<BestModelGroup> {
     let prev = read_group(state);
-    let Some((extract, lower_wins)) = state.domain.metrics.primary_accessor() else {
+    let primary = state.domain.metrics.primary.clone();
+    let Some(lower_wins) = state.domain.metrics.primary_direction() else {
         eprintln!(
             "[lensing-server] best-models: primary metric {:?} maps to no run metric; group left unchanged",
-            state.domain.metrics.primary
+            primary
         );
         return Ok(prev);
     };
@@ -137,6 +138,9 @@ async fn recompute_locked(state: &Arc<AppState>) -> Result<BestModelGroup> {
             return;
         }
         let Some(metrics) = &meta.metrics else { return };
+        // Skip runs that don't carry the primary metric (e.g. a regression run
+        // when the domain ranks by AUC, or vice versa) — they aren't rankable.
+        let Some(value) = state.domain.metrics.extract(&primary, metrics) else { return };
         let promotable = state
             .registry
             .get(&meta.predictor)
@@ -149,7 +153,7 @@ async fn recompute_locked(state: &Arc<AppState>) -> Result<BestModelGroup> {
             run_id: meta.run_id.clone(),
             predictor: meta.predictor.clone(),
             dataset_id: meta.dataset_id.clone(),
-            value: extract(metrics),
+            value,
             model_name: None,
         });
     };
@@ -171,8 +175,18 @@ async fn recompute_locked(state: &Arc<AppState>) -> Result<BestModelGroup> {
     // ---- promoted models join their source run's candidate ----
     // A model whose run is gone keeps its previous in-group metric (group
     // membership must survive run-dir cleanup), else it cannot be ranked.
-    let prev_value: HashMap<&str, f64> =
-        prev.entries.iter().map(|e| (e.name.as_str(), e.metric_value)).collect();
+    // A model whose run is gone keeps its previous in-group metric — but ONLY
+    // if the group's metric regime is unchanged. When the primary metric flips
+    // (e.g. regression MAE → classification AUC), the stored value is in the old
+    // metric and is NOT comparable; carrying it would let a stale MAE ~0.4
+    // masquerade as an AUC. On a regime change, drop the fallback so such models
+    // fall out until they produce a run scored under the current metric.
+    let regime_changed = !prev.primary_metric.eq_ignore_ascii_case(&primary);
+    let prev_value: HashMap<&str, f64> = if regime_changed {
+        HashMap::new()
+    } else {
+        prev.entries.iter().map(|e| (e.name.as_str(), e.metric_value)).collect()
+    };
     for record in models::list_models(state) {
         match by_run.get_mut(&record.run_id) {
             Some(cand) => {
@@ -336,11 +350,16 @@ pub struct MemberPredictions {
     pub predictions: Vec<InferencePrediction>,
 }
 
-/// Median across members for one input row.
+/// Consensus across members for one input row. Regression: median of the
+/// members' values. Binary: mean P(class==1). Multiclass: argmax of the
+/// element-wise mean probability vector.
 #[derive(Debug, serde::Serialize)]
 pub struct ConsensusPoint {
     pub row_id: u64,
     pub predicted: f64,
+    /// Consensus class-probability vector (classification only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub proba: Option<Vec<f64>>,
     /// Members that produced a prediction for this row.
     pub n_models: usize,
 }
@@ -411,23 +430,61 @@ pub async fn predict_group(
         return Err(first_err.unwrap_or(PredictError::BadInput("no members produced predictions".into())));
     }
 
-    let mut by_row: HashMap<u64, Vec<f64>> = HashMap::new();
+    // Aggregate per row, task-aware. Regression → median scalar; binary → mean
+    // P(class==1); multiclass → element-wise mean probability vector + argmax.
+    use lensing_core::domain::Task;
+    let task = state.domain.target.task;
+    let mut scalars: HashMap<u64, Vec<f64>> = HashMap::new();
+    let mut probas: HashMap<u64, Vec<Vec<f64>>> = HashMap::new();
     for m in &members {
         for p in &m.predictions {
-            by_row.entry(p.row_id).or_default().push(p.predicted);
+            scalars.entry(p.row_id).or_default().push(p.predicted);
+            if let Some(pr) = &p.proba {
+                probas.entry(p.row_id).or_default().push(pr.clone());
+            }
         }
     }
-    let mut consensus: Vec<ConsensusPoint> = by_row
+    let mut consensus: Vec<ConsensusPoint> = scalars
         .into_iter()
-        .map(|(row_id, mut vals)| {
-            vals.sort_by(|a, b| a.total_cmp(b));
-            let n = vals.len();
-            let predicted = if n % 2 == 1 {
-                vals[n / 2]
-            } else {
-                (vals[n / 2 - 1] + vals[n / 2]) / 2.0
-            };
-            ConsensusPoint { row_id, predicted, n_models: n }
+        .map(|(row_id, mut vals)| match task {
+            Task::Binary => {
+                let n = vals.len();
+                let mean = vals.iter().sum::<f64>() / n as f64;
+                ConsensusPoint {
+                    row_id,
+                    predicted: mean,
+                    proba: Some(vec![1.0 - mean, mean]),
+                    n_models: n,
+                }
+            }
+            Task::Multiclass => {
+                let rows = probas.get(&row_id).cloned().unwrap_or_default();
+                let n = rows.len().max(1);
+                let k = rows.first().map(|v| v.len()).unwrap_or(0);
+                let mut mean = vec![0.0f64; k];
+                for r in &rows {
+                    for (i, &v) in r.iter().enumerate() {
+                        mean[i] += v / n as f64;
+                    }
+                }
+                let argmax = mean
+                    .iter()
+                    .enumerate()
+                    .max_by(|a, b| a.1.total_cmp(b.1))
+                    .map(|(c, _)| c as f64)
+                    .unwrap_or(0.0);
+                ConsensusPoint { row_id, predicted: argmax, proba: Some(mean), n_models: rows.len() }
+            }
+            Task::Regression => {
+                vals.sort_by(|a, b| a.total_cmp(b));
+                let n = vals.len();
+                let predicted = if n % 2 == 1 {
+                    vals[n / 2]
+                } else {
+                    (vals[n / 2 - 1] + vals[n / 2]) / 2.0
+                };
+                ConsensusPoint { row_id, predicted, proba: None, n_models: n }
+            }
         })
         .collect();
     consensus.sort_by_key(|c| c.row_id);

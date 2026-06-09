@@ -337,7 +337,12 @@ mod tests {
                 components_shape: [k, d],
                 explained_variance_ratio: fitted.explained_variance_ratio.clone(),
             },
-            target: TargetInfo { field: "metadata.price".into(), transform: TargetTransform::Log1p },
+            target: TargetInfo {
+                field: "metadata.price".into(),
+                transform: TargetTransform::Log1p,
+                task: Default::default(),
+                classes: None,
+            },
             feature_config: cfg,
             input_fields: InputFields {
                 required_numeric: vec!["bedrooms".into()],

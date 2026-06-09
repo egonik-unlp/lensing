@@ -152,6 +152,7 @@ fn predict(model_dir: PathBuf, input_dir: PathBuf, output: PathBuf) -> Result<()
         .map(|(&row_id, &p)| InferencePrediction {
             row_id,
             predicted: transform.invert(p as f64).max(0.0),
+            proba: None,
         })
         .collect();
     std::fs::write(&output, serde_json::to_vec(&predictions)?)
@@ -235,7 +236,7 @@ fn train(dataset_dir: PathBuf, run_dir: PathBuf, hp_path: PathBuf) -> Result<()>
         let actual = transform.invert(test_y[j] as f64);
         let predicted = transform.invert(predicted_t[j] as f64).max(0.0);
         pairs.push((actual, predicted));
-        predictions.push(Prediction { row_id: ds.row_ids[row as usize], actual, predicted });
+        predictions.push(Prediction { row_id: ds.row_ids[row as usize], actual, predicted, proba: None });
     }
     let metrics = compute_metrics(&pairs);
     std::fs::write(run_dir.join("metrics.json"), serde_json::to_vec(&metrics)?)?;
@@ -244,7 +245,8 @@ fn train(dataset_dir: PathBuf, run_dir: PathBuf, hp_path: PathBuf) -> Result<()>
 
     emit(json!({"event":"log","msg":format!(
         "MAE {:.0}  RMSE {:.0}  medAPE {:.1}%  R² {:.3}",
-        metrics.mae, metrics.rmse, metrics.medape * 100.0, metrics.r2)}));
+        metrics.mae.unwrap_or(f64::NAN), metrics.rmse.unwrap_or(f64::NAN),
+        metrics.medape.unwrap_or(f64::NAN) * 100.0, metrics.r2.unwrap_or(f64::NAN))}));
     emit(json!({"event":"done"}));
     Ok(())
 }

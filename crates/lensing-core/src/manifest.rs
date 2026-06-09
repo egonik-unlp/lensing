@@ -97,6 +97,15 @@ pub struct PcaInfo {
 pub struct TargetInfo {
     pub field: String,
     pub transform: TargetTransform,
+    /// Learning task this dataset's target was built for. Absent ⇒ regression
+    /// (back-compat for datasets built before classification mode). Lets a
+    /// predictor read the task from the frozen manifest without domain.toml.
+    #[serde(default)]
+    pub task: crate::domain::Task,
+    /// Class labels for a multiclass target (index = class id); absent for
+    /// regression/binary.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub classes: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

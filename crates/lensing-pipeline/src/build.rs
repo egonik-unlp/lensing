@@ -191,13 +191,36 @@ pub fn build_dataset(
     // much variance more components would have captured (truncated for size).
     let cumulative_evr: Vec<f32> = spectrum.cumulative_evr().into_iter().take(256).collect();
 
-    let transform = if cfg.log_target { TargetTransform::Log1p } else { TargetTransform::None };
+    // Classification targets are class labels (0..K-1), never log-transformed;
+    // only a regression target honors the log_target flag.
+    let task = domain.target.task;
+    let transform = if task == lensing_core::domain::Task::Regression && cfg.log_target {
+        TargetTransform::Log1p
+    } else {
+        TargetTransform::None
+    };
     let target_field = domain.target.field.as_str();
     let target: Vec<f32> = points
         .iter()
         .map(|p| transform.apply(p.payload.num_of(target_field).unwrap_or(0.0)) as f32)
         .collect();
     let row_ids: Vec<u64> = points.iter().map(|p| p.id).collect();
+
+    // Freeze the class vocabulary for a multiclass build so the manifest is
+    // self-describing (predictors read K + labels without domain.toml). Use the
+    // declared `[target].classes` if present, else derive the distinct integer
+    // codes present in the target column (sorted). Binary uses {0,1} implicitly.
+    use lensing_core::domain::Task;
+    let target_classes: Option<Vec<String>> = if task == Task::Multiclass {
+        Some(domain.target.classes.clone().unwrap_or_else(|| {
+            let mut codes: Vec<i64> = target.iter().map(|&v| v.round() as i64).collect();
+            codes.sort_unstable();
+            codes.dedup();
+            codes.iter().map(|c| c.to_string()).collect()
+        }))
+    } else {
+        domain.target.classes.clone()
+    };
 
     let mut columns: Vec<ColumnDesc> = (0..k)
         .map(|c| ColumnDesc {
@@ -250,7 +273,12 @@ pub fn build_dataset(
             components_shape: [k, d],
             explained_variance_ratio: model.explained_variance_ratio.clone(),
         },
-        target: TargetInfo { field: target_qualified, transform },
+        target: TargetInfo {
+            field: target_qualified,
+            transform,
+            task,
+            classes: target_classes,
+        },
         split: SplitInfo {
             test_ratio: cfg.test_ratio,
             seed: cfg.seed,

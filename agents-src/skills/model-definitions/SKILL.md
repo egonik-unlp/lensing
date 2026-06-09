@@ -141,9 +141,11 @@ the **dataset-design** skill.
    trains up to `--max-runs` concurrently (default 2) and queues the rest
    (`queued: waiting for a free training slot` in the run's events).
 3. **Collect.** Poll `GET /api/runs/<run_id>` (e.g. `sleep 30` between rounds)
-   until no run is `running`. On success `.metrics` holds
-   `{mae, rmse, r2, mape, medape, n_test}` — `mape`/`medape` are fractions,
-   render as %. Treat failures as data points: capture `.stderr_tail` and any
+   until no run is `running`. On success `.metrics` holds the task's metric
+   keys + `n_test` (regression: `{mae, rmse, r2, mape, medape}`, mape/medape as
+   fractions; classification: `{accuracy, logloss, auc, brier|macro_f1}`) —
+   render fraction metrics as %. Treat failures as data points: capture
+   `.stderr_tail` and any
    blowup pattern (they often become the most interesting finding).
 4. **Present & confirm.** Show the results table sorted by {{primary_metric}} plus draft
    findings. Do not persist anything until the user approves.

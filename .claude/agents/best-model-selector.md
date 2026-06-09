@@ -49,7 +49,8 @@ Curation semantics:
    runs list, `POST /api/best-models/recompute` before judging.
 3. **Judge the selection.** Look for, in priority order:
    - **Suspicious metrics** — a MAE dramatically better than the
-     champion's noise band, R² ≈ 1, or a tiny `n_test`: likely leakage or a
+     champion's noise band, a score implausibly close to perfect (R² ≈ 1 /
+     AUC ≈ 1 / accuracy ≈ 1), or a tiny `n_test`: likely leakage or a
      broken split, not a breakthrough. Check the run's report/pitfall entry
      before trusting it; exclude until a seed study confirms.
    - **Single-split flukes** — a member whose edge over the runner-up is
