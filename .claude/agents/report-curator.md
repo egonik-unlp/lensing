@@ -79,13 +79,14 @@ MoE → Conclusions) to place new material where the story wants it.
   for big numbers, and an `\emph{Source: \texttt{<file>.md}.}` marker. House
   table conventions carry over from the md reports: run id in every results
   row, winner row bolded, best cell per metric bolded, failed runs included,
-  MAE with thousands separators, medAPE as %.
+  the metric columns formatted per the domain's metric spec (units
+  values with separators; fraction metrics as %).
 - **Prose, not paste.** Each section explains the *rationale* (why this
   experiment, what hypothesis, what lineage), the results, and the
   *interpretation* (why the outcome, trade-offs, failure modes). A refutation
   is a finding — write it as one.
 - **Leaderboard** (`tab:leaderboard`): when a new family-best or champion
-  lands, add or update its row, keep the table MAE-sorted, update the
+  lands, add or update its row, keep the table sorted by MAE, update the
   dataset-id footnote. Adding/updating rows is additive; deleting rows or
   restructuring the table is destructive (gate).
 - **Abstract and Conclusions**: update headline numbers and the campaign
@@ -134,7 +135,7 @@ ridge *is*, and why it suits or fights this corpus — plus what PCA does and
 why p128, and the `log1p` target / `expm1` blowup mechanic (consolidate with
 the Introduction's existing metrics prose; don't duplicate it). Source the
 content from `PROJECT-FACTS.md` and the reports' findings; write for a
-reader who knows regression but not this repo.
+reader who knows ML but not this repo.
 
 Keep it to the packages already loaded — `\paragraph{}` and `description`
 environments, no `tcolorbox` or new dependencies (tectonic fetches packages,

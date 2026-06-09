@@ -31,9 +31,39 @@ pub fn normalize(weights: &[f64]) -> Result<Vec<f64>> {
     Ok(weights.iter().map(|w| w / sum).collect())
 }
 
-/// Grid-search mean weights on validation predictions (step 0.05 over the
-/// simplex; 2 or 3 members). Returns the MAE-optimal normalized weights.
+/// Mean absolute error (regression grid objective). Lower is better.
+pub fn mae_obj(blended: &[f64], actual: &[f64]) -> f64 {
+    blended.iter().zip(actual).map(|(p, a)| (p - a).abs()).sum::<f64>() / actual.len() as f64
+}
+
+/// Binary cross-entropy (classification grid objective): `blended` is the
+/// combined P(class==1), `actual` ∈ {0,1}. Lower is better.
+pub fn logloss_obj(blended: &[f64], actual: &[f64]) -> f64 {
+    const EPS: f64 = 1e-15;
+    blended
+        .iter()
+        .zip(actual)
+        .map(|(p, y)| {
+            let p = p.clamp(EPS, 1.0 - EPS);
+            -(y * p.ln() + (1.0 - y) * (1.0 - p).ln())
+        })
+        .sum::<f64>()
+        / actual.len() as f64
+}
+
+/// MAE-optimal grid (regression default; kept for callers/tests).
 pub fn grid_fit(preds: &[Vec<f64>], actual: &[f64]) -> Result<Vec<f64>> {
+    grid_fit_with(preds, actual, mae_obj)
+}
+
+/// Grid-search mean weights on validation predictions (step 0.05 over the
+/// simplex; 2 or 3 members) minimizing `objective` (lower-is-better). Returns
+/// the optimal normalized weights.
+pub fn grid_fit_with(
+    preds: &[Vec<f64>],
+    actual: &[f64],
+    objective: impl Fn(&[f64], &[f64]) -> f64,
+) -> Result<Vec<f64>> {
     ensure!(
         (2..=3).contains(&preds.len()),
         "weight_fit grid supports 2 or 3 members, got {}",
@@ -41,7 +71,7 @@ pub fn grid_fit(preds: &[Vec<f64>], actual: &[f64]) -> Result<Vec<f64>> {
     );
     let mae = |w: &[f64]| -> f64 {
         let blended = combine(Rule::Mean, preds, w);
-        blended.iter().zip(actual).map(|(p, a)| (p - a).abs()).sum::<f64>() / actual.len() as f64
+        objective(&blended, actual)
     };
     let steps = 20usize; // 0.05 grid
     let mut best = (f64::INFINITY, vec![]);

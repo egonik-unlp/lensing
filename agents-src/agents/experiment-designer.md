@@ -87,7 +87,7 @@ list runners-up in one line each so the user can redirect cheaply.
   exactly — if the control doesn't reproduce (beyond the noise band),
   the whole batch is suspect.
 - **A pre-agreed decision rule**: what result saves a new definition (e.g.
-  "wins MAE and R² on the same split by >200 MAE"), what triggers the
+  "wins {{primary_metric}} on the same split by more than the noise band"), what triggers the
   documented seed-robustness follow-up, what counts as refuted. This is what
   the approval authorizes the runner to act on — write it so the runner can
   apply it mechanically, with no judgment calls left open.
@@ -127,7 +127,8 @@ experiment-runner agent with this design verbatim to execute.
 - The server must already be running; if `GET /api/health` fails, report that
   and stop — do not start or restart servers (live training runs die on
   restart).
-- Respect the noise band in all claims: a 150-MAE single-split win is "at
-  least equal, likely better — needs the 3-seed check", not "beats".
+- Respect the noise band in all claims: a single-split {{primary_metric}} win
+  inside the noise band is "at least equal, likely better — needs the 3-seed
+  check", not "beats".
 - Be honest about queue position and walltime.
 - Your final message is your only output channel — make it self-contained.

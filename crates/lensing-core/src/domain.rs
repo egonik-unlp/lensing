@@ -120,12 +120,33 @@ pub struct FieldMatch {
     pub equals: serde_json::Value,
 }
 
+/// The learning task. Drives which metrics are computed/ranked and how the
+/// target column + predictions are interpreted. Defaults to `Regression` so
+/// existing domains (with no `task` key) are unchanged.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Task {
+    #[default]
+    Regression,
+    /// Two classes (labels {0,1}); predictions carry P(class==1).
+    Binary,
+    /// K>2 classes (softmax); predictions carry the K-vector.
+    Multiclass,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TargetSpec {
     /// Metadata field holding the target value.
     pub field: String,
     pub transform: TargetTransform,
     pub format: TargetFormat,
+    /// Learning task. Absent ⇒ regression (back-compat).
+    #[serde(default)]
+    pub task: Task,
+    /// Class labels for `multiclass` (ordered; index = class id). Absent ⇒
+    /// derived from the target field's distinct values at build time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub classes: Option<Vec<String>>,
 }
 
 /// How the UI renders target-space values.
@@ -322,6 +343,10 @@ pub struct MetricsSpec {
     /// Size cap of the auto-maintained best-models group. Defaults to 12.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub best_models_size: Option<usize>,
+    /// Per-metric ranking direction override (metric name → lower-is-better).
+    /// Absent names fall back to the built-in defaults in [`Self::lower_is_better`].
+    #[serde(default)]
+    pub directions: BTreeMap<String, bool>,
 }
 
 impl MetricsSpec {
@@ -332,18 +357,56 @@ impl MetricsSpec {
         self.best_models_size.unwrap_or(Self::DEFAULT_BEST_MODELS_SIZE)
     }
 
-    /// `(extractor, lower_is_better)` for the configured primary metric.
-    /// Maps the display label onto a [`crate::Metrics`] field; `None` when
-    /// the label names no struct field (callers must then skip ranking).
-    pub fn primary_accessor(&self) -> Option<(fn(&crate::Metrics) -> f64, bool)> {
-        match self.primary.to_lowercase().as_str() {
-            "mae" => Some((|m| m.mae, true)),
-            "rmse" => Some((|m| m.rmse, true)),
-            "mape" => Some((|m| m.mape, true)),
-            "medape" => Some((|m| m.medape, true)),
-            "r²" | "r2" => Some((|m| m.r2, false)),
+    /// Read a named metric off a [`crate::Metrics`] blob (case-insensitive).
+    /// `None` when the metric is unknown or absent on this run — callers then
+    /// skip the run for ranking.
+    pub fn extract(&self, name: &str, m: &crate::Metrics) -> Option<f64> {
+        match name.to_lowercase().as_str() {
+            "mae" => m.mae,
+            "rmse" => m.rmse,
+            "mape" => m.mape,
+            "medape" => m.medape,
+            "r²" | "r2" => m.r2,
+            "accuracy" | "acc" => m.accuracy,
+            "logloss" | "log_loss" => m.logloss,
+            "auc" | "roc_auc" | "macro_auc" => m.auc,
+            "brier" => m.brier,
+            "macro_f1" | "f1" => m.macro_f1,
             _ => None,
         }
+    }
+
+    /// `Some(lower_is_better)` for the configured primary metric, or `None`
+    /// when the primary names no known metric (ranking is then skipped).
+    pub fn primary_direction(&self) -> Option<bool> {
+        if self.extract_name_known(&self.primary) {
+            Some(self.lower_is_better(&self.primary))
+        } else {
+            None
+        }
+    }
+
+    /// Whether a smaller value of `name` ranks better. Error-style metrics
+    /// (mae/rmse/mape/medape/logloss/brier) are lower-better; score-style
+    /// metrics (r2/accuracy/auc/f1) are higher-better. `[metrics].directions`
+    /// overrides per name.
+    pub fn lower_is_better(&self, name: &str) -> bool {
+        if let Some(&b) = self.directions.get(&name.to_lowercase()) {
+            return b;
+        }
+        matches!(
+            name.to_lowercase().as_str(),
+            "mae" | "rmse" | "mape" | "medape" | "logloss" | "log_loss" | "brier"
+        )
+    }
+
+    fn extract_name_known(&self, name: &str) -> bool {
+        matches!(
+            name.to_lowercase().as_str(),
+            "mae" | "rmse" | "mape" | "medape" | "r²" | "r2" | "accuracy" | "acc"
+                | "logloss" | "log_loss" | "auc" | "roc_auc" | "macro_auc" | "brier"
+                | "macro_f1" | "f1"
+        )
     }
 }
 
@@ -426,6 +489,20 @@ impl Domain {
         }
         if !self.metrics.columns.contains(&self.metrics.primary) {
             bail!("[metrics].primary {:?} is not in [metrics].columns", self.metrics.primary);
+        }
+        if self.metrics.primary_direction().is_none() {
+            bail!(
+                "[metrics].primary {:?} is not a known metric (mae/rmse/mape/medape/r2/accuracy/logloss/auc/brier/macro_f1)",
+                self.metrics.primary
+            );
+        }
+        // Classification targets are class labels, not continuous values:
+        // a target transform (e.g. log1p) on a class id is meaningless.
+        if self.target.task != Task::Regression && self.target.transform != TargetTransform::None {
+            bail!(
+                "[target].transform must be \"none\" for a {:?} task, not {:?}",
+                self.target.task, self.target.transform
+            );
         }
         Ok(())
     }
@@ -637,28 +714,45 @@ mod tests {
     }
 
     #[test]
-    fn primary_accessor_maps_labels_and_directions() {
-        let m = crate::Metrics { mae: 1.0, rmse: 2.0, r2: 0.5, mape: 0.2, medape: 0.1, n_test: 10 };
+    fn metric_extract_and_direction() {
+        let m = crate::Metrics {
+            n_test: 10,
+            mae: Some(1.0),
+            rmse: Some(2.0),
+            r2: Some(0.5),
+            mape: Some(0.2),
+            medape: Some(0.1),
+            auc: Some(0.77),
+            ..Default::default()
+        };
         let spec = |primary: &str| MetricsSpec {
             primary: primary.into(),
             columns: vec![primary.into()],
             percent: vec![],
             value_unit: "USD".into(),
             best_models_size: None,
+            directions: std::collections::BTreeMap::new(),
         };
-        let (f, lower) = spec("MAE").primary_accessor().unwrap();
-        assert_eq!(f(&m), 1.0);
-        assert!(lower);
-        let (f, lower) = spec("medAPE").primary_accessor().unwrap();
-        assert_eq!(f(&m), 0.1);
-        assert!(lower);
-        let (f, lower) = spec("R²").primary_accessor().unwrap();
-        assert_eq!(f(&m), 0.5);
-        assert!(!lower);
-        assert!(spec("ELO").primary_accessor().is_none());
-        // embedded domain: MAE primary, default group size
+        let s = spec("MAE");
+        assert_eq!(s.extract("MAE", &m), Some(1.0));
+        assert!(s.lower_is_better("MAE"));
+        assert_eq!(spec("medAPE").extract("medAPE", &m), Some(0.1));
+        assert!(spec("medAPE").lower_is_better("medAPE"));
+        // score-style metrics rank higher-is-better
+        assert_eq!(spec("R²").extract("R²", &m), Some(0.5));
+        assert!(!spec("R²").lower_is_better("R²"));
+        assert_eq!(spec("AUC").extract("auc", &m), Some(0.77));
+        assert!(!spec("AUC").lower_is_better("AUC"));
+        // unknown metric → no direction, absent metric → None
+        assert!(spec("ELO").primary_direction().is_none());
+        assert_eq!(s.extract("logloss", &m), None);
+        // direction override
+        let mut over = spec("AUC");
+        over.directions.insert("auc".into(), true);
+        assert!(over.lower_is_better("AUC"));
+        // embedded domain: known primary, default group size
         let d = Domain::default();
-        assert!(d.metrics.primary_accessor().is_some());
+        assert!(d.metrics.primary_direction().is_some());
         assert_eq!(d.metrics.best_models_size(), 12);
     }
 

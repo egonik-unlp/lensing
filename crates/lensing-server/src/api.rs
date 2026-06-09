@@ -1010,7 +1010,11 @@ fn residual_correlation(a: &[lensing_core::Prediction], b: &[lensing_core::Predi
     cov / (va.sqrt() * vb.sqrt())
 }
 
-fn blend_metrics(legs: &[Vec<lensing_core::Prediction>], weights: &[f64]) -> lensing_core::Metrics {
+fn blend_metrics(
+    legs: &[Vec<lensing_core::Prediction>],
+    weights: &[f64],
+    task: lensing_core::domain::Task,
+) -> lensing_core::Metrics {
     let pairs: Vec<(f64, f64)> = (0..legs[0].len())
         .map(|i| {
             let blended: f64 =
@@ -1018,7 +1022,12 @@ fn blend_metrics(legs: &[Vec<lensing_core::Prediction>], weights: &[f64]) -> len
             (legs[0][i].actual, blended)
         })
         .collect();
-    lensing_core::compute_metrics(&pairs)
+    // Binary blends P(class==1); score by classification metrics, not MAE.
+    if task == lensing_core::domain::Task::Binary {
+        lensing_core::compute_binary_metrics(&pairs)
+    } else {
+        lensing_core::compute_metrics(&pairs)
+    }
 }
 
 /// Blend the test-split predictions of two or more finished runs and report
@@ -1044,6 +1053,16 @@ pub async fn blend_runs(
         }
         None => vec![1.0 / req.run_ids.len() as f64; req.run_ids.len()],
     };
+
+    // Scalar blending of `predicted` works for regression (target value) and
+    // binary (P(class==1)); multiclass `predicted` is an argmax class id that
+    // can't be linearly combined — refuse it.
+    let task = state.domain.target.task;
+    if task == lensing_core::domain::Task::Multiclass {
+        return Err(bad_request(
+            "blend endpoint does not support multiclass targets (probability-vector blending pending)".into(),
+        ));
+    }
 
     let mut legs: Vec<Vec<lensing_core::Prediction>> = Vec::with_capacity(req.run_ids.len());
     for id in &req.run_ids {
@@ -1083,7 +1102,12 @@ pub async fn blend_runs(
         .zip(&weights)
         .map(|((leg, id), w)| {
             let pairs: Vec<(f64, f64)> = leg.iter().map(|p| (p.actual, p.predicted)).collect();
-            json!({ "run_id": id, "weight": w, "metrics": lensing_core::compute_metrics(&pairs) })
+            let m = if task == lensing_core::domain::Task::Binary {
+                lensing_core::compute_binary_metrics(&pairs)
+            } else {
+                lensing_core::compute_metrics(&pairs)
+            };
+            json!({ "run_id": id, "weight": w, "metrics": m })
         })
         .collect();
 
@@ -1099,20 +1123,28 @@ pub async fn blend_runs(
         if legs.len() != 2 {
             return Err(bad_request("sweep requires exactly 2 run_ids".into()));
         }
-        let points: Vec<serde_json::Value> = (0..=20)
+        // Select the sweep optimum by the domain's PRIMARY metric + direction
+        // (e.g. min MAE for regression, max AUC for binary), not a hardcoded MAE.
+        let primary = state.domain.metrics.primary.clone();
+        let lower_wins = state.domain.metrics.lower_is_better(&primary);
+        let scored: Vec<(f64, Option<f64>, lensing_core::Metrics)> = (0..=20)
             .map(|step| {
                 let w = step as f64 * 0.05;
-                json!({ "w": w, "metrics": blend_metrics(&legs, &[w, 1.0 - w]) })
+                let m = blend_metrics(&legs, &[w, 1.0 - w], task);
+                let key = state.domain.metrics.extract(&primary, &m);
+                (w, key, m)
             })
             .collect();
-        let best = points
+        let points: Vec<serde_json::Value> =
+            scored.iter().map(|(w, _, m)| json!({ "w": w, "metrics": m })).collect();
+        let best = scored
             .iter()
+            .filter(|(_, k, _)| k.is_some())
             .min_by(|a, b| {
-                let ma = a["metrics"]["mae"].as_f64().unwrap();
-                let mb = b["metrics"]["mae"].as_f64().unwrap();
-                ma.total_cmp(&mb)
+                let (va, vb) = (a.1.unwrap(), b.1.unwrap());
+                if lower_wins { va.total_cmp(&vb) } else { vb.total_cmp(&va) }
             })
-            .cloned();
+            .map(|(w, _, m)| json!({ "w": w, "metrics": m }));
         Some(json!({ "points": points, "best": best }))
     } else {
         None
@@ -1120,7 +1152,7 @@ pub async fn blend_runs(
 
     Ok(Json(json!({
         "n_test": legs[0].len(),
-        "blend": blend_metrics(&legs, &weights),
+        "blend": blend_metrics(&legs, &weights, task),
         "legs": leg_summaries,
         "residual_correlation": correlations,
         "sweep": sweep,
