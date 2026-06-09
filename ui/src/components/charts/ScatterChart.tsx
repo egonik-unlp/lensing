@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react'
 import type { Prediction } from '../../api/types'
 import { heatColor } from '../../lib/heat'
-import { fmtMoney } from '../../lib/format'
-import { decadeTicks, logScale, moneyTick, scatterDomain } from '../../lib/scale'
+import { fmtTarget, fmtTargetTick } from '../../lib/format'
+import { useDomain } from '../../lib/DomainContext'
+import { decadeTicks, logScale, scatterDomain } from '../../lib/scale'
 import RampLegend from './RampLegend'
 import { DENSITY_FLOOR, SCATTER_H, SCATTER_M, SCATTER_W, scatterDensities } from './scatterDensity'
 import './charts.css'
@@ -49,6 +50,7 @@ export default function ScatterChart({
   onSelect,
   selectedRowId,
 }: Props) {
+  const domainCfg = useDomain()
   const [hover, setHover] = useState<Prediction | null>(null)
 
   const dom = useMemo(() => domain ?? scatterDomain(predictions), [domain, predictions])
@@ -119,10 +121,10 @@ export default function ScatterChart({
             <line className="grid-line" x1={xs.map(t)} x2={xs.map(t)} y1={M.top} y2={H - M.bottom} />
             <line className="grid-line" x1={M.left} x2={W - M.right} y1={ys.map(t)} y2={ys.map(t)} />
             <text className="tick-label" x={xs.map(t)} y={H - M.bottom + 14} textAnchor="middle">
-              {moneyTick(t)}
+              {fmtTargetTick(t, domainCfg)}
             </text>
             <text className="tick-label" x={M.left - 6} y={ys.map(t) + 3} textAnchor="end">
-              {moneyTick(t)}
+              {fmtTargetTick(t, domainCfg)}
             </text>
           </g>
         ))}
@@ -159,7 +161,7 @@ export default function ScatterChart({
             top: `${(ys.map(Math.max(hover.predicted, 1)) / H) * 100}%`,
           }}
         >
-          {`item ${hover.row_id}\nactual    ${fmtMoney(hover.actual)}\npredicted ${fmtMoney(hover.predicted)}`}
+          {`item ${hover.row_id}\nactual    ${fmtTarget(hover.actual, domainCfg)}\npredicted ${fmtTarget(hover.predicted, domainCfg)}`}
         </div>
       )}
       </div>

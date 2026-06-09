@@ -21,15 +21,15 @@ import { computeMetrics, suspiciousRowIds } from '../lib/suspicious'
 import {
   fmtDateTime,
   fmtDuration,
-  fmtMoney,
-  fmtMoneyDelta,
+  fmtTarget,
+  fmtTargetDelta,
   fmtPct,
   fmtR2,
   fmtSignedPct,
   shortRunId,
 } from '../lib/format'
 import './rundetail.css'
-import { useDocTitle } from '../lib/DomainContext'
+import { useDocTitle, useDomain } from '../lib/DomainContext'
 
 export default function RunDetailView() {
   const { runId } = useParams<{ runId: string }>()
@@ -458,6 +458,7 @@ interface Row extends Prediction {
 }
 
 function FinishedRun({ run, events }: { run: RunMeta; events: ReturnType<typeof useRunEvents> }) {
+  const domain = useDomain()
   const preds = useAsync(() => api.getPredictions(run.run_id), [run.run_id])
   const predictors = useAsync(() => api.listPredictors(), [])
   const m = run.metrics ?? ({} as Metrics)
@@ -513,8 +514,8 @@ function FinishedRun({ run, events }: { run: RunMeta; events: ReturnType<typeof 
       <MetricStrip
         ariaLabel="Test-set metrics; each opens the predictions behind it"
         metrics={[
-          { label: 'MAE', value: fmtMoney(m.mae), hint: 'mean absolute error', onClick: () => jumpToTable('abs_err') },
-          { label: 'RMSE', value: fmtMoney(m.rmse), hint: 'outlier-sensitive', onClick: () => jumpToTable('abs_err') },
+          { label: 'MAE', value: fmtTarget(m.mae, domain), hint: 'mean absolute error', onClick: () => jumpToTable('abs_err') },
+          { label: 'RMSE', value: fmtTarget(m.rmse, domain), hint: 'outlier-sensitive', onClick: () => jumpToTable('abs_err') },
           { label: 'R²', value: fmtR2(m.r2), hint: 'target-space fit', onClick: () => jumpToTable('abs_err') },
           { label: 'MAPE', value: fmtPct(m.mape, 0), hint: 'mean % error', onClick: () => jumpToTable('pct_err') },
           { label: 'medAPE', value: fmtPct(m.medape), hint: 'median % error', onClick: () => jumpToTable('pct_err') },
@@ -538,7 +539,7 @@ function FinishedRun({ run, events }: { run: RunMeta; events: ReturnType<typeof 
           </label>
           {filteredMetrics && (
             <p className="filtered-strip num" role="status">
-              filtered: MAE {fmtMoney(filteredMetrics.mae)} · RMSE {fmtMoney(filteredMetrics.rmse)} · R²{' '}
+              filtered: MAE {fmtTarget(filteredMetrics.mae, domain)} · RMSE {fmtTarget(filteredMetrics.rmse, domain)} · R²{' '}
               {fmtR2(filteredMetrics.r2)} · MAPE {fmtPct(filteredMetrics.mape, 0)} · medAPE{' '}
               {fmtPct(filteredMetrics.medape)} · n {filteredMetrics.n_test.toLocaleString()}
               <span className="muted"> (official metrics above are unchanged)</span>
@@ -861,6 +862,7 @@ function PredRow({
   highlighted: boolean
   onToggle: () => void
 }) {
+  const domain = useDomain()
   return (
     <>
       <tr
@@ -869,9 +871,9 @@ function PredRow({
         aria-expanded={expanded}
       >
         <td className="num">{row.row_id}</td>
-        <td className="num-col num">{fmtMoney(row.actual)}</td>
-        <td className="num-col num">{fmtMoney(row.predicted)}</td>
-        <td className="num-col num">{fmtMoneyDelta(row.err)}</td>
+        <td className="num-col num">{fmtTarget(row.actual, domain)}</td>
+        <td className="num-col num">{fmtTarget(row.predicted, domain)}</td>
+        <td className="num-col num">{fmtTargetDelta(row.err, domain)}</td>
         <td className={`num-col num pct-cell ${Math.abs(row.pct) >= 0.5 ? 'pct-large' : ''}`}>
           {fmtSignedPct(row.pct)}
           {row.suspicious && (

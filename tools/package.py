@@ -61,6 +61,9 @@ INCLUDE: list[tuple[str, tuple[str, ...]]] = [
     ("Cargo.lock", ()),
     ("assets", ()),
     ("docs/DEPLOY.md", ()),
+    # The server serves this from disk at /api/openapi.yaml (and Swagger UI
+    # at /docs reads it) — instances need it shipped or both 404.
+    ("docs/openapi.yaml", ()),
     ("crates", ("target",)),
     ("predictors", (".venv", "__pycache__", "Manifest.toml")),
     ("ui", ("node_modules", "dist")),
@@ -278,15 +281,22 @@ def framework_version() -> str:
         return "0.0.0-unversioned"
 
 
-def git_provenance() -> tuple[str | None, bool]:
-    """Best-effort (commit, dirty) of the packaging checkout; (None, False) outside git."""
+def git_provenance() -> tuple[str | None, bool, str | None]:
+    """Best-effort (commit, dirty, origin_url) of the packaging checkout;
+    (None, False, None) outside git. The origin url lets a downstream
+    instance's upstream-contribute agent find the mother repo for PRs."""
     try:
         run = lambda *args: subprocess.run(  # noqa: E731
             ["git", *args], cwd=ROOT, capture_output=True, text=True, check=True
         ).stdout.strip()
-        return run("rev-parse", "HEAD"), bool(run("status", "--porcelain"))
+        commit, dirty = run("rev-parse", "HEAD"), bool(run("status", "--porcelain"))
+        try:
+            origin = run("remote", "get-url", "origin") or None
+        except Exception:
+            origin = None
+        return commit, dirty, origin
     except Exception:
-        return None, False
+        return None, False, None
 
 
 def file_manifest(pkg: Path) -> dict[str, dict]:
@@ -352,12 +362,15 @@ def main() -> None:
     # Provenance manifest: hash the framework files (before seeding, so
     # instance-owned files never enter the map).
     version = framework_version()
-    source_commit, source_dirty = git_provenance()
+    source_commit, source_dirty, source_repo = git_provenance()
     manifest = {
         "framework": name,
         "version": version,
         "source_commit": source_commit,
         "source_dirty": source_dirty,
+        # Where instances file upstream-contribute PRs; null outside git or
+        # without an origin remote (the agent then asks for the repo).
+        "source_repo": source_repo,
         "schema_version": domain.get("schema_version"),
         "files": file_manifest(pkg),
         "seeded": SEEDED,

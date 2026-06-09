@@ -12,7 +12,7 @@ import StatusBadge from '../components/StatusBadge'
 import ViewHeader from '../components/ViewHeader'
 import { useAsync } from '../hooks/useAsync'
 import { loadItems, loadSplit } from '../lib/itemsCache'
-import { fmtDateTime, fmtMoney, fmtPct, fmtR2, shortDatasetId } from '../lib/format'
+import { fmtDateTime, fmtTarget, fmtTargetTick, fmtPct, fmtR2, shortDatasetId } from '../lib/format'
 import { ruleLabel } from '../lib/rules'
 import { useDomain } from '../lib/DomainContext'
 import {
@@ -23,7 +23,6 @@ import {
   type DomainField,
 } from '../lib/domain'
 import { quantiles, topCategories } from '../lib/stats'
-import { moneyTick } from '../lib/scale'
 import './datasetdetail.css'
 
 /** One corpus row: items.json entry + its id + split membership. */
@@ -372,6 +371,7 @@ function ExportPanel({ m }: { m: Manifest }) {
 /* ---------------- B. lineage ---------------- */
 
 function Lineage({ datasetId }: { datasetId: string }) {
+  const domain = useDomain()
   const runs = useAsync(() => api.listRuns(), [])
   const models = useAsync(() => api.listModels(), [])
   const definitions = useAsync(() => api.listDefinitions(), [])
@@ -432,7 +432,7 @@ function Lineage({ datasetId }: { datasetId: string }) {
                 <td>
                   <StatusBadge status={r.status} />
                 </td>
-                <td className="num-col num">{r.metrics ? fmtMoney(r.metrics.mae) : '—'}</td>
+                <td className="num-col num">{r.metrics ? fmtTarget(r.metrics.mae, domain) : '—'}</td>
                 <td className="num-col num">{r.metrics ? fmtR2(r.metrics.r2) : '—'}</td>
                 <td className="num">{fmtDateTime(r.started_at)}</td>
               </tr>
@@ -566,9 +566,9 @@ function Exploration({
         </div>
 
         <div className="metrics-strip eda-strip" role="group" aria-label="Corpus summary statistics">
-          <Stat label={`median ${targetNoun}`} value={fmtMoney(p50)} hint="p50 over the corpus" />
-          <Stat label="p10" value={fmtMoney(p10)} hint="low tail" />
-          <Stat label="p90" value={fmtMoney(p90)} hint="high tail" />
+          <Stat label={`median ${targetNoun}`} value={fmtTarget(p50, domain)} hint="p50 over the corpus" />
+          <Stat label="p10" value={fmtTarget(p10, domain)} hint="low tail" />
+          <Stat label="p90" value={fmtTarget(p90, domain)} hint="high tail" />
           {cappedDesc && <Stat label={fieldLabel(cappedDesc)} value={meanCapped.toFixed(1)} hint="mean" />}
           {primaryCats[0] && (
             <Stat
@@ -588,7 +588,7 @@ function Exploration({
               log
               bins={48}
               xLabel={`${targetNoun}, log scale`}
-              tickFormat={moneyTick}
+              tickFormat={(v) => fmtTargetTick(v, domain)}
               markers={[
                 { value: p50, label: 'median' },
                 { value: p10, label: 'p10' },
@@ -707,7 +707,7 @@ const SLICE_LIMIT = 20
 function sliceLabel(slice: Slice, domain: Domain): string {
   switch (slice.kind) {
     case 'target':
-      return `${domain.project.target_noun} ${fmtMoney(slice.lo)} – ${fmtMoney(slice.hi)}`
+      return `${domain.project.target_noun} ${fmtTarget(slice.lo, domain)} – ${fmtTarget(slice.hi, domain)}`
     case 'capped': {
       const f = cappedNumericField(domain)
       return `${f ? fieldLabel(f) : 'value'} ${Math.ceil(slice.lo)} – ${Math.floor(slice.hi)}`
@@ -798,13 +798,14 @@ function SliceRow({
   extra: DomainField[]
   capped: DomainField | null
 }) {
+  const domain = useDomain()
   const [expanded, setExpanded] = useState(false)
   const nCols = 3 + primary.length + (capped ? 1 : 0)
   return (
     <>
       <tr className="pred-row" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded}>
         <td className="num">{r.row_id}</td>
-        <td className="num-col num">{fmtMoney(r.target)}</td>
+        <td className="num-col num">{fmtTarget(r.target, domain)}</td>
         {primary.map((f) => (
           <td key={f.name}>{r.cats[f.name] || '—'}</td>
         ))}

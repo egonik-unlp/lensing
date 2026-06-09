@@ -1,0 +1,1762 @@
+openapi: 3.0.3
+info:
+  title: lensing API
+  version: 0.1.0
+  description: >-
+    HTTP API of the lensing prediction lab: build feature datasets from a
+    Qdrant corpus, launch and monitor training runs, promote runs into named
+    models and predict against them, maintain the curated best-models group,
+    manage model definitions (predictor + hyperparameter presets), author
+    manual entries, and blend the test-split predictions of finished runs.
+    Domain-specific vocabulary (entity noun, target noun, field names) comes
+    from domain.toml — see GET /api/domain.
+
+servers:
+  - url: /api
+
+# The API is unauthenticated (single-user lab server).
+security: []
+
+tags:
+  - name: docs
+  - name: health
+  - name: domain
+  - name: predictors
+  - name: datasets
+  - name: builds
+  - name: jobs
+  - name: collections
+  - name: runs
+  - name: blends
+  - name: models
+  - name: best-models
+  - name: listings
+  - name: definitions
+
+paths:
+  /openapi.yaml:
+    get:
+      tags: [docs]
+      summary: This OpenAPI spec
+      description: Serves docs/openapi.yaml from disk so spec edits need no rebuild.
+      responses:
+        '200':
+          description: OpenAPI document.
+          content:
+            application/yaml:
+              schema: { type: string }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /docs:
+    get:
+      tags: [docs]
+      summary: Swagger UI
+      description: >-
+        Swagger UI shell (CDN assets) pointed at /api/openapi.yaml. Served at
+        the site root (/docs), not under /api.
+      servers:
+        - url: /
+      responses:
+        '200':
+          description: HTML page.
+          content:
+            text/html:
+              schema: { type: string }
+
+  /health:
+    get:
+      tags: [health]
+      summary: Liveness check
+      responses:
+        '200':
+          description: Server is up.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  now: { type: string, description: RFC 3339 UTC timestamp }
+
+  /domain:
+    get:
+      tags: [domain]
+      summary: Get the domain configuration
+      description: >-
+        The domain configuration (domain.toml): corpus schema, target spec,
+        field descriptors, quality-rule labels, metrics display, and UI
+        vocabulary. The UI renders labels, forms and formatters from this.
+      responses:
+        '200':
+          description: Domain configuration.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Domain' }
+
+  /predictors:
+    get:
+      tags: [predictors]
+      summary: List registered predictors
+      description: Every predictor in registry.toml with its hyperparameter schema.
+      responses:
+        '200':
+          description: Predictor registry.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  predictors:
+                    type: array
+                    items: { $ref: '#/components/schemas/Predictor' }
+
+  /datasets:
+    get:
+      tags: [datasets]
+      summary: List datasets
+      description: All dataset manifests, newest first. The PCA mean is stripped.
+      responses:
+        '200':
+          description: Dataset manifests.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  datasets:
+                    type: array
+                    items: { $ref: '#/components/schemas/Manifest' }
+    post:
+      tags: [datasets]
+      summary: Build a dataset
+      description: >-
+        Start an async dataset build (feature matrix + train/test split) from a
+        Qdrant collection. Returns a build_id; poll GET /builds/{id}.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BuildRequest' }
+      responses:
+        '200':
+          description: Build accepted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  build_id: { type: string }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /datasets/preflight:
+    post:
+      tags: [datasets]
+      summary: Preview quality filtering
+      description: >-
+        Evaluate quality rules over the live corpus (payload-only scroll)
+        without building anything: per-rule exclusion counts plus sample rows.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PreflightRequest' }
+      responses:
+        '200':
+          description: Per-rule counts, samples, and currency report.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                properties:
+                  n_total: { type: integer }
+                  n_excluded_total: { type: integer }
+                  rules: { type: array, items: { type: object, additionalProperties: true } }
+                  samples: {}
+                  currency: {}
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /datasets/analyze:
+    post:
+      tags: [datasets]
+      summary: Analyze feature spectrum and redundancy
+      description: >-
+        Async analyze job sharing the build prologue (scroll, currency,
+        quality, split): full eigen-spectrum EVR preview plus feature
+        redundancy report. Returns a job_id; poll GET /jobs/{id}.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BuildRequest' }
+      responses:
+        '200':
+          description: Analyze job accepted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id: { type: string }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /datasets/{id}:
+    get:
+      tags: [datasets]
+      summary: Get a dataset manifest
+      parameters: [{ $ref: '#/components/parameters/DatasetId' }]
+      responses:
+        '200':
+          description: Dataset manifest (PCA mean stripped).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Manifest' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /datasets/{id}/items:
+    get:
+      tags: [datasets]
+      summary: Get dataset items
+      description: The dataset's items.json (raw per-row metadata), as stored.
+      parameters: [{ $ref: '#/components/parameters/DatasetId' }]
+      responses:
+        '200':
+          description: items.json payload.
+          content:
+            application/json:
+              schema: { type: array, items: { type: object, additionalProperties: true } }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /datasets/{id}/split:
+    get:
+      tags: [datasets]
+      summary: Get train/test split membership
+      description: Train/test membership as row ids (not indices), for joining with items.json.
+      parameters: [{ $ref: '#/components/parameters/DatasetId' }]
+      responses:
+        '200':
+          description: Row-id membership.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  train: { type: array, items: { type: integer, format: int64 } }
+                  test: { type: array, items: { type: integer, format: int64 } }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /datasets/{id}/archive:
+    get:
+      tags: [datasets]
+      summary: Download a dataset as a tar.gz
+      description: >-
+        Tar.gz of the whole dataset directory, the transport remote training
+        workers (`lensing-server worker --hub-url <this server>`) fetch
+        datasets through.
+      parameters: [{ $ref: '#/components/parameters/DatasetId' }]
+      responses:
+        '200':
+          description: Gzipped tarball of the dataset directory.
+          content:
+            application/gzip:
+              schema: { type: string, format: binary }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /datasets/{id}/rename:
+    post:
+      tags: [datasets]
+      summary: Rename a dataset
+      description: >-
+        Set a dataset's display name. The slug dataset_id (and directory) stay
+        put, so run/definition lineage is unaffected.
+      parameters: [{ $ref: '#/components/parameters/DatasetId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, description: "Display name; trimmed, 1..=80 chars, no control chars." }
+      responses:
+        '200':
+          description: Updated manifest.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Manifest' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /builds/{id}:
+    get:
+      tags: [builds]
+      summary: Get build status
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Build status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BuildStatus' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /jobs/{id}:
+    get:
+      tags: [jobs]
+      summary: Get async job status
+      description: Status of a heavy async job (analyze, export).
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Job status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobStatus' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /collections:
+    get:
+      tags: [collections]
+      summary: List Qdrant collections
+      description: Every Qdrant collection, for the build form's source picker.
+      responses:
+        '200':
+          description: Collections plus the server's default source.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  collections: { type: array, items: { type: string } }
+                  source: { type: string }
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /collections/validate:
+    post:
+      tags: [collections]
+      summary: Validate a collection's shape
+      description: >-
+        Probe a collection's vector config, filter match count, and payload
+        field coverage against the domain. Shape problems are reported as data
+        (always 200); only transport failures error.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                collection: { type: string, description: Collection to probe; defaults to the server's. }
+      responses:
+        '200':
+          description: Collection validation report.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /collections/export:
+    post:
+      tags: [collections]
+      summary: Export a clean collection
+      description: >-
+        Write quality-filter survivors to a new Qdrant collection
+        (<source>-clean-<suffix>); source untouched. Reconciled currency (and
+        Convert-mode target values) are stamped into the exported payloads.
+        Returns a job_id; poll GET /jobs/{id}.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExportRequest' }
+      responses:
+        '200':
+          description: Export job accepted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id: { type: string }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /runs:
+    get:
+      tags: [runs]
+      summary: List runs
+      description: >-
+        All run metas, newest first: local run dirs plus database-backed rows
+        (queued and remote-worker runs).
+      responses:
+        '200':
+          description: Run metas.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runs:
+                    type: array
+                    items: { $ref: '#/components/schemas/RunMeta' }
+    post:
+      tags: [runs]
+      summary: Start a training run
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StartRunRequest' }
+      responses:
+        '200':
+          description: Run started (or enqueued when `queue` is set).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  run_id: { type: string }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /runs/{id}:
+    get:
+      tags: [runs]
+      summary: Get a run meta
+      parameters: [{ $ref: '#/components/parameters/RunId' }]
+      responses:
+        '200':
+          description: Run meta.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RunMeta' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [runs]
+      summary: Delete a finished run
+      description: >-
+        Delete a finished run (local directory or database-only row). Running
+        runs must be stopped first; models promoted from the run keep working.
+      parameters: [{ $ref: '#/components/parameters/RunId' }]
+      responses:
+        '200':
+          description: Deleted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /runs/{id}/predictions:
+    get:
+      tags: [runs]
+      summary: Get run test-split predictions
+      description: The run's predictions.json (test-split actual/predicted pairs).
+      parameters: [{ $ref: '#/components/parameters/RunId' }]
+      responses:
+        '200':
+          description: Predictions.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Prediction' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /blend:
+    post:
+      tags: [blends]
+      summary: Blend run predictions
+      description: >-
+        Blend the test-split predictions of two or more finished runs and
+        report target-space metrics for the combination, each leg alone, and
+        the pairwise residual correlations. Pure post-processing; nothing is
+        trained or written. All runs must share the same test split.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BlendRequest' }
+      responses:
+        '200':
+          description: Blend result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BlendResponse' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /runs/{id}/events:
+    get:
+      tags: [runs]
+      summary: Stream run progress (SSE)
+      description: >-
+        Server-Sent Events: replays recorded progress lines, then streams live
+        events until the run is terminal. Each event's data is one JSON line
+        (epoch / log / checkpoint / stopping / done / status). Queued and
+        remote-worker runs replay database rows, polling while in flight.
+      parameters: [{ $ref: '#/components/parameters/RunId' }]
+      responses:
+        '200':
+          description: Event stream.
+          content:
+            text/event-stream:
+              schema: { type: string }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /runs/{id}/stop:
+    post:
+      tags: [runs]
+      summary: Stop a running run
+      parameters: [{ $ref: '#/components/parameters/RunId' }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                force:
+                  type: boolean
+                  default: false
+                  description: >-
+                    false = graceful (STOP file; predictor finishes the epoch,
+                    evaluates, checkpoints). true = stop-and-save with kill
+                    escalation after a grace window.
+      responses:
+        '200':
+          description: Stop acknowledged.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  mode: { type: string, enum: [graceful, force, kill] }
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /runs/{id}/viz:
+    get:
+      tags: [runs]
+      summary: Get run architecture diagram
+      description: Architecture SVG written by the predictor at training start (capability-gated).
+      parameters: [{ $ref: '#/components/parameters/RunId' }]
+      responses:
+        '200':
+          description: SVG diagram.
+          content:
+            image/svg+xml:
+              schema: { type: string }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /runs/{id}/blend:
+    get:
+      tags: [runs]
+      summary: Get a blend run's blend record
+      description: >-
+        blend.json written by the blend predictor at the end of training:
+        per-member kind/predictor/source, fitted weights, exclude_blocks and
+        solo test metrics. Only blend runs have it; 404 otherwise.
+      parameters: [{ $ref: '#/components/parameters/RunId' }]
+      responses:
+        '200':
+          description: Blend record.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /models:
+    get:
+      tags: [models]
+      summary: List promoted models
+      responses:
+        '200':
+          description: Model records, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  models:
+                    type: array
+                    items: { $ref: '#/components/schemas/ModelRecord' }
+    post:
+      tags: [models]
+      summary: Promote a run into a model
+      description: >-
+        Copy a finished run's artifacts into a named model. Remote-worker runs
+        are materialized from the database first. Triggers a best-models
+        recompute.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, run_id]
+              properties:
+                name: { type: string, description: "Model name; must match ^[a-z0-9][a-z0-9-]{0,63}$." }
+                run_id: { type: string }
+                notes: { type: string, nullable: true }
+      responses:
+        '201':
+          description: Model created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ModelRecord' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /models/{name}:
+    get:
+      tags: [models]
+      summary: Get a model
+      description: Model record, contract summary, and training hyperparams.
+      parameters: [{ $ref: '#/components/parameters/ModelName' }]
+      responses:
+        '200':
+          description: Model detail.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  record: { $ref: '#/components/schemas/ModelRecord' }
+                  contract: { $ref: '#/components/schemas/ContractSummary' }
+                  hyperparams: { nullable: true, type: object, additionalProperties: true }
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [models]
+      summary: Delete a model
+      description: >-
+        Triggers a best-models recompute: a deleted group member is backfilled
+        by the next-best candidate (to keep a top-ranked run OUT of the group,
+        exclude it via PUT /best-models instead).
+      parameters: [{ $ref: '#/components/parameters/ModelName' }]
+      responses:
+        '200':
+          description: Deleted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /models/{name}/viz:
+    get:
+      tags: [models]
+      summary: Get model architecture diagram
+      parameters: [{ $ref: '#/components/parameters/ModelName' }]
+      responses:
+        '200':
+          description: SVG diagram.
+          content:
+            image/svg+xml:
+              schema: { type: string }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /models/{name}/blend:
+    get:
+      tags: [models]
+      summary: Get a blend model's blend record
+      description: >-
+        blend.json copied into the model directory at promotion. Only models
+        promoted from blend runs have it; 404 otherwise.
+      parameters: [{ $ref: '#/components/parameters/ModelName' }]
+      responses:
+        '200':
+          description: Blend record.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /models/{name}/contract:
+    get:
+      tags: [models]
+      summary: Get model inference contract
+      description: "What callers must send: required fields, embedding dim, target transform."
+      parameters: [{ $ref: '#/components/parameters/ModelName' }]
+      responses:
+        '200':
+          description: Contract summary.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContractSummary' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /models/{name}/predict:
+    post:
+      tags: [models]
+      summary: Predict against a model
+      description: >-
+        One-shot predict: featurizes raw items and/or Qdrant point ids under
+        the model's frozen contract and returns target-space predictions.
+      parameters: [{ $ref: '#/components/parameters/ModelName' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PredictRequest' }
+      responses:
+        '200':
+          description: Predictions.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PredictResponse' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /models/{name}/rename:
+    post:
+      tags: [models]
+      summary: Rename a model
+      parameters: [{ $ref: '#/components/parameters/ModelName' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [new_name]
+              properties:
+                new_name: { type: string }
+      responses:
+        '200':
+          description: Renamed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ModelRecord' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /best-models:
+    get:
+      tags: [best-models]
+      summary: Get the best-models group
+      description: >-
+        The auto-maintained top-N-by-primary-metric group of promoted models,
+        with curation state (pins and excludes).
+      responses:
+        '200':
+          description: Best-models group.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BestModelGroup' }
+    put:
+      tags: [best-models]
+      summary: Curate the best-models group
+      description: >-
+        Apply curation deltas: pins force-include promoted models regardless
+        of rank; excludes (run ids or model names) bar candidates from
+        auto-selection. A recompute follows; the updated group is returned.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CurateRequest' }
+      responses:
+        '200':
+          description: Updated group.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BestModelGroup' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /best-models/recompute:
+    post:
+      tags: [best-models]
+      summary: Recompute the best-models group
+      description: >-
+        Re-rank all eligible runs by the domain's primary metric and rewrite
+        the group (auto-promoting top runs that lack a model). The server also
+        recomputes automatically on run completion and model promote/delete.
+      responses:
+        '200':
+          description: Recomputed group.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BestModelGroup' }
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /best-models/predict:
+    post:
+      tags: [best-models]
+      summary: Predict with every group member
+      description: >-
+        Fan out the predict request to every group member and aggregate a
+        median consensus per input row. A failing member becomes a warning;
+        only an empty group or all members failing is an error.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PredictRequest' }
+      responses:
+        '200':
+          description: Per-member predictions plus consensus.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GroupPredictResponse' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /listings:
+    get:
+      tags: [listings]
+      summary: List manual entries
+      description: All manually authored entries, newest first.
+      responses:
+        '200':
+          description: Entries.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  listings:
+                    type: array
+                    items: { $ref: '#/components/schemas/Listing' }
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [listings]
+      summary: Create a manual entry
+      description: >-
+        Embed the description and store a corpus-shaped point in the manual
+        collection. Requires OPENAI_API_KEY configured on the server.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ListingRequest' }
+      responses:
+        '201':
+          description: Entry created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Listing' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '502':
+          description: Embedding provider error.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503':
+          description: OPENAI_API_KEY not configured.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /listings/{id}:
+    get:
+      tags: [listings]
+      summary: Get a manual entry
+      description: The entry with its stored embedding (so the UI can predict inline).
+      parameters: [{ $ref: '#/components/parameters/ListingId' }]
+      responses:
+        '200':
+          description: Entry with embedding.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/Listing' }
+                  - type: object
+                    properties:
+                      embedding: { type: array, items: { type: number } }
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [listings]
+      summary: Update a manual entry
+      description: >-
+        Full-replace edit. The embedding is recomputed only when the
+        description text changed; the domain's timestamp field is preserved.
+      parameters: [{ $ref: '#/components/parameters/ListingId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ListingRequest' }
+      responses:
+        '200':
+          description: Updated entry.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Listing' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          description: Embedding provider error.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503':
+          description: OPENAI_API_KEY not configured (only when re-embedding is needed).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    delete:
+      tags: [listings]
+      summary: Delete a manual entry
+      parameters: [{ $ref: '#/components/parameters/ListingId' }]
+      responses:
+        '200':
+          description: Deleted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /definitions:
+    get:
+      tags: [definitions]
+      summary: List model definitions
+      responses:
+        '200':
+          description: Model definitions.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  definitions:
+                    type: array
+                    items: { $ref: '#/components/schemas/ModelDefinition' }
+    post:
+      tags: [definitions]
+      summary: Create a model definition
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, predictor]
+              properties:
+                name: { type: string }
+                predictor: { type: string }
+                hyperparams: { type: object, additionalProperties: true, nullable: true }
+                dataset_tags: { type: array, items: { type: string } }
+                notes: { type: string, nullable: true }
+      responses:
+        '201':
+          description: Definition created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ModelDefinition' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /definitions/{name}:
+    get:
+      tags: [definitions]
+      summary: Get a model definition
+      parameters: [{ $ref: '#/components/parameters/DefinitionName' }]
+      responses:
+        '200':
+          description: Model definition.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ModelDefinition' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [definitions]
+      summary: Update a model definition
+      description: Partial update; omitted fields are unchanged. Empty notes clears it.
+      parameters: [{ $ref: '#/components/parameters/DefinitionName' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                hyperparams: { type: object, additionalProperties: true, nullable: true }
+                dataset_tags: { type: array, items: { type: string }, nullable: true }
+                notes: { type: string, nullable: true }
+      responses:
+        '200':
+          description: Updated definition.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ModelDefinition' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [definitions]
+      summary: Delete a model definition
+      parameters: [{ $ref: '#/components/parameters/DefinitionName' }]
+      responses:
+        '200':
+          description: Deleted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /definitions/{name}/rename:
+    post:
+      tags: [definitions]
+      summary: Rename a model definition
+      parameters: [{ $ref: '#/components/parameters/DefinitionName' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [new_name]
+              properties:
+                new_name: { type: string }
+      responses:
+        '200':
+          description: Renamed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ModelDefinition' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /definitions/{name}/clone:
+    post:
+      tags: [definitions]
+      summary: Clone a model definition
+      parameters: [{ $ref: '#/components/parameters/DefinitionName' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [new_name]
+              properties:
+                new_name: { type: string }
+      responses:
+        '201':
+          description: Cloned definition.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ModelDefinition' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+components:
+  parameters:
+    DatasetId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    RunId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    ModelName:
+      name: name
+      in: path
+      required: true
+      schema: { type: string }
+    DefinitionName:
+      name: name
+      in: path
+      required: true
+      schema: { type: string }
+    ListingId:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+
+  responses:
+    BadRequest:
+      description: Invalid request.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: Conflicting state (e.g. name taken, run still running).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    InternalError:
+      description: Internal error.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+      required: [error]
+
+    Ok:
+      type: object
+      properties:
+        ok: { type: boolean }
+      required: [ok]
+
+    Domain:
+      type: object
+      description: >-
+        The domain configuration (domain.toml). Loosely typed here; the
+        authoritative schema is crates/lensing-core/src/domain.rs (worked
+        example in crates/lensing-core/src/example-domain.toml).
+      additionalProperties: true
+      properties:
+        schema_version: { type: integer, default: 1 }
+        project:
+          type: object
+          properties:
+            name: { type: string, description: Machine name (kebab-case). }
+            title: { type: string }
+            entity_noun: { type: string, description: What one corpus row is called. }
+            entity_noun_plural: { type: string }
+            target_noun: { type: string, description: What the target variable is called. }
+        corpus: { type: object, additionalProperties: true }
+        target: { type: object, additionalProperties: true }
+        fields:
+          type: array
+          description: Field descriptors in declared (load-bearing) order.
+          items: { type: object, additionalProperties: true }
+        coordinates: { type: object, additionalProperties: true, nullable: true }
+        currency: { type: object, additionalProperties: true, nullable: true }
+        quality:
+          type: object
+          additionalProperties: true
+          properties:
+            outlier_group: { type: string, nullable: true }
+            capped_numeric: { type: string, nullable: true }
+            rule_labels: { type: object, additionalProperties: { type: string } }
+        metrics:
+          type: object
+          additionalProperties: true
+          properties:
+            primary: { type: string }
+            columns: { type: array, items: { type: string } }
+            percent: { type: array, items: { type: string } }
+            value_unit: { type: string }
+            best_models_size: { type: integer, nullable: true, default: 12 }
+      required: [project, corpus, target, fields, metrics]
+
+    Metrics:
+      type: object
+      description: Target-space evaluation metrics.
+      properties:
+        mae: { type: number }
+        rmse: { type: number }
+        r2: { type: number }
+        mape: { type: number, description: "Mean absolute percentage error, as a fraction (0.25 = 25%)." }
+        medape: { type: number, description: "Median absolute percentage error, as a fraction." }
+        n_test: { type: integer }
+      required: [mae, rmse, r2, mape, medape, n_test]
+
+    RunStatus:
+      type: string
+      description: queued = enqueued for a remote training worker, not yet claimed.
+      enum: [queued, running, succeeded, failed, interrupted, stopped]
+
+    RunMeta:
+      type: object
+      properties:
+        run_id: { type: string }
+        dataset_id: { type: string }
+        predictor: { type: string }
+        hyperparams: { type: object, additionalProperties: true }
+        status: { $ref: '#/components/schemas/RunStatus' }
+        started_at: { type: string, description: RFC 3339 UTC. }
+        finished_at: { type: string, nullable: true }
+        exit_code: { type: integer, nullable: true }
+        stderr_tail: { type: string, nullable: true }
+        metrics:
+          type: object
+          nullable: true
+          allOf: [{ $ref: '#/components/schemas/Metrics' }]
+        contract_version: { type: integer, default: 1 }
+        has_checkpoint: { type: boolean, default: false }
+        from_definition: { type: string, nullable: true }
+      required: [run_id, dataset_id, predictor, hyperparams, status, started_at]
+
+    Prediction:
+      type: object
+      description: One test-split prediction (target space).
+      properties:
+        row_id: { type: integer, format: int64 }
+        actual: { type: number }
+        predicted: { type: number }
+      required: [row_id, actual, predicted]
+
+    InferencePrediction:
+      type: object
+      description: One inference prediction (target space; no ground truth).
+      properties:
+        row_id: { type: integer, format: int64 }
+        predicted: { type: number }
+      required: [row_id, predicted]
+
+    ColumnDesc:
+      type: object
+      description: One feature column descriptor.
+      properties:
+        name: { type: string }
+        kind:
+          type: object
+          additionalProperties: true
+          description: >-
+            Tagged by `type`: pca {component}, numeric {field, group?}, or
+            onehot {group, value}. A numeric column's `group` names the
+            feature block it belongs to (toggle group or "coordinates").
+          properties:
+            type: { type: string, enum: [pca, numeric, onehot] }
+      required: [name, kind]
+
+    PcaInfo:
+      type: object
+      properties:
+        dims: { type: integer }
+        mean: { type: array, items: { type: number }, description: Train-split mean of original vectors; emptied in API responses. }
+        components_shape: { type: array, items: { type: integer }, minItems: 2, maxItems: 2 }
+        explained_variance_ratio: { type: array, items: { type: number } }
+      required: [dims, mean, components_shape, explained_variance_ratio]
+
+    TargetInfo:
+      type: object
+      properties:
+        field: { type: string }
+        transform: { type: string, enum: [log1p, none] }
+      required: [field, transform]
+
+    FeatureConfig:
+      type: object
+      description: >-
+        Feature configuration a dataset was built with. `fields` is the
+        generic, authoritative per-field enable map; the named flags
+        (bedrooms, property_type, neighborhood_top_n, city, province,
+        cluster) are legacy wire names kept for pre-domain artifacts and
+        clients, mirrored from the effective enables.
+      properties:
+        pca_dims: { type: integer }
+        fields:
+          type: object
+          additionalProperties: { type: boolean }
+          description: Per-field enables, keyed by domain field name or toggle-group name.
+        vocab_top_n:
+          type: object
+          additionalProperties: { type: integer }
+          description: Per-categorical vocabulary-size overrides (field name → top-N).
+        coordinate_bounds:
+          type: array
+          nullable: true
+          description: "[[lat_min, lat_max], [lon_min, lon_max]] frozen into the artifact."
+          items: { type: array, items: { type: number }, minItems: 2, maxItems: 2 }
+          minItems: 2
+          maxItems: 2
+        bedrooms: { type: boolean, description: Legacy flag. }
+        property_type: { type: boolean, description: Legacy flag. }
+        neighborhood_top_n: { type: integer, description: Legacy flag; 0 disables. }
+        city: { type: boolean, description: Legacy flag. }
+        province: { type: boolean, description: Legacy flag. }
+        cluster: { type: boolean, description: Legacy flag. }
+        raw_numerics: { type: boolean, default: false }
+        area_content_backfill: { type: boolean, default: false }
+        coordinates: { type: boolean, default: false }
+        impute_numerics: { type: boolean, default: false }
+      required: [pca_dims]
+
+    Manifest:
+      type: object
+      description: >-
+        Dataset manifest. Big nested provenance fields (quality, redundancy,
+        currency, numerics, imputation) are loosely typed.
+      additionalProperties: true
+      properties:
+        dataset_id: { type: string }
+        name: { type: string, nullable: true }
+        created_at: { type: string, description: RFC 3339 UTC. }
+        source:
+          type: object
+          properties:
+            qdrant_url: { type: string }
+            collection: { type: string }
+            filter: { type: string }
+        n_rows: { type: integer }
+        n_cols: { type: integer }
+        columns: { type: array, items: { $ref: '#/components/schemas/ColumnDesc' } }
+        pca: { $ref: '#/components/schemas/PcaInfo' }
+        target: { $ref: '#/components/schemas/TargetInfo' }
+        split:
+          type: object
+          properties:
+            test_ratio: { type: number }
+            seed: { type: integer, format: int64 }
+            n_train: { type: integer }
+            n_test: { type: integer }
+        feature_config: { $ref: '#/components/schemas/FeatureConfig' }
+        quality: { type: object, additionalProperties: true, nullable: true }
+        cumulative_evr: { type: array, items: { type: number } }
+        redundancy: { type: object, additionalProperties: true, nullable: true }
+        currency: { type: object, additionalProperties: true, nullable: true }
+        numerics: { type: object, additionalProperties: true, nullable: true }
+        imputation: { type: object, additionalProperties: true, nullable: true }
+      required: [dataset_id, created_at, source, n_rows, n_cols, columns, pca, target, split, feature_config]
+
+    ModelRecord:
+      type: object
+      description: A promoted run.
+      properties:
+        name: { type: string }
+        run_id: { type: string }
+        predictor: { type: string }
+        dataset_id: { type: string }
+        created_at: { type: string, description: RFC 3339 UTC. }
+        notes: { type: string, nullable: true }
+      required: [name, run_id, predictor, dataset_id, created_at]
+
+    ContractSummary:
+      type: object
+      description: Caller-relevant slice of a model's frozen featurization contract.
+      properties:
+        contract_version: { type: integer }
+        n_cols: { type: integer }
+        input_fields:
+          type: object
+          properties:
+            required_numeric: { type: array, items: { type: string } }
+            required_categorical: { type: array, items: { type: string } }
+            embedding_dim: { type: integer }
+        target: { $ref: '#/components/schemas/TargetInfo' }
+        feature_config: { $ref: '#/components/schemas/FeatureConfig' }
+        pca_dims: { type: integer }
+
+    BestModelEntry:
+      type: object
+      description: One member of the best-models group, with ranking provenance.
+      properties:
+        name: { type: string, description: Promoted model name. }
+        rank: { type: integer, description: 1 = best. }
+        metric: { type: string, description: Primary metric label the ranking used. }
+        metric_value: { type: number, description: "Primary metric value, target space." }
+        run_id: { type: string }
+        predictor: { type: string }
+        dataset_id: { type: string }
+        source:
+          type: string
+          enum: [auto, pinned]
+          description: auto = selected by the metric ranking; pinned = curated in.
+        selected_at: { type: string, description: RFC 3339 UTC. }
+      required: [name, rank, metric, metric_value, run_id, predictor, dataset_id, source, selected_at]
+
+    BestModelGroup:
+      type: object
+      description: >-
+        The best-models group document; rewritten wholesale on each recompute.
+      properties:
+        primary_metric: { type: string }
+        size: { type: integer, description: Configured group-size cap (pins may exceed it). }
+        entries:
+          type: array
+          items: { $ref: '#/components/schemas/BestModelEntry' }
+        pinned: { type: array, items: { type: string }, description: Model names force-included by curation. }
+        excluded: { type: array, items: { type: string }, description: Run ids / model names force-excluded by curation. }
+        updated_at: { type: string, description: RFC 3339 UTC; last recompute. }
+      required: [primary_metric, size, entries, updated_at]
+
+    CurateRequest:
+      type: object
+      description: Curation deltas for the best-models group. All fields optional.
+      properties:
+        pin: { type: array, items: { type: string }, description: Model names to force-include. }
+        exclude: { type: array, items: { type: string }, description: Run ids or model names to bar from auto-selection. }
+        unpin: { type: array, items: { type: string } }
+        unexclude: { type: array, items: { type: string } }
+
+    MemberPredictions:
+      type: object
+      properties:
+        name: { type: string }
+        rank: { type: integer }
+        predictions:
+          type: array
+          items: { $ref: '#/components/schemas/InferencePrediction' }
+      required: [name, rank, predictions]
+
+    ConsensusPoint:
+      type: object
+      description: Median across members for one input row.
+      properties:
+        row_id: { type: integer, format: int64 }
+        predicted: { type: number }
+        n_models: { type: integer, description: Members that produced a prediction for this row. }
+      required: [row_id, predicted, n_models]
+
+    GroupPredictResponse:
+      type: object
+      properties:
+        members:
+          type: array
+          items: { $ref: '#/components/schemas/MemberPredictions' }
+        consensus:
+          type: array
+          items: { $ref: '#/components/schemas/ConsensusPoint' }
+        warnings: { type: array, items: { type: string } }
+      required: [members, consensus, warnings]
+
+    ModelDefinition:
+      type: object
+      description: A named predictor + hyperparameter preset (models.toml).
+      properties:
+        name: { type: string }
+        predictor: { type: string }
+        hyperparams: { type: object, additionalProperties: true }
+        dataset_tags: { type: array, items: { type: string } }
+        notes: { type: string, nullable: true }
+        created_at: { type: string, description: RFC 3339 UTC. }
+        updated_at: { type: string, nullable: true, description: RFC 3339 UTC; bumped on every mutation. }
+      required: [name, predictor, hyperparams, created_at]
+
+    ParamKind:
+      type: string
+      description: Hyperparameter kind. `json` passes validation untouched (arrays/objects).
+      enum: [int, float, bool, ints, enum, json]
+
+    Param:
+      type: object
+      description: One hyperparameter schema entry.
+      properties:
+        name: { type: string }
+        label: { type: string, nullable: true }
+        type: { $ref: '#/components/schemas/ParamKind' }
+        default: {}
+        min: { type: number, nullable: true }
+        max: { type: number, nullable: true }
+        options: { type: array, items: { type: string }, nullable: true }
+      required: [name, type, default]
+
+    Predictor:
+      type: object
+      properties:
+        name: { type: string }
+        display_name: { type: string }
+        description: { type: string }
+        language: { type: string, nullable: true }
+        framework: { type: string, nullable: true }
+        command: { type: string }
+        args: { type: array, items: { type: string } }
+        predict_command: { type: string, nullable: true }
+        predict_args: { type: array, items: { type: string }, nullable: true }
+        supports_stop: { type: boolean, default: false }
+        visualization: { type: boolean, default: false }
+        params: { type: array, items: { $ref: '#/components/schemas/Param' } }
+      required: [name, display_name, command, args, params]
+
+    QualityFilterConfig:
+      type: object
+      description: >-
+        Data-quality filter toggles + thresholds. Defaults exclude only
+        nonpositive target values. Wire names retain the original example
+        domain's vocabulary ("price" = the target field, "bedrooms" = the
+        domain's quality-bound capped numeric); the actual fields they act on
+        come from domain.toml's [quality] bindings.
+      properties:
+        nonpositive_price: { type: boolean, default: true, description: Target ≤ 0 or missing. }
+        price_outlier: { type: boolean, default: false, description: "Robust target outliers (MAD z-score on log1p(target), grouped by the domain's outlier group)." }
+        price_outlier_mad_z: { type: number, default: 3.5 }
+        missing_fields: { type: boolean, default: false, description: Empty critical categoricals. }
+        price_range: { type: boolean, default: false, description: Manual hard target caps. }
+        price_min: { type: number, default: 1000.0 }
+        price_max: { type: number, default: 50000000.0 }
+        bedrooms_outlier: { type: boolean, default: false, description: Domain's capped numeric negative or above the cap; disabled when the domain binds none. }
+        bedrooms_max: { type: number, default: 15.0 }
+        duplicate_content: { type: boolean, default: false, description: Exact duplicate entry text (first occurrence kept). }
+        short_content: { type: boolean, default: false, description: Entry text shorter than the floor. }
+        short_content_min_chars: { type: integer, default: 80 }
+
+    CurrencyConfig:
+      type: object
+      description: >-
+        Currency handling for a build. Only meaningful for domains with a
+        [currency] section (single-currency domains force mode off). Empty /
+        absent values fall back to the domain's bindings.
+      properties:
+        mode: { type: string, enum: [off, filter, convert], default: filter }
+        keep: { type: string, default: '', description: Currency the target is expressed in; "" → the domain's. }
+        reconcile_collection:
+          type: string
+          nullable: true
+          description: >-
+            Companion collection holding currency/date fields by point id.
+            Absent → the domain's; "" relies on inline currency only.
+        rate_source: { type: string, default: '', description: Exchange-rate series for convert mode; "" → the domain's. }
+
+    BuildRequest:
+      type: object
+      description: >-
+        Dataset build / analyze configuration. All fields optional with serde
+        defaults. `fields` / `vocab_top_n` are the generic, domain-driven way
+        to configure features (unknown names are a 400 — see GET /domain);
+        when `fields` is non-empty the legacy named flags are ignored.
+      properties:
+        pca_dims: { type: integer, default: 32, description: 1..=1536. }
+        test_ratio: { type: number, default: 0.2, description: 0.05..=0.5. }
+        seed: { type: integer, format: int64, default: 42 }
+        log_target: { type: boolean, default: true }
+        fields:
+          type: object
+          additionalProperties: { type: boolean }
+          description: Per-field enables, keyed by domain field name or toggle-group name.
+        vocab_top_n:
+          type: object
+          additionalProperties: { type: integer }
+          description: Per-categorical vocabulary-size overrides (field name → top-N).
+        bedrooms: { type: boolean, default: true, description: Legacy flag (pre-domain clients). }
+        property_type: { type: boolean, default: true, description: Legacy flag. }
+        neighborhood_top_n: { type: integer, default: 40, description: Legacy flag; 0 disables. }
+        city: { type: boolean, default: false, description: Legacy flag. }
+        province: { type: boolean, default: false, description: Legacy flag. }
+        cluster: { type: boolean, default: false, description: Legacy flag. }
+        quality: { $ref: '#/components/schemas/QualityFilterConfig' }
+        currency: { $ref: '#/components/schemas/CurrencyConfig' }
+        collection: { type: string, nullable: true, description: Source collection; defaults to the server's. }
+        raw_numerics: { type: boolean, default: false, description: Reconcile the domain's flagged numeric fields from the companion collection. }
+        area_content_backfill: { type: boolean, default: false, description: With raw_numerics; backfill area-like fields from unit mentions in the entry text. }
+        coordinates: { type: boolean, default: false, description: Lat/lon columns + pair-missing indicator from the domain's coordinates field. }
+        impute_numerics: { type: boolean, default: false, description: Requires raw_numerics; per-group train-split median imputation. }
+        numerics_collection:
+          type: string
+          nullable: true
+          description: >-
+            Companion collection for the raw-numerics reconcile join. Absent →
+            the domain's companion collection; "" → no join (inline fields
+            only).
+
+    PreflightRequest:
+      type: object
+      properties:
+        quality: { $ref: '#/components/schemas/QualityFilterConfig' }
+        currency: { $ref: '#/components/schemas/CurrencyConfig' }
+        sample: { type: integer, default: 8, description: Flagged samples per rule (capped at 50). }
+        collection: { type: string, nullable: true }
+
+    ExportRequest:
+      type: object
+      properties:
+        name_suffix: { type: string, description: Slug appended to `<source>-clean-`; <=40 chars. }
+        quality: { $ref: '#/components/schemas/QualityFilterConfig' }
+        currency: { $ref: '#/components/schemas/CurrencyConfig' }
+        source: { type: string, nullable: true, description: Source collection; defaults to the server's. }
+      required: [name_suffix]
+
+    StartRunRequest:
+      type: object
+      properties:
+        dataset_id: { type: string }
+        predictor: { type: string, nullable: true, description: Required unless `definition` is set. }
+        definition: { type: string, nullable: true, description: Launch from a model definition; request hyperparams overlay it. }
+        queue:
+          type: boolean
+          default: false
+          description: >-
+            Enqueue for a remote training worker instead of training locally
+            (status `queued` until a `lensing-server worker` claims it).
+        hyperparams: { type: object, additionalProperties: true, nullable: true }
+      required: [dataset_id]
+
+    BuildStatus:
+      type: object
+      description: Tagged by `state`.
+      properties:
+        state: { type: string, enum: [building, done, failed] }
+        stage: { type: string, description: Present when building. }
+        dataset_id: { type: string, description: Present when done. }
+        error: { type: string, description: Present when failed. }
+      required: [state]
+
+    JobStatus:
+      type: object
+      description: Tagged by `state`. Mirrors BuildStatus; success carries an arbitrary JSON result.
+      properties:
+        state: { type: string, enum: [running, done, failed] }
+        stage: { type: string, description: Present when running. }
+        result: { description: Present when done (arbitrary JSON). }
+        error: { type: string, description: Present when failed. }
+      required: [state]
+
+    PredictRequest:
+      type: object
+      description: Raw items and/or Qdrant point ids. At least one must be non-empty.
+      properties:
+        items:
+          type: array
+          items: { type: object, additionalProperties: true }
+          description: Raw entries (content + metadata fields) to featurize.
+        point_ids:
+          type: array
+          items: { type: integer, format: int64 }
+          description: Qdrant point ids to fetch and featurize.
+
+    PredictResponse:
+      type: object
+      properties:
+        predictions:
+          type: array
+          items: { $ref: '#/components/schemas/InferencePrediction' }
+        warnings: { type: array, items: { type: string } }
+      required: [predictions, warnings]
+
+    ListingRequest:
+      type: object
+      description: >-
+        A manually authored entry. Only `content` is required; every other key
+        is a flat domain field (validated against its role in domain.toml —
+        numerics must be numbers, coordinates must be {lat, lon}, …). Unknown
+        keys (display extras like photo URLs or the source page) are stored
+        verbatim and never enter a feature contract. The domain's timestamp
+        field is stamped automatically when absent.
+      additionalProperties: true
+      properties:
+        content: { type: string, description: Free-text description; the text that gets embedded. }
+      required: [content]
+
+    Listing:
+      type: object
+      description: >-
+        Stored manual entry (corpus-shaped): the domain's metadata fields
+        under `metadata`, content resolved from the domain's content field.
+      properties:
+        id: { type: integer, format: int64 }
+        content: { type: string }
+        metadata: { type: object, additionalProperties: true }
+      required: [id, content, metadata]
+
+    BlendRequest:
+      type: object
+      properties:
+        run_ids:
+          type: array
+          items: { type: string }
+          minItems: 2
+          description: Finished runs whose test-split predictions are combined; must share the same test split.
+        weights:
+          type: array
+          items: { type: number }
+          nullable: true
+          description: Per-run blend weights parallel to run_ids; equal when omitted. Normalized to sum to 1.
+        sweep:
+          type: boolean
+          default: false
+          description: Two runs only; sweep the first run's weight over 0..=1 in steps of 0.05.
+      required: [run_ids]
+
+    BlendLeg:
+      type: object
+      properties:
+        run_id: { type: string }
+        weight: { type: number }
+        metrics: { $ref: '#/components/schemas/Metrics' }
+
+    BlendResponse:
+      type: object
+      properties:
+        n_test: { type: integer }
+        blend: { $ref: '#/components/schemas/Metrics' }
+        legs:
+          type: array
+          items: { $ref: '#/components/schemas/BlendLeg' }
+        residual_correlation:
+          type: array
+          description: Pairwise residual-correlation matrix across legs.
+          items: { type: array, items: { type: number } }
+        sweep:
+          nullable: true
+          type: object
+          description: Present only when `sweep` was requested (2 runs).
+          properties:
+            points:
+              type: array
+              items:
+                type: object
+                properties:
+                  w: { type: number }
+                  metrics: { $ref: '#/components/schemas/Metrics' }
+            best:
+              nullable: true
+              type: object
+              properties:
+                w: { type: number }
+                metrics: { $ref: '#/components/schemas/Metrics' }
+      required: [n_test, blend, legs, residual_correlation]

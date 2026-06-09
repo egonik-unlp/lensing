@@ -2,7 +2,8 @@ import { useMemo } from 'react'
 import type { BlendFile, Metrics } from '../api/types'
 import { blendSpecFromFile, deriveArch, type ArchFeatures } from '../lib/arch'
 import { useAsync } from '../hooks/useAsync'
-import { fmtMoney, fmtPct, fmtR2 } from '../lib/format'
+import { fmtTarget, fmtPct, fmtR2 } from '../lib/format'
+import { useDomain } from '../lib/DomainContext'
 import { BlendArch } from './ArchViz'
 import { DefinitionRef, ModelRef, PredictorRef } from './EntityRef'
 import './blendpanel.css'
@@ -25,6 +26,7 @@ export default function BlendPanel({
   /** The blend's own test metrics, for the comparison row. */
   blendMetrics: Metrics | null
 }) {
+  const domain = useDomain()
   const blend = useAsync(load, [])
 
   const fileSpec = useMemo(
@@ -96,7 +98,7 @@ export default function BlendPanel({
                       </span>
                     </td>
                     <td className="num-col num">{rec?.n_cols ?? '—'}</td>
-                    <td className="num-col num col-group-start">{sm ? fmtMoney(sm.mae) : '—'}</td>
+                    <td className="num-col num col-group-start">{sm ? fmtTarget(sm.mae, domain) : '—'}</td>
                     <td className="num-col num">{sm ? fmtPct(sm.medape) : '—'}</td>
                     <td className="num-col num">{sm ? fmtR2(sm.r2) : '—'}</td>
                   </tr>
@@ -111,7 +113,7 @@ export default function BlendPanel({
                   </td>
                   <td className="num-col num">{spec.rule === 'median' ? '' : '100%'}</td>
                   <td className="num-col num" />
-                  <td className="num-col num col-group-start">{fmtMoney(blendMetrics.mae)}</td>
+                  <td className="num-col num col-group-start">{fmtTarget(blendMetrics.mae, domain)}</td>
                   <td className="num-col num">{fmtPct(blendMetrics.medape)}</td>
                   <td className="num-col num">{fmtR2(blendMetrics.r2)}</td>
                 </tr>
@@ -121,8 +123,8 @@ export default function BlendPanel({
           {edge !== null && (
             <p className="blend-verdict num" role="status">
               {edge >= 0
-                ? `the blend beats its best member by ${fmtMoney(edge)} MAE`
-                : `its best member beats the blend by ${fmtMoney(-edge)} MAE`}
+                ? `the blend beats its best member by ${fmtTarget(edge, domain)} MAE`
+                : `its best member beats the blend by ${fmtTarget(-edge, domain)} MAE`}
             </p>
           )}
         </>

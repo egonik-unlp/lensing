@@ -18,7 +18,7 @@ import {
   type Domain,
 } from '../lib/domain'
 import { cap } from '../lib/format'
-import { fmtMoney, fmtMoneyCell, fmtSignedPct, fmtStamp } from '../lib/format'
+import { fmtTarget, fmtTargetCell, fmtSignedPct, fmtStamp } from '../lib/format'
 import {
   invalidateConsensus,
   listingConsensus,
@@ -213,8 +213,8 @@ export default function ListingsView() {
                     </td>
                     <td className="num-col num col-group-start">
                       {listed ? (
-                        <span title={`${fmtMoney(listed)} ${currencyValue(domain, md) ?? ''}`.trim()}>
-                          {fmtMoneyCell(listed)}
+                        <span title={`${fmtTarget(listed, domain)} ${currencyValue(domain, md) ?? ''}`.trim()}>
+                          {fmtTargetCell(listed, domain)}
                         </span>
                       ) : (
                         <span className="muted">—</span>
@@ -234,16 +234,16 @@ export default function ListingsView() {
                         </span>
                       ) : (
                         <span
-                          title={`${fmtMoney(slot.consensus.median)} — median of ${slot.consensus.n_ok} of ${slot.consensus.n_models} models`}
+                          title={`${fmtTarget(slot.consensus.median, domain)} — median of ${slot.consensus.n_ok} of ${slot.consensus.n_models} models`}
                         >
-                          {fmtMoneyCell(slot.consensus.median)}
+                          {fmtTargetCell(slot.consensus.median, domain)}
                         </span>
                       )}
                     </td>
                     <td className="num-col num">
                       {slot?.state === 'done' && listed ? (
                         <span
-                          title={`Predicted ${fmtMoney(slot.consensus.median)} vs listed ${fmtMoney(listed)}`}
+                          title={`Predicted ${fmtTarget(slot.consensus.median, domain)} vs listed ${fmtTarget(listed, domain)}`}
                         >
                           {fmtSignedPct(slot.consensus.median / listed - 1)}
                         </span>

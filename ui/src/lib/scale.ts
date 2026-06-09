@@ -49,13 +49,6 @@ export function decadeTicks(min: number, max: number): number[] {
   return ticks
 }
 
-/** "$10k" / "$1M" style tick labels. */
-export function moneyTick(v: number): string {
-  if (v >= 1e6) return `$${v / 1e6}M`
-  if (v >= 1e3) return `$${v / 1e3}k`
-  return `$${v}`
-}
-
 /** Log-log axis domain covering both actual and predicted values, padded. */
 export function scatterDomain(preds: { actual: number; predicted: number }[]): [number, number] {
   let lo = Infinity

@@ -15,7 +15,7 @@ import {
   targetValue,
   timestampFieldName,
 } from '../lib/domain'
-import { cap, fmtDateTime, fmtMoney, fmtSignedPct } from '../lib/format'
+import { cap, fmtDateTime, fmtTarget, fmtSignedPct } from '../lib/format'
 import { invalidateConsensus, median, resolvePredictGroup, toPredictItem } from '../lib/listingPredict'
 import './models.css'
 import './newrun.css'
@@ -107,7 +107,7 @@ export default function ListingDetailView() {
                 {' '}
                 · listed at{' '}
                 <span className="num">
-                  {fmtMoney(listed)}
+                  {fmtTarget(listed, domain)}
                   {currency ? ` ${currency}` : ''}
                 </span>
               </>
@@ -165,7 +165,7 @@ export default function ListingDetailView() {
             <div>
               <dt>Listed {domain.project.target_noun}</dt>
               <dd className="num">
-                {listed != null ? `${fmtMoney(listed)} ${currency ?? ''}` : '— (no value)'}
+                {listed != null ? `${fmtTarget(listed, domain)} ${currency ?? ''}` : '— (no value)'}
               </dd>
             </div>
             {md.coordinates && (md.coordinates.lat != null || md.coordinates.lon != null) && (
@@ -385,13 +385,13 @@ function PredictPanel({ listing }: { listing: Listing }) {
             <div className="playground-result">
               {consensus !== null && (
                 <p className="listing-predicted">
-                  <span className="num listing-predicted-value">{fmtMoney(consensus)}</span>{' '}
+                  <span className="num listing-predicted-value">{fmtTarget(consensus, domain)}</span>{' '}
                   <span className="muted">
                     {done.length > 1 ? `median of ${done.length} models` : 'predicted'}
                     {listed ? (
                       <>
                         {' '}
-                        · listed at <span className="num">{fmtMoney(listed)}</span> (
+                        · listed at <span className="num">{fmtTarget(listed, domain)}</span> (
                         <span className="num">{fmtSignedPct(consensus / listed - 1)}</span>)
                       </>
                     ) : null}
@@ -427,7 +427,7 @@ function PredictPanel({ listing }: { listing: Listing }) {
                           </td>
                         ) : (
                           <>
-                            <td className="num">{fmtMoney(r.predicted)}</td>
+                            <td className="num">{fmtTarget(r.predicted, domain)}</td>
                             {listed ? (
                               <td className="num">{fmtSignedPct(r.predicted / listed - 1)}</td>
                             ) : null}

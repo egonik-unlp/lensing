@@ -11,7 +11,7 @@ import Sparkline from '../components/Sparkline'
 import { useAsync } from '../hooks/useAsync'
 import { useRunEvents } from '../hooks/useRunEvents'
 import { useDomain } from '../lib/DomainContext'
-import { fmtDateTime, fmtDuration, fmtMoney, fmtMoneyCell, fmtPct, fmtR2, fmtStamp, shortRunId, tinyRunId } from '../lib/format'
+import { fmtDateTime, fmtDuration, fmtTarget, fmtTargetCell, fmtPct, fmtR2, fmtStamp, shortRunId, tinyRunId } from '../lib/format'
 import './runs.css'
 
 /* Browsers cap concurrent HTTP/1.1 connections per origin (~6); each live
@@ -277,6 +277,7 @@ function RunRow({
   onFinished: () => void
 }) {
   const navigate = useNavigate()
+  const domain = useDomain()
   const m = run.metrics
   return (
     <tr
@@ -317,11 +318,11 @@ function RunRow({
           <StatusBadge status={run.status} />
         )}
       </td>
-      <td className="num-col num col-group-start" title={m ? fmtMoney(m.mae) : undefined}>
-        {m ? fmtMoneyCell(m.mae) : '—'}
+      <td className="num-col num col-group-start" title={m ? fmtTarget(m.mae, domain) : undefined}>
+        {m ? fmtTargetCell(m.mae, domain) : '—'}
       </td>
-      <td className="num-col num" title={m ? fmtMoney(m.rmse) : undefined}>
-        {m ? fmtMoneyCell(m.rmse) : '—'}
+      <td className="num-col num" title={m ? fmtTarget(m.rmse, domain) : undefined}>
+        {m ? fmtTargetCell(m.rmse, domain) : '—'}
       </td>
       <td className="num-col num">{m ? fmtR2(m.r2) : '—'}</td>
       <td className="num-col num">{m ? fmtPct(m.mape, 0) : '—'}</td>

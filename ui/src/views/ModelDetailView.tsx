@@ -8,7 +8,7 @@ import { DatasetRef, DefinitionRef, ModelRef, PredictorRef, RunRef } from '../co
 import SubmitRow from '../components/SubmitRow'
 import ViewHeader from '../components/ViewHeader'
 import { useAsync } from '../hooks/useAsync'
-import { fmtDateTime, fmtMoney } from '../lib/format'
+import { fmtDateTime, fmtTarget } from '../lib/format'
 import './models.css'
 import './definitions.css'
 import { useDocTitle, useDomain } from '../lib/DomainContext'
@@ -438,7 +438,7 @@ function Playground({ name, contract }: { name: string; contract: ContractSummar
               {result.predictions.map((p) => (
                 <tr key={p.row_id}>
                   <td className="num">{p.row_id}</td>
-                  <td className="num-col num">{fmtMoney(p.predicted)}</td>
+                  <td className="num-col num">{fmtTarget(p.predicted, domain)}</td>
                 </tr>
               ))}
             </tbody>

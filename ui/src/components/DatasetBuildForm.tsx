@@ -11,7 +11,7 @@ import type {
   RedundancyReport,
 } from '../api/types'
 import { DEFAULT_CURRENCY, DEFAULT_QUALITY } from '../api/types'
-import { fmtMoney, fmtPct } from '../lib/format'
+import { fmtTarget, fmtPct } from '../lib/format'
 import { ruleLabel } from '../lib/rules'
 import { useDomain } from '../lib/DomainContext'
 import {
@@ -737,7 +737,7 @@ function QualityPanel({
       parts.push(v != null && v !== '' && v !== 0 ? String(v) : `(no ${fieldLabel(f)})`)
     }
     const t = s[domain.target.field]
-    if (typeof t === 'number') parts.push(fmtMoney(t))
+    if (typeof t === 'number') parts.push(fmtTarget(t, domain))
     const cur = domain.currency ? s[domain.currency.currency_field] : null
     if (typeof cur === 'string' && cur) parts.push(cur)
     return parts.join(' · ')

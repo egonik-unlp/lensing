@@ -2,17 +2,13 @@
 
 import type { Domain, TargetFormat } from './domain'
 
-const money0 = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
-const moneyCompact = new Intl.NumberFormat('en-US', {
-  notation: 'compact',
-  maximumSignificantDigits: 3,
-})
-
 /* ---------------- domain-driven target formatting ----------------
- * fmtTarget(v, domain) renders the target field per domain.target.format:
- * the symbol prefix for "money" style (none for "number"), the locale's
- * grouping, and the same compact/overflow logic as the legacy money helpers.
- * For the current $ en-US domain these are byte-identical to fmtMoney. */
+ * Every predicted/actual/error value flows through these. They render the
+ * target field per domain.target.format: the symbol prefix for "money" style
+ * (none for "number"), and the locale's grouping. The target's unit comes
+ * from the domain, never hardcoded — a money domain shows "$1,234", a count
+ * or score domain shows "1,234". There are deliberately NO currency-baked
+ * formatters; reintroducing one would re-price every non-money instance. */
 
 const fmtCache = new Map<string, Intl.NumberFormat>()
 function grouped(locale: string): Intl.NumberFormat {
@@ -37,8 +33,8 @@ function symbolFor(fmt: TargetFormat): string {
   return fmt.style === 'money' ? fmt.symbol : ''
 }
 
-/** Target value: "$1,234,567" (money) or "1,234,567" (number). Sub-thousand
- *  values keep their digits. Mirrors the legacy fmtMoney for $ en-US. */
+/** Target value: "$1,234,567" (money style) or "1,234,567" (number style).
+ *  Sub-thousand values keep their digits. */
 export function fmtTarget(v: number, domain: Domain): string {
   const fmt = domain.target.format
   return `${symbolFor(fmt)}${grouped(fmt.locale).format(Math.round(v))}`
@@ -60,25 +56,13 @@ export function fmtTargetDelta(v: number, domain: Domain): string {
   return `${sign}${fmtTarget(Math.abs(v), domain)}`
 }
 
-/** Money-style values: "$ 1,234,567". Sub-thousand values keep their digits. */
-export function fmtMoney(v: number): string {
-  return `$${money0.format(Math.round(v))}`
-}
-
-/** List-column money: full digits up to $10M, then compact ("$1.85B") so a
- *  diverged run can't blow the table out of the viewport. Pair with a title
- *  attribute carrying the full fmtMoney value — compact, not hidden. */
-export function fmtMoneyCell(v: number): string {
-  const a = Math.abs(v)
-  if (!isFinite(v)) return '—'
-  if (a < 10_000_000) return fmtMoney(v)
-  return `${v < 0 ? '−' : ''}$${moneyCompact.format(a)}`
-}
-
-/** Signed money delta: "+$12,430" / "−$12,430". */
-export function fmtMoneyDelta(v: number): string {
-  const sign = v < 0 ? '−' : '+'
-  return `${sign}${fmtMoney(Math.abs(v))}`
+/** Decade-tick label for log axes: "10k" / "$1M", symbol per the domain's
+ *  target format. The domain-aware counterpart of a fixed "$10k" tick. */
+export function fmtTargetTick(v: number, domain: Domain): string {
+  const sym = symbolFor(domain.target.format)
+  if (v >= 1e6) return `${sym}${v / 1e6}M`
+  if (v >= 1e3) return `${sym}${v / 1e3}k`
+  return `${sym}${v}`
 }
 
 /** Fractions to percent: 0.355 → "35.5%". Absurd magnitudes (diverged runs)

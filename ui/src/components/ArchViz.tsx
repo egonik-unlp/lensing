@@ -12,7 +12,8 @@ import {
   type MoeSpec,
   type RibbonSpec,
 } from '../lib/arch'
-import { fmtMoney } from '../lib/format'
+import { fmtTarget } from '../lib/format'
+import { useDomain } from '../lib/DomainContext'
 import './archviz.css'
 
 /** Architecture diagram. Every shipped predictor family renders natively
@@ -895,6 +896,7 @@ function MedianArch({ spec, title }: { spec: MedianSpec; title: string }) {
 /* ---------------- blend (member fan-in) ---------------- */
 
 export function BlendArch({ spec, title }: { spec: BlendSpec; title: string }) {
+  const domain = useDomain()
   const [detail, setDetail] = useState<string | null>(null)
   const markerId = useId()
 
@@ -927,7 +929,7 @@ export function BlendArch({ spec, title }: { spec: BlendSpec; title: string }) {
         const stroke = m.excluded ? 1 : 1 + 2.5 * (m.weight / maxW)
         return (
           <g key={m.key} className={m.excluded ? 'arch-blend-excluded' : undefined}>
-            <Hit detail={`${m.detail}${m.soloMae !== null ? ` · solo MAE ${fmtMoney(m.soloMae)}` : ''}`} onDetail={setDetail}>
+            <Hit detail={`${m.detail}${m.soloMae !== null ? ` · solo MAE ${fmtTarget(m.soloMae, domain)}` : ''}`} onDetail={setDetail}>
               <rect className="arch-member-box" x={boxX} y={y} width={boxW} height={28} rx={4} />
               <text className="arch-member-name" x={boxX + 9} y={y + 18}>
                 {truncate(m.label, 22)}

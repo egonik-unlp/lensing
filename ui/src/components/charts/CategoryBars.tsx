@@ -1,5 +1,6 @@
 import type { CategoryStat } from '../../lib/stats'
-import { fmtMoney, fmtPct } from '../../lib/format'
+import { fmtTarget, fmtPct } from '../../lib/format'
+import { useDomain } from '../../lib/DomainContext'
 import './charts.css'
 
 interface Props {
@@ -13,6 +14,7 @@ interface Props {
 /** Horizontal category bars rendered as an HTML list: label, count bar,
  *  count, share and median target, all keyboard-reachable when selectable. */
 export default function CategoryBars({ data, ariaLabel, onSelect, selected }: Props) {
+  const domain = useDomain()
   if (data.length === 0) return <div className="chart-empty">No categories</div>
   const max = Math.max(...data.map((d) => d.count))
 
@@ -29,7 +31,7 @@ export default function CategoryBars({ data, ariaLabel, onSelect, selected }: Pr
             </span>
             <span className="num catbar-count">{d.count.toLocaleString()}</span>
             <span className="num catbar-share">{fmtPct(d.share, 1)}</span>
-            <span className="num catbar-median">{fmtMoney(d.medianTarget)} med</span>
+            <span className="num catbar-median">{fmtTarget(d.medianTarget, domain)} med</span>
           </>
         )
         return (

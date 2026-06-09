@@ -1,4 +1,4 @@
-<p align="center"><img src="assets/logo.svg" width="340" alt="Lensing — the framework bends around your data"></p>
+<p align="center"><img src="assets/logo.svg" width="760" alt="lensing: a prediction-lab framework that bends around your data, the way mass bends light"></p>
 
 # Lensing
 
@@ -22,7 +22,7 @@ every domain lever) lives at `crates/lensing-core/src/example-domain.toml`.
   (`crates/predictor-burn-cnn`), Python (`predictors/torch-cnn`, PyTorch)
   and Julia (`predictors/flux-cnn`); `predictors/ridge` (Python,
   scikit-learn); and `predictors/baseline-median` (Python, stdlib).
-- `ui/` is the Vite + React frontend ("The Measurement Bench", see DESIGN.md).
+- `ui/` is the Vite + React frontend ("The Control Room", see DESIGN.md).
 
 ## Quick start
 
@@ -320,6 +320,19 @@ The `model-definitions` skill (`.claude/skills/`, mirrored to `.gemini/` and
 `.agents/`) drives define / rename / clone / tag / launch / export
 conversationally against this API.
 
+## Framework upgrades & contributions
+
+Bootstrapped instances track framework provenance in
+`.lensing-upstream.json` (written by `tools/package.py`). Two skills move
+changes across that boundary: `/upstream-sync` pulls newer framework code
+*into* an instance without clobbering instance-owned files, and
+`/upstream-contribute` is its inverse — it finds framework files the
+instance improved, generalizes them (domain literals de-instantiated back
+into render placeholders / `domain.toml` keys so other instances can pull
+and re-adapt them), and files a PR against the mother repo recorded in the
+manifest's `source_repo`. Both are gated: nothing applies or pushes
+without explicit approval.
+
 ## Layout
 
 ```
@@ -340,9 +353,10 @@ data/                      gitignored: datasets/, runs/ and models/
 
 ## API
 
-Full usage reference (request/response shapes, curl + TypeScript examples,
-and the listing-prediction guide) in [`docs/API.md`](docs/API.md);
-machine-readable spec in [`docs/openapi.yaml`](docs/openapi.yaml).
+Machine-readable spec in [`docs/openapi.yaml`](docs/openapi.yaml), served
+by the running server at `/api/openapi.yaml` with an interactive Swagger UI
+at `/docs`. The spec ships with packaged instances, so every bootstrapped
+instance gets the same browsable API docs out of the box.
 
 ```
 GET  /api/predictors                predictor registry (params drive the run form)

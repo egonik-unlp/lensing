@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { api } from '../api/client'
 import type { BestModelGroup } from '../api/types'
 import { useAsync } from '../hooks/useAsync'
-import { fmtDateTime, fmtMoney } from '../lib/format'
+import { fmtDateTime, fmtTarget } from '../lib/format'
+import { useDomain } from '../lib/DomainContext'
 import { DatasetRef, ModelRef, PredictorRef, RunRef } from './EntityRef'
 import './bestmodels.css'
 
@@ -17,6 +18,7 @@ export default function BestModelsPanel({
   /** Lifts the loaded group so the caller can badge its own rows. */
   onGroup?: (group: BestModelGroup) => void
 }) {
+  const domain = useDomain()
   const group = useAsync(async () => {
     const g = await api.bestModels()
     onGroup?.(g)
@@ -103,7 +105,7 @@ export default function BestModelsPanel({
                 <td>
                   <PredictorRef name={e.predictor} impl />
                 </td>
-                <td className="num-col num">{fmtMoney(e.metric_value)}</td>
+                <td className="num-col num">{fmtTarget(e.metric_value, domain)}</td>
                 <td>
                   <DatasetRef id={e.dataset_id} />
                 </td>

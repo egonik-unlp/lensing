@@ -93,9 +93,18 @@ with ONE exception: the **target is always asked, never inferred**. It is
 the first question of the interview, asked open-endedly ("which field
 should the models predict?") with no pre-selected suggestion:
 
-1. **Target**: field (the user's answer — no default), transform (`log1p`
-   for heavy-tailed positive targets — the default and well-trodden path;
-   `none` otherwise), display format (symbol/locale).
+1. **Target**: field (the user's answer — no default), then **transform and
+   display format read off the target's *own* distribution from Phase 0, not
+   off a default.** There is no default transform: inspect the sampled values.
+   `log1p` fits a strictly-positive, heavy-tailed target (and only then) — it
+   is one option, never the starting assumption; `none` fits signed, bounded,
+   rating-like, count, or already-symmetric targets (anything that can be ≤ 0
+   breaks `log1p`). Show the user the observed range/skew and your reasoning,
+   and let them confirm. Display format follows the same evidence:
+   `style = "number"`, `symbol = ""` is the baseline for any quantity; reach
+   for `style = "money"` + a currency symbol **only** when the target is
+   literally a monetary amount. Never assume the target is positive, money, or
+   heavy-tailed because the framework's worked example happens to be a price.
 2. **Nouns + title**: entity noun ("listing"/"vehicle"/"posting"), target
    noun, project name/title.
 3. **Fields = the dataset-pane levers.** Walk the inference table together.
@@ -172,29 +181,43 @@ fields, their rule labels, their target histogram.
 
 ## Phase 5 — Starter models for the first evaluation
 
-Create definitions (via the **model-definitions** skill) in this order, and
-explain why:
+Propose a small starter slate **for the user to confirm** — not a fixed
+recipe. The shape of the target and the dataset (decided in Phases 1/4)
+drives the picks; explain each in those terms, never as "what the price
+project used":
 
-1. `baseline-median` — the floor; every model must beat "group median".
-2. `xgboost` — the low-drama default: bounded predictions (no transform
-   blow-ups), native handling of one-hots/indicators/missing values.
-3. Optional third seat by data shape: `burn-mlp` **with
-   `clamp_output: true`** (mandatory insurance for any log-space MLP) when
-   rows ≳ 10k; `svm`/`kernel-ridge` when rows ≲ 5k.
+1. `baseline-median` — always. The floor every model must beat ("group
+   median"); it is target-agnostic and frames every later result.
+2. A robust general-purpose regressor — `xgboost` is the usual first pick:
+   it makes no distributional assumption about the target, gives bounded
+   predictions, and handles one-hots / indicators / missing values natively.
+3. Optionally a third seat chosen by data shape, e.g. a neural predictor
+   (`burn-mlp`) when rows are plentiful (≳ 10k), or `svm` / `kernel-ridge`
+   on smaller tables (≲ 5k). **Only if the user chose `transform = log1p`**
+   does the log-space-MLP guardrail apply — set `clamp_output: true` so an
+   un-inverted prediction can't blow up; with `transform = none` it is not
+   needed.
 
-Launch one run each on the first dataset, watch them complete, then seed
-`{{facts_file}}`'s leaderboard with the results. Hand the user off to the
-**experiment-designer** agent to design the first real campaign (the
-**experiment-runner** agent executes the approved design).
+These are starting baselines for a first read, not commitments — confirm the
+slate with the user before creating definitions (via the
+**model-definitions** skill). Launch one run each on the first dataset, watch
+them complete, then seed `{{facts_file}}`'s leaderboard with the results.
+Hand the user off to the **experiment-designer** agent to design the first
+real campaign (the **experiment-runner** agent executes the approved design).
 
 ## Ground rules
 
 - Every file write and every destructive step is announced and confirmed
   first. Phase 2 doubly so.
-- **No default prediction target.** The shipped domain is a neutral
-  placeholder and the worked example (prices) is reference material, not a
-  bias: never assume, pre-select, or rank a target field on the user's
-  behalf — the target comes only from their explicit answer in Phase 1.
+- **No default target, no default transform, no assumed model recipe.** The
+  shipped domain is a neutral placeholder and the worked example (prices) is
+  reference material, not a bias. Never assume, pre-select, or rank a target
+  field — it comes only from the user's explicit answer in Phase 1. The
+  transform (`log1p` vs `none`), the display format (`number` vs `money`),
+  and the starter-model slate all follow from the *probed target and dataset*
+  and are confirmed with the user — never carried over from the price origin.
+  In particular: do not reach for `log1p`, a currency symbol, or a log-space
+  MLP guardrail unless the target's own distribution calls for it.
 - Never write under `data/` by hand; never hand-edit the rendered
   `.claude/.agents/.gemini` outputs (edit `agents-src/` + `domain.toml`,
   then `zig build render-agents`).

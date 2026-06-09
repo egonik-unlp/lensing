@@ -94,7 +94,10 @@ Apply in this fixed order, one gate per batch:
    placeholder means upstream introduced a new `domain.toml` key — surface
    it as a required follow-up, don't paper over it. (The repo-root
    `CLAUDE.md` regenerates here; never copy it in batch 6.)
-6. **docs** — `BOOTSTRAP.md`, `README.md`, `DESIGN.md`, `docs/DEPLOY.md`.
+6. **docs** — `BOOTSTRAP.md`, `README.md`, `DESIGN.md`, `docs/DEPLOY.md`,
+   `docs/openapi.yaml` (the server serves it at `/api/openapi.yaml` and the
+   Swagger UI at `/docs` reads it — keep it in step with the synced server
+   code).
 
 Per batch:
 

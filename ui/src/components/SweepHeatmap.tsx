@@ -4,7 +4,9 @@ import { api } from '../api/client'
 import type { Metrics, ModelDefinition, Predictor, RunMeta } from '../api/types'
 import { heatCell } from '../lib/heat'
 import { useAsync } from '../hooks/useAsync'
-import { fmtMoneyCell, fmtPct, fmtR2, shortRunId } from '../lib/format'
+import { fmtTargetCell, fmtPct, fmtR2, shortRunId } from '../lib/format'
+import { useDomain } from '../lib/DomainContext'
+import type { Domain } from '../lib/domain'
 import RampLegend from './charts/RampLegend'
 import './sweepheatmap.css'
 
@@ -12,12 +14,14 @@ interface MetricDef {
   key: keyof Metrics
   label: string
   lowerWins: boolean
-  fmt: (v: number) => string
+  /** MAE/RMSE are in target units, so they take the domain; unit-agnostic
+   *  metrics (R², %) ignore the second argument. */
+  fmt: (v: number, domain: Domain) => string
 }
 
 const METRICS: MetricDef[] = [
-  { key: 'mae', label: 'MAE', lowerWins: true, fmt: fmtMoneyCell },
-  { key: 'rmse', label: 'RMSE', lowerWins: true, fmt: fmtMoneyCell },
+  { key: 'mae', label: 'MAE', lowerWins: true, fmt: fmtTargetCell },
+  { key: 'rmse', label: 'RMSE', lowerWins: true, fmt: fmtTargetCell },
   { key: 'r2', label: 'R²', lowerWins: false, fmt: fmtR2 },
   { key: 'mape', label: 'MAPE', lowerWins: true, fmt: (v) => fmtPct(v, 0) },
   { key: 'medape', label: 'medAPE', lowerWins: true, fmt: (v) => fmtPct(v) },
@@ -53,6 +57,7 @@ export default function SweepHeatmap({
   def: ModelDefinition
   predictor: Predictor | null
 }) {
+  const domain = useDomain()
   const runs = useAsync(() => api.listRuns(), [])
   const [metricKey, setMetricKey] = useState<keyof Metrics>('mae')
   const [xPick, setXPick] = useState<string | null>(null)
@@ -174,8 +179,8 @@ export default function SweepHeatmap({
   // No sweep to show: stay out of the way entirely.
   if (eligible.length < 2 || !grid || varying.length === 0) return null
 
-  const worstLabel = metric.fmt(metric.lowerWins ? grid.hi : grid.lo)
-  const bestLabel = metric.fmt(grid.bestValue)
+  const worstLabel = metric.fmt(metric.lowerWins ? grid.hi : grid.lo, domain)
+  const bestLabel = metric.fmt(grid.bestValue, domain)
 
   return (
     <div className="panel" aria-label="Hyperparameter sweep">
@@ -269,7 +274,7 @@ export default function SweepHeatmap({
                     to={`/runs/${cell.run.run_id}`}
                     className={`sweep-cell${isBest ? ' is-best' : ''}`}
                     style={{ background: bg, color: text }}
-                    aria-label={`${pairLabel}: ${metric.label} ${metric.fmt(cell.value)}, ${
+                    aria-label={`${pairLabel}: ${metric.label} ${metric.fmt(cell.value, domain)}, ${
                       cell.n > 1 ? `best of ${cell.n} runs, ` : ''
                     }open run ${shortRunId(cell.run.run_id)}`}
                     onMouseEnter={(e) => {
@@ -283,7 +288,7 @@ export default function SweepHeatmap({
                     onFocus={() => setHover(null)}
                   >
                     {isBest && <span aria-hidden="true">✓ </span>}
-                    {metric.fmt(cell.value)}
+                    {metric.fmt(cell.value, domain)}
                   </Link>
                 )
               })}
@@ -294,7 +299,7 @@ export default function SweepHeatmap({
           <div className="chart-tooltip" style={{ left: hover.left, top: hover.top }}>
             {`${paramLabel(xParam)} ${fmtHp(JSON.parse(hover.cell.x))}${
               yParam ? ` × ${paramLabel(yParam)} ${fmtHp(JSON.parse(hover.cell.y))}` : ''
-            }\n${metric.label} ${metric.fmt(hover.cell.value)} · ${shortRunId(hover.cell.run.run_id)}${
+            }\n${metric.label} ${metric.fmt(hover.cell.value, domain)} · ${shortRunId(hover.cell.run.run_id)}${
               hover.cell.n > 1 ? ` (n=${hover.cell.n})` : ''
             }`}
           </div>

@@ -10,8 +10,9 @@ import ItemMeta from '../components/ItemMeta'
 import ViewHeader from '../components/ViewHeader'
 import { useAsync } from '../hooks/useAsync'
 import { useDomain } from '../lib/DomainContext'
+import type { Domain } from '../lib/domain'
 import { loadItems } from '../lib/itemsCache'
-import { fmtMoney, fmtPct, fmtR2, shortRunId } from '../lib/format'
+import { fmtTarget, fmtPct, fmtR2, shortRunId } from '../lib/format'
 import { scatterDomain } from '../lib/scale'
 import { suspiciousRowIds } from '../lib/suspicious'
 import './compare.css'
@@ -146,12 +147,14 @@ interface MetricRow {
   label: string
   /** true when lower values win */
   lowerWins: boolean
-  fmt: (v: number) => string
+  /** MAE/RMSE are in target units, so they take the domain; unit-agnostic
+   *  metrics (R², %) simply ignore the second argument. */
+  fmt: (v: number, domain: Domain) => string
 }
 
 const METRIC_ROWS: MetricRow[] = [
-  { key: 'mae', label: 'MAE', lowerWins: true, fmt: fmtMoney },
-  { key: 'rmse', label: 'RMSE', lowerWins: true, fmt: fmtMoney },
+  { key: 'mae', label: 'MAE', lowerWins: true, fmt: fmtTarget },
+  { key: 'rmse', label: 'RMSE', lowerWins: true, fmt: fmtTarget },
   { key: 'r2', label: 'R²', lowerWins: false, fmt: fmtR2 },
   { key: 'mape', label: 'MAPE', lowerWins: true, fmt: (v) => fmtPct(v, 0) },
   { key: 'medape', label: 'medAPE', lowerWins: true, fmt: (v) => fmtPct(v) },
@@ -283,6 +286,7 @@ function Comparison({ a, b }: { a: RunMeta; b: RunMeta }) {
 }
 
 function MetricRowEl({ row, ma, mb }: { row: MetricRow; ma: Metrics; mb: Metrics }) {
+  const domain = useDomain()
   const va = ma[row.key]
   const vb = mb[row.key]
   const delta = vb - va
@@ -290,15 +294,15 @@ function MetricRowEl({ row, ma, mb }: { row: MetricRow; ma: Metrics; mb: Metrics
   const tie = va === vb
   const deltaStr =
     row.key === 'mae' || row.key === 'rmse'
-      ? `${delta < 0 ? '−' : '+'}${fmtMoney(Math.abs(delta))}`
+      ? `${delta < 0 ? '−' : '+'}${fmtTarget(Math.abs(delta), domain)}`
       : row.key === 'r2'
         ? `${delta < 0 ? '−' : '+'}${Math.abs(delta).toFixed(3)}`
         : `${delta < 0 ? '−' : '+'}${(Math.abs(delta) * 100).toFixed(1)}pp`
   return (
     <tr>
       <td>{row.label}</td>
-      <td className={`num-col num${!tie && !bWins ? ' winner' : ''}`}>{row.fmt(va)}</td>
-      <td className={`num-col num${!tie && bWins ? ' winner' : ''}`}>{row.fmt(vb)}</td>
+      <td className={`num-col num${!tie && !bWins ? ' winner' : ''}`}>{row.fmt(va, domain)}</td>
+      <td className={`num-col num${!tie && bWins ? ' winner' : ''}`}>{row.fmt(vb, domain)}</td>
       <td className="num-col num">
         {deltaStr}{' '}
         {!tie && (
@@ -450,10 +454,10 @@ function DisRowEl({
             </span>
           )}
         </td>
-        <td className="num-col num">{fmtMoney(r.actual)}</td>
-        <td className="num-col num">{fmtMoney(r.predA)}</td>
-        <td className="num-col num">{fmtMoney(r.predB)}</td>
-        <td className="num-col num">{fmtMoney(r.spread)}</td>
+        <td className="num-col num">{fmtTarget(r.actual, domain)}</td>
+        <td className="num-col num">{fmtTarget(r.predA, domain)}</td>
+        <td className="num-col num">{fmtTarget(r.predB, domain)}</td>
+        <td className="num-col num">{fmtTarget(r.spread, domain)}</td>
         <td>
           <span className={`series-chip ${closer === 'A' ? 'chip-a' : 'chip-b'}`}>{closer}</span>
         </td>
