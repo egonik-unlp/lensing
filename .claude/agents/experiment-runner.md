@@ -89,9 +89,18 @@ than burning the runs silently.
    caller spawn the **best-model-selector** agent to re-curate the group
    (family diversity, fluke/overfit exclusion) — that judgment is its job,
    not yours.
-8. **Return** a summary: outcome line, results table, what was persisted,
-   report path, the best-models recommendation if any, and the top
-   follow-up.
+8. **Report-synthesis handoff.** The living experiment synthesis
+   (`docs/experiments.tex`, for which the `experiments/` reports are the
+   primary source) is **not** updated automatically — nothing folds a new
+   report into it on its own. Since this campaign just wrote a
+   `experiments/` report (and reconciled `experiments/PROJECT-FACTS.md`), recommend in
+   your return that the caller spawn the **report-curator** agent (sync mode)
+   to fold this campaign into the document and rebuild the PDF. You own the
+   primary report; consolidating it into the synthesis is the curator's job,
+   not yours — you cannot spawn it.
+9. **Return** a summary: outcome line, results table, what was persisted,
+   report path, the best-models recommendation if any, the report-curator
+   sync recommendation, and the top follow-up.
 
 # Ground rules
 
