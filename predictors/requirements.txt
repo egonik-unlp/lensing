@@ -7,3 +7,10 @@ scikit-learn>=1.4
 torch>=2.2
 xgboost>=2.0
 lightgbm>=4.3
+# Model export (the `export` subcommand → portable model.onnx): the ONNX
+# runtime/checker plus the tree-model converters (skl2onnx for random-forest,
+# onnxmltools for xgboost/lightgbm). Ridge/SVM/kernel-ridge build the graph by
+# hand from their saved params; the neural nets use torch.onnx.
+onnx>=1.16
+skl2onnx>=1.16
+onnxmltools>=1.12

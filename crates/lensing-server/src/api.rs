@@ -1593,6 +1593,37 @@ pub async fn predict_model(
     }
 }
 
+/// Export a promoted model as a portable, self-contained `.tar.gz` (ONNX graph
+/// + featurize.json + PCA basis + README), runnable outside lensing. Returns
+/// 422 when the model's predictor family has no ONNX export.
+pub async fn export_model(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+) -> Result<Response, ApiError> {
+    if models::validate_name(&name).is_err() {
+        return Err(bad_request("invalid model name".into()));
+    }
+    match models::export(state, name.clone()).await {
+        Ok(bytes) => Ok((
+            [
+                (header::CONTENT_TYPE, "application/gzip".to_string()),
+                (
+                    header::CONTENT_DISPOSITION,
+                    format!("attachment; filename=\"{name}-export.tar.gz\""),
+                ),
+            ],
+            bytes,
+        )
+            .into_response()),
+        Err(models::PredictError::NotFound) => Err(not_found("model")),
+        // Unsupported family is a caller-fixable condition → 422.
+        Err(models::PredictError::BadInput(msg)) => {
+            Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY, msg))
+        }
+        Err(models::PredictError::Internal(e)) => Err(e.into()),
+    }
+}
+
 // ---------- best-models group ----------
 
 pub async fn get_best_models(

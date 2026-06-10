@@ -3999,6 +3999,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "lensing-onnx"
+version = "0.1.0"
+
+[[package]]
 name = "lensing-pipeline"
 version = "0.1.0"
 dependencies = [
@@ -4032,6 +4036,7 @@ dependencies = [
  "burn",
  "clap",
  "lensing-core",
+ "lensing-onnx",
  "serde",
  "serde_json",
 ]
@@ -4044,6 +4049,7 @@ dependencies = [
  "burn",
  "clap",
  "lensing-core",
+ "lensing-onnx",
  "serde",
  "serde_json",
 ]

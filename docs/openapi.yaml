@@ -723,6 +723,35 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /models/{name}/export:
+    get:
+      tags: [models]
+      summary: Export a model as a portable ONNX bundle
+      description: >-
+        Self-contained `.tar.gz` for running the model outside lensing: a
+        `model.onnx` graph (input = the assembled feature vector, output =
+        transformed-space target), a declarative `featurize.json` preprocessing
+        spec + `pca_components.f32`, an `input-schema.json`, and a README. Every
+        predictor family produces the same envelope; blends bundle each member
+        under `members/<i>/` plus a `combination.json`. Consume with an ONNX
+        runtime (e.g. onnxruntime-web) and the reference `@lensing/inference`.
+      parameters: [{ $ref: '#/components/parameters/ModelName' }]
+      responses:
+        '200':
+          description: Gzipped tarball of the export bundle.
+          content:
+            application/gzip:
+              schema: { type: string, format: binary }
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: >-
+            The model's predictor family has no ONNX export (e.g. the MoE
+            composites or the Julia/Flux predictors).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
   /models/{name}/predict:
     post:
       tags: [models]

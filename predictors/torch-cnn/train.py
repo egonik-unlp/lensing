@@ -357,6 +357,54 @@ def predict(model_dir: Path, input_dir: Path, output: Path) -> None:
     emit({"event": "done"})
 
 
+class ScaledCnn(nn.Module):
+    """Wraps the trained CNN with the standardizer so the exported graph's
+    input is the assembled feature vector (matching every other family)."""
+
+    def __init__(self, model: Cnn, mean: np.ndarray, std: np.ndarray):
+        super().__init__()
+        self.model = model
+        self.register_buffer("mean", torch.tensor(mean, dtype=torch.float32))
+        self.register_buffer("std", torch.tensor(std, dtype=torch.float32))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.model((x - self.mean) / self.std)
+
+
+def export(model_dir: Path, output: Path) -> None:
+    """Contract export: trace the scaler-wrapped CNN to a portable model.onnx
+    via torch.onnx.export. Input is the assembled feature vector [N, n_cols];
+    output is the transformed-space target [N, 1]; the batch axis is dynamic."""
+    import json as _json
+    hp = load_hp(model_dir / "hyperparams.json")
+    scaler = _json.loads((model_dir / "scaler.json").read_text())
+    mean = np.asarray(scaler["mean"], dtype=np.float64)
+    std = np.asarray(scaler["std"], dtype=np.float64)
+    n_cols = len(mean)
+    # The PCA signal width comes from the frozen contract's columns.
+    contract = _json.loads((model_dir / "contract.json").read_text())
+    n_pca = count_pca(contract["columns"])
+    assert n_pca > 0, "contract has no pca columns; the CNN needs a signal"
+
+    model = build_model(hp, n_pca, n_cols)
+    model.load_state_dict(torch.load(model_dir / "model.pt", weights_only=True))
+    model.eval()
+    wrapper = ScaledCnn(model, mean, std).eval()
+
+    output.mkdir(parents=True, exist_ok=True)
+    dummy = torch.zeros(1, n_cols, dtype=torch.float32)
+    with torch.no_grad():
+        torch.onnx.export(
+            wrapper, dummy, str(output / "model.onnx"),
+            input_names=["input"], output_names=["output"],
+            dynamic_axes={"input": {0: "N"}, "output": {0: "N"}},
+            opset_version=13)
+    emit({"event": "log", "msg": f"exported model.onnx: torch cnn "
+          f"{hp['channels']} k{hp['kernel_size']}, input [N, {n_cols}] "
+          f"({n_pca} pca signal)"})
+    emit({"event": "done"})
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -368,11 +416,16 @@ def main() -> None:
     pr.add_argument("--model", required=True, type=Path)
     pr.add_argument("--input", required=True, type=Path)
     pr.add_argument("--output", required=True, type=Path)
+    ex = sub.add_parser("export")
+    ex.add_argument("--model", required=True, type=Path)
+    ex.add_argument("--output", required=True, type=Path)
     args = ap.parse_args()
 
     torch.set_num_threads(max(1, (os.cpu_count() or 2) - 1))
     if args.cmd == "train":
         train(args.dataset, args.output, args.hyperparams)
+    elif args.cmd == "export":
+        export(args.model, args.output)
     else:
         predict(args.model, args.input, args.output)
 

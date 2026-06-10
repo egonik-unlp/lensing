@@ -127,6 +127,22 @@ export const api = {
     request<ModelRecord>(`/api/models/${name}/rename`, post({ new_name })),
   predictModel: (name: string, body: { items?: unknown[]; point_ids?: number[] }) =>
     request<PredictResponse>(`/api/models/${name}/predict`, post(body)),
+  // Export bundle download: returns the .tar.gz blob, or throws ApiError (422
+  // when the predictor family has no ONNX export).
+  exportModel: async (name: string): Promise<Blob> => {
+    const res = await fetch(`/api/models/${name}/export`)
+    if (!res.ok) {
+      let detail = res.statusText
+      try {
+        const body = (await res.json()) as { error?: string }
+        if (body.error) detail = body.error
+      } catch {
+        /* non-JSON error body */
+      }
+      throw new ApiError(res.status, detail)
+    }
+    return res.blob()
+  },
   bestModels: () => request<BestModelGroup>('/api/best-models'),
   recomputeBestModels: () =>
     request<BestModelGroup>('/api/best-models/recompute', { method: 'POST' }),

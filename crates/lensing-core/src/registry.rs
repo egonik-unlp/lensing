@@ -36,6 +36,15 @@ pub struct Predictor {
     /// Absent means the predictor is train-only: its runs cannot be promoted.
     #[serde(default)]
     pub predict_args: Option<Vec<String>>,
+    /// Export-subcommand executable; defaults to `command` when absent.
+    #[serde(default)]
+    pub export_command: Option<String>,
+    /// Export-subcommand args template ({model}/{output} tokens). The
+    /// subcommand reads a promoted-model dir and writes a portable `model.onnx`
+    /// (input: the assembled feature vector, output: transformed-space target)
+    /// into {output}. Absent means the predictor family cannot be exported.
+    #[serde(default)]
+    pub export_args: Option<Vec<String>>,
     /// Honors the graceful-stop protocol: polls the run dir's STOP file
     /// between epochs and finishes early (eval + checkpoint, exit 0).
     /// Without it, stopping a run means killing the process.
@@ -134,6 +143,19 @@ impl Predictor {
             .as_deref()
             .map(|args| (self.predict_command.as_deref().unwrap_or(&self.command), args))
     }
+
+    /// Whether this predictor implements the optional `export` subcommand
+    /// (native trained model → portable `model.onnx`).
+    pub fn supports_export(&self) -> bool {
+        self.export_args.is_some()
+    }
+
+    /// Effective (command, args template) for an export invocation.
+    pub fn export_invocation(&self) -> Option<(&str, &[String])> {
+        self.export_args
+            .as_deref()
+            .map(|args| (self.export_command.as_deref().unwrap_or(&self.command), args))
+    }
 }
 
 /// Substitute `{token}` placeholders in an args template.
@@ -165,6 +187,8 @@ mod tests {
             args: vec![],
             predict_command: None,
             predict_args: None,
+            export_command: None,
+            export_args: None,
             supports_stop: false,
             visualization: false,
             params: vec![Param {

@@ -236,6 +236,26 @@ def predict(model_dir: Path, input_dir: Path, output: Path) -> None:
     emit({"event": "done"})
 
 
+def export(model_dir: Path, output: Path) -> None:
+    """Contract export: convert the booster to a model.onnx
+    TreeEnsembleRegressor via onnxmltools. Trees are scale-invariant, so the
+    input is the assembled feature vector directly."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    import onnx_common
+    from onnxmltools.convert import convert_xgboost
+    from onnxmltools.convert.common.data_types import FloatTensorType
+
+    model = xgb.XGBRegressor()
+    model.load_model(model_dir / "model.ubj")
+    n_cols = int(model.n_features_in_)
+    onx = convert_xgboost(
+        model, initial_types=[(onnx_common.INPUT, FloatTensorType([None, n_cols]))])
+    onnx_common.save(onnx_common.finalize(onx), output)
+    emit({"event": "log", "msg": f"exported model.onnx: xgboost "
+          f"{model.get_booster().num_boosted_rounds()} trees, {n_cols} features"})
+    emit({"event": "done"})
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -247,10 +267,15 @@ def main() -> None:
     pr.add_argument("--model", required=True, type=Path)
     pr.add_argument("--input", required=True, type=Path)
     pr.add_argument("--output", required=True, type=Path)
+    ex = sub.add_parser("export")
+    ex.add_argument("--model", required=True, type=Path)
+    ex.add_argument("--output", required=True, type=Path)
     args = ap.parse_args()
 
     if args.cmd == "train":
         train(args.dataset, args.output, args.hyperparams)
+    elif args.cmd == "export":
+        export(args.model, args.output)
     else:
         predict(args.model, args.input, args.output)
 

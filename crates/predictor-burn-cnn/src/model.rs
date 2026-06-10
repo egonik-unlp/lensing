@@ -267,3 +267,55 @@ pub fn load(path: &Path, arch: &Arch) -> Result<Cnn<Inner>> {
 pub fn predict_loaded(model: &Cnn<Inner>, x: &[f32], n_cols: usize, batch_size: usize) -> Vec<f32> {
     predict_inner(model, x, n_cols, batch_size)
 }
+
+/// One Conv1d layer's weights for ONNX export. `weight` is row-major
+/// `[out_ch, in_ch, kernel]` — exactly ONNX `Conv`'s `W` layout.
+pub struct ConvWeights {
+    pub weight: Vec<f32>,
+    pub out_ch: usize,
+    pub in_ch: usize,
+    pub kernel: usize,
+    pub bias: Option<Vec<f32>>,
+}
+
+/// One dense (fully-connected) layer; `weight` is row-major `[w_in, w_out]`
+/// (burn's `Linear` layout → ONNX `Gemm` with `transB=0`).
+pub struct DenseLayer {
+    pub weight: Vec<f32>,
+    pub w_in: usize,
+    pub w_out: usize,
+    pub bias: Option<Vec<f32>>,
+}
+
+impl Cnn<Inner> {
+    /// Weights for the ONNX export: the conv stack, the dense head, the output
+    /// head, and the PCA/meta split point. Pooling structure (MaxPool after
+    /// every conv whose length ≥ 2, then a global average pool) is fixed by the
+    /// forward pass and re-derived by the exporter from `n_pca` + `kernel`.
+    pub fn export_parts(&self) -> (Vec<ConvWeights>, DenseLayer, DenseLayer, usize) {
+        let convs = self
+            .convs
+            .iter()
+            .map(|c| {
+                let [out_ch, in_ch, kernel] = c.weight.dims();
+                ConvWeights {
+                    weight: c.weight.val().into_data().to_vec::<f32>().unwrap(),
+                    out_ch,
+                    in_ch,
+                    kernel,
+                    bias: c.bias.as_ref().map(|b| b.val().into_data().to_vec::<f32>().unwrap()),
+                }
+            })
+            .collect();
+        let dense_layer = |l: &Linear<Inner>| {
+            let [w_in, w_out] = l.weight.dims();
+            DenseLayer {
+                weight: l.weight.val().into_data().to_vec::<f32>().unwrap(),
+                w_in,
+                w_out,
+                bias: l.bias.as_ref().map(|b| b.val().into_data().to_vec::<f32>().unwrap()),
+            }
+        };
+        (convs, dense_layer(&self.dense), dense_layer(&self.output), self.n_pca)
+    }
+}

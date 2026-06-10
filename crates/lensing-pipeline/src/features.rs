@@ -8,8 +8,39 @@ use std::collections::HashMap;
 use anyhow::{ensure, Result};
 use lensing_core::domain::{Domain, NumericEncode};
 use lensing_core::{ColumnDesc, ColumnKind, FeatureConfig};
+use serde::Serialize;
 
 use crate::qdrant::RawPoint;
+
+/// An explicit, self-describing instruction for producing one feature column
+/// from a raw item — the serialized form the model export ships in
+/// `featurize.json`, so a downstream consumer reproduces the feature vector
+/// without re-deriving the column-name conventions [`Encoder::from_columns`]
+/// uses. The ordered list of these (PCA columns first, then the encoder's
+/// metadata columns) is exactly the trained column order.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "op", rename_all = "snake_case")]
+pub enum ColumnPlan {
+    /// Component `component` of the PCA projection of the embedding.
+    Pca { component: usize },
+    /// The field value verbatim (absent → 0).
+    NumericVerbatim { field: String },
+    /// `ln(1 + x)` of present (> 0) values, else 0.
+    NumericLog1p { field: String },
+    /// Present (> 0) values verbatim, else 0 (paired with a missing flag).
+    NumericPresentRaw { field: String },
+    /// 1.0 when the field is absent or ≤ 0.
+    NumericMissingFlag { field: String },
+    /// Latitude of an in-bounds geo pair, else 0.
+    CoordLat { field: String, bounds: [[f64; 2]; 2] },
+    /// Longitude of an in-bounds geo pair, else 0.
+    CoordLon { field: String, bounds: [[f64; 2]; 2] },
+    /// 1.0 when the geo pair is absent or out of bounds.
+    CoordMissing { field: String, bounds: [[f64; 2]; 2] },
+    /// One-hot indicator: 1.0 when `group`'s value equals `value`. The trailing
+    /// `value == "__other__"` column is the catch-all for unseen values.
+    Onehot { group: String, value: String },
+}
 
 /// A frozen categorical vocabulary: values in fixed order, plus an
 /// optional trailing "other" bucket for values outside the list.
@@ -420,6 +451,32 @@ impl Encoder {
                 && !out.contains(&c.field)
             {
                 out.push(c.field.clone());
+            }
+        }
+        out
+    }
+
+    /// The explicit per-column plan for the metadata columns (numerics then
+    /// one-hots), in trained order. The export prepends the PCA columns. This
+    /// is the single source of truth for the portable `featurize.json` spec.
+    pub fn plan(&self) -> Vec<ColumnPlan> {
+        let mut out = Vec::with_capacity(self.width());
+        for c in &self.numeric {
+            let field = c.field.clone();
+            out.push(match c.read {
+                NumericRead::Verbatim => ColumnPlan::NumericVerbatim { field },
+                NumericRead::Log1p => ColumnPlan::NumericLog1p { field },
+                NumericRead::PresentRaw => ColumnPlan::NumericPresentRaw { field },
+                NumericRead::MissingFlag => ColumnPlan::NumericMissingFlag { field },
+                NumericRead::Lat(b) => ColumnPlan::CoordLat { field, bounds: b },
+                NumericRead::Lon(b) => ColumnPlan::CoordLon { field, bounds: b },
+                NumericRead::CoordsMissing(b) => ColumnPlan::CoordMissing { field, bounds: b },
+            });
+        }
+        for v in &self.vocabs {
+            for value in v.values.iter().cloned().chain(v.has_other.then(|| "__other__".to_string()))
+            {
+                out.push(ColumnPlan::Onehot { group: v.group.clone(), value });
             }
         }
         out

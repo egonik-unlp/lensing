@@ -322,3 +322,38 @@ pub fn load(
 pub fn predict_loaded(model: &Mlp<Inner>, x: &[f32], n_cols: usize, batch_size: usize) -> Vec<f32> {
     predict_inner(model, x, n_cols, batch_size)
 }
+
+/// One dense layer's weights, extracted for ONNX export. `weight` is row-major
+/// `[w_in, w_out]` (burn's `Linear` layout, so an ONNX `Gemm` with `transB=0`).
+pub struct DenseLayer {
+    pub weight: Vec<f32>,
+    pub w_in: usize,
+    pub w_out: usize,
+    pub bias: Option<Vec<f32>>,
+}
+
+impl Mlp<Inner> {
+    /// The hidden layers followed by the output layer, in forward order — the
+    /// `Gemm` chain an ONNX export emits between activations. The activation
+    /// (`self.activation`) is applied after every layer except the last; the
+    /// dropout is inference-inactive and contributes nothing.
+    pub fn dense_layers(&self) -> Vec<DenseLayer> {
+        let extract = |layer: &Linear<Inner>| {
+            let [w_in, w_out] = layer.weight.dims();
+            DenseLayer {
+                weight: layer.weight.val().into_data().to_vec::<f32>().unwrap(),
+                w_in,
+                w_out,
+                bias: layer
+                    .bias
+                    .as_ref()
+                    .map(|b| b.val().into_data().to_vec::<f32>().unwrap()),
+            }
+        };
+        self.layers.iter().chain(std::iter::once(&self.output)).map(extract).collect()
+    }
+
+    pub fn activation_kind(&self) -> Activation {
+        self.activation
+    }
+}

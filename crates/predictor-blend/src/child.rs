@@ -95,6 +95,47 @@ pub fn train_member(
     Ok(stop_seen.load(Ordering::Relaxed) || blend_stop.exists())
 }
 
+/// Run a member's export subcommand synchronously, writing its `model.onnx`
+/// into `output_dir`. Errors if the predictor has no export support or exits
+/// non-zero.
+pub fn export_member(
+    label: &str,
+    predictor: &Predictor,
+    model_dir: &Path,
+    output_dir: &Path,
+) -> Result<()> {
+    let (command, template) = predictor.export_invocation().with_context(|| {
+        format!("member {label}: predictor {} cannot be exported to ONNX", predictor.name)
+    })?;
+    let args = substitute(
+        template,
+        &[
+            ("model", model_dir.to_string_lossy().into_owned()),
+            ("output", output_dir.to_string_lossy().into_owned()),
+        ],
+    );
+    std::fs::create_dir_all(output_dir)?;
+    let out = Command::new(command)
+        .args(&args)
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .output()
+        .with_context(|| format!("spawn {command} export for member {label}"))?;
+    if !out.status.success() {
+        let tail: String = String::from_utf8_lossy(&out.stderr)
+            .lines()
+            .rev()
+            .take(8)
+            .collect::<Vec<_>>()
+            .join(" | ");
+        bail!("member {label} export exited {}: {tail}", out.status);
+    }
+    if !output_dir.join("model.onnx").is_file() {
+        bail!("member {label} export exited 0 but wrote no model.onnx");
+    }
+    Ok(())
+}
+
 /// Run a member's predict subcommand synchronously; returns the parsed
 /// target-space predictions.
 pub fn predict_member(

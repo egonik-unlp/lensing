@@ -239,6 +239,29 @@ impl Featurizer {
         Ok(())
     }
 
+    /// The explicit per-column feature plan in trained order (PCA components
+    /// first, then the metadata encoder's columns) — the spec the model export
+    /// ships in `featurize.json` so a downstream consumer reproduces the
+    /// feature vector without the lensing pipeline.
+    pub fn feature_plan(&self) -> Vec<crate::features::ColumnPlan> {
+        let mut plan: Vec<crate::features::ColumnPlan> = (0..self.pca.k())
+            .map(|component| crate::features::ColumnPlan::Pca { component })
+            .collect();
+        plan.extend(self.encoder.plan());
+        plan
+    }
+
+    /// The PCA basis: mean (length = embedding dim) and the row-major
+    /// components matrix `[dims, embedding_dim]`, for the export's binary
+    /// sidecar + `featurize.json` reference.
+    pub fn pca_mean(&self) -> &[f32] {
+        &self.contract.pca.mean
+    }
+
+    pub fn pca_dims(&self) -> usize {
+        self.contract.pca.dims
+    }
+
     /// Caller-facing input requirements, derived from the trained columns.
     pub fn input_fields(&self) -> InputFields {
         InputFields {

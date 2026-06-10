@@ -204,8 +204,31 @@ function ModelActions({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [cloned, setCloned] = useState<string | null>(null)
+  const [exporting, setExporting] = useState(false)
 
   const nameOk = NAME_RE.test(newName)
+
+  // Download a portable ONNX export bundle (.tar.gz). The browser saves it via
+  // the Content-Disposition filename the server sets.
+  const doExport = async () => {
+    setExporting(true)
+    setError(null)
+    try {
+      const blob = await api.exportModel(name)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${name}-export.tar.gz`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setExporting(false)
+    }
+  }
 
   const submit = async () => {
     setBusy(true)
@@ -249,6 +272,14 @@ function ModelActions({
           Clone params to definition
         </button>
       )}
+      <button
+        className="btn"
+        onClick={doExport}
+        disabled={busy || exporting}
+        title="Download a portable ONNX bundle (model.onnx + featurize.json) to run this model outside lensing"
+      >
+        {exporting ? 'Exporting…' : 'Export ONNX'}
+      </button>
       {cloned && (
         <span className="muted" role="status">
           cloned to <DefinitionRef name={cloned} />

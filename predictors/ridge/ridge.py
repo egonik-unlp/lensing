@@ -234,6 +234,24 @@ def predict(model_dir: Path, input_dir: Path, output: Path) -> None:
     emit({"event": "done"})
 
 
+def export(model_dir: Path, output: Path) -> None:
+    """Contract export: emit a portable model.onnx whose input is the assembled
+    feature vector and output is the transformed-space target. Ridge is linear,
+    so the standardizer + `X @ coef + intercept` fold into one small graph."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    import onnx_common
+
+    model = json.loads((model_dir / "model.json").read_text())
+    scaler = json.loads((model_dir / "scaler.json").read_text())
+    coef = np.asarray(model["coef"], dtype=np.float64)
+    mean = np.asarray(scaler["mean"], dtype=np.float64)
+    std = np.asarray(scaler["std"], dtype=np.float64)
+    onnx_model = onnx_common.linear_graph(coef, float(model["intercept"]), mean, std)
+    onnx_common.save(onnx_model, output)
+    emit({"event": "log", "msg": f"exported model.onnx: linear, {len(coef)} features"})
+    emit({"event": "done"})
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -245,10 +263,15 @@ def main() -> None:
     pr.add_argument("--model", required=True, type=Path)
     pr.add_argument("--input", required=True, type=Path)
     pr.add_argument("--output", required=True, type=Path)
+    ex = sub.add_parser("export")
+    ex.add_argument("--model", required=True, type=Path)
+    ex.add_argument("--output", required=True, type=Path)
     args = ap.parse_args()
 
     if args.cmd == "train":
         train(args.dataset, args.output, args.hyperparams)
+    elif args.cmd == "export":
+        export(args.model, args.output)
     else:
         predict(args.model, args.input, args.output)
 

@@ -22,7 +22,7 @@ use lensing_core::{
     Contract, InferencePrediction, InputFields, Manifest, ModelRecord, RunStatus,
     CONTRACT_VERSION,
 };
-use lensing_pipeline::features::Encoder;
+use lensing_pipeline::features::{ColumnPlan, Encoder};
 use lensing_pipeline::inference::{Featurizer, RawItem};
 use lensing_pipeline::qdrant::{self, RawPoint};
 
@@ -286,6 +286,321 @@ pub fn delete_model(state: &AppState, name: &str) -> Result<()> {
         sink.model_artifacts_delete(name);
     }
     Ok(())
+}
+
+// ---------- model export (portable ONNX bundle) ----------
+
+/// Version of the export bundle layout (`lensing-export.json` + `featurize.json`).
+const EXPORT_SCHEMA_VERSION: u32 = 1;
+
+/// Files the server derives and writes into the bundle (predictors contribute
+/// `model.onnx` and, for blends, `members/` + `combination.json`).
+#[derive(serde::Serialize)]
+struct ExportEnvelope {
+    schema_version: u32,
+    format: &'static str,
+    /// "lensing/<predictor>", e.g. "lensing/burn-mlp".
+    producer: String,
+    framework_version: &'static str,
+    model: ModelRecord,
+    target: lensing_core::TargetInfo,
+    n_features: usize,
+    embedding_dim: usize,
+    ensemble: bool,
+    /// Relative paths present in the bundle.
+    files: Vec<String>,
+}
+
+/// The portable preprocessing spec: enough to turn a raw item (metadata fields
+/// + embedding) into the exact feature vector `model.onnx` expects, with no
+/// lensing dependency. Derived from the model's frozen contract.
+#[derive(serde::Serialize)]
+struct Featurize {
+    schema_version: u32,
+    n_cols: usize,
+    embedding_dim: usize,
+    pca: FeaturizePca,
+    /// Ordered, explicit per-column instructions (trained order).
+    columns: Vec<ColumnPlan>,
+    /// Column names parallel to `columns` (trained order). Lets a blend
+    /// consumer map a member's `combination.json` column subset to indices.
+    column_names: Vec<String>,
+    target: FeaturizeTarget,
+    /// Frozen train-split medians for missing-numeric imputation; applied (if
+    /// present) before encoding, exactly as training did.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    imputation: Option<lensing_core::NumericImputation>,
+}
+
+#[derive(serde::Serialize)]
+struct FeaturizePca {
+    dims: usize,
+    /// Mean of the original embedding (subtracted before projection).
+    mean: Vec<f32>,
+    /// Row-major `[dims, embedding_dim]`, little-endian f32.
+    components_file: &'static str,
+    components_shape: [usize; 2],
+}
+
+#[derive(serde::Serialize)]
+struct FeaturizeTarget {
+    field: String,
+    /// "log1p" | "none" — the consumer applies the inverse to model.onnx's
+    /// (transformed-space) output.
+    transform: lensing_core::TargetTransform,
+    /// Clamp the inverted prediction at 0 (every predictor does this).
+    clamp_nonnegative: bool,
+}
+
+/// Export a promoted model into a self-contained `.tar.gz` (returned as bytes).
+/// Runs the predictor's `export` subcommand to produce `model.onnx`, derives
+/// the portable `featurize.json` + `input-schema.json` from the frozen
+/// contract, and bundles them with the PCA basis and a README.
+pub async fn export(state: Arc<AppState>, name: String) -> Result<Vec<u8>, PredictError> {
+    let model_dir = state.models_dir().join(&name);
+    let record = read_record(&model_dir).map_err(|_| PredictError::NotFound)?;
+    let predictor = state
+        .registry
+        .get(&record.predictor)
+        .with_context(|| format!("predictor {} is not in the registry", record.predictor))?
+        .clone();
+    if !predictor.supports_export() {
+        return Err(PredictError::BadInput(format!(
+            "predictor {} cannot be exported to ONNX (no export support); \
+             supported families: neural nets, tree ensembles, linear/SVR, and blends of them",
+            record.predictor
+        )));
+    }
+    let (command, args_template) = predictor
+        .export_invocation()
+        .map(|(c, a)| (c.to_string(), a.to_vec()))
+        .expect("supports_export checked above");
+
+    // Stage the bundle under a temp dir; the predictor writes model.onnx (and,
+    // for blends, members/ + combination.json) into it, then we add the
+    // derived files. Cleaned up on every path.
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let stage = model_dir.join("tmp").join(format!("export-{nanos:x}"));
+
+    let result =
+        export_inner(&state, &name, &record, &command, &args_template, &model_dir, &stage).await;
+    let _ = std::fs::remove_dir_all(&stage);
+    result
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn export_inner(
+    state: &Arc<AppState>,
+    name: &str,
+    record: &ModelRecord,
+    command: &str,
+    args_template: &[String],
+    model_dir: &Path,
+    stage: &Path,
+) -> Result<Vec<u8>, PredictError> {
+    std::fs::create_dir_all(stage).map_err(anyhow::Error::from)?;
+
+    // 1. Run the predictor's export subcommand → model.onnx (+ blend members).
+    // {output} is the staging dir the predictor writes model.onnx into.
+    let args = registry::substitute(
+        args_template,
+        &[
+            ("model", model_dir.to_string_lossy().into_owned()),
+            ("output", stage.to_string_lossy().into_owned()),
+        ],
+    );
+    {
+        let _permit = state.run_slots.clone().acquire_owned().await.map_err(anyhow::Error::from)?;
+        let (exit_code, stderr_tail) =
+            runs::spawn_and_capture(command, &args, &state.root, &|_line| {})
+                .await
+                .map_err(PredictError::Internal)?;
+        if exit_code != 0 {
+            return Err(PredictError::Internal(anyhow::anyhow!(
+                "predictor export exited {exit_code}: {}",
+                stderr_tail.trim()
+            )));
+        }
+    }
+    let is_blend = stage.join("combination.json").is_file();
+    if !is_blend && !stage.join("model.onnx").is_file() {
+        return Err(PredictError::Internal(anyhow::anyhow!(
+            "predictor export exited 0 but wrote no model.onnx"
+        )));
+    }
+
+    // 2. Derive the portable preprocessing spec from the frozen contract.
+    let model_dir2 = model_dir.to_path_buf();
+    let featurizer = tokio::task::spawn_blocking(move || Featurizer::from_model_dir(&model_dir2))
+        .await
+        .map_err(|e| PredictError::Internal(anyhow::anyhow!("featurizer task panicked: {e}")))?
+        .map_err(PredictError::Internal)?;
+    let contract = read_contract(model_dir).map_err(PredictError::Internal)?;
+    let embedding_dim = featurizer.embedding_dim();
+
+    let featurize = Featurize {
+        schema_version: EXPORT_SCHEMA_VERSION,
+        n_cols: contract.n_cols,
+        embedding_dim,
+        pca: FeaturizePca {
+            dims: featurizer.pca_dims(),
+            mean: featurizer.pca_mean().to_vec(),
+            components_file: "pca_components.f32",
+            components_shape: contract.pca.components_shape,
+        },
+        columns: featurizer.feature_plan(),
+        column_names: contract.columns.iter().map(|c| c.name.clone()).collect(),
+        target: FeaturizeTarget {
+            field: contract.target.field.clone(),
+            transform: contract.target.transform,
+            clamp_nonnegative: true,
+        },
+        imputation: contract.imputation.clone(),
+    };
+    write_json(stage.join("featurize.json"), &featurize)?;
+
+    // 3. input-schema.json: caller-facing input requirements.
+    write_json(stage.join("input-schema.json"), &contract.input_fields)?;
+
+    // 4. PCA basis sidecar.
+    std::fs::copy(model_dir.join("pca_components.f32"), stage.join("pca_components.f32"))
+        .map_err(|e| PredictError::Internal(anyhow::anyhow!("copy pca_components.f32: {e}")))?;
+
+    // 5. README (human + machine consumption doc).
+    std::fs::write(stage.join("README.md"), export_readme(name, record, &contract, is_blend))
+        .map_err(anyhow::Error::from)?;
+
+    // 6. Envelope (written last so its file index is complete).
+    let mut files = list_bundle_files(stage).map_err(PredictError::Internal)?;
+    files.push("lensing-export.json".to_string());
+    files.sort();
+    let envelope = ExportEnvelope {
+        schema_version: EXPORT_SCHEMA_VERSION,
+        format: "onnx",
+        producer: format!("lensing/{}", record.predictor),
+        framework_version: env!("CARGO_PKG_VERSION"),
+        model: record.clone(),
+        target: contract.target.clone(),
+        n_features: contract.n_cols,
+        embedding_dim,
+        ensemble: is_blend,
+        files,
+    };
+    write_json(stage.join("lensing-export.json"), &envelope)?;
+
+    // 7. Bundle the staging dir under a top-level `<name>/` folder.
+    let name_owned = name.to_string();
+    let stage_owned = stage.to_path_buf();
+    let bytes = tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<u8>> {
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        {
+            let mut tar = tar::Builder::new(&mut gz);
+            tar.append_dir_all(&name_owned, &stage_owned)?;
+            tar.finish()?;
+        }
+        Ok(gz.finish()?)
+    })
+    .await
+    .map_err(|e| PredictError::Internal(anyhow::anyhow!("archive task panicked: {e}")))?
+    .map_err(PredictError::Internal)?;
+    Ok(bytes)
+}
+
+fn write_json<T: serde::Serialize>(path: PathBuf, value: &T) -> Result<(), PredictError> {
+    let bytes = serde_json::to_vec_pretty(value).map_err(anyhow::Error::from)?;
+    std::fs::write(&path, bytes)
+        .map_err(|e| PredictError::Internal(anyhow::anyhow!("write {}: {e}", path.display())))?;
+    Ok(())
+}
+
+/// The bundle's `README.md`: a self-contained, agent-consumable description of
+/// the export layout, the `model.onnx` I/O contract, and the inference recipe.
+fn export_readme(name: &str, record: &ModelRecord, contract: &Contract, is_blend: bool) -> String {
+    let transform = match contract.target.transform {
+        lensing_core::TargetTransform::Log1p => {
+            "log1p — apply `y = expm1(out)` to invert, then clamp at 0"
+        }
+        lensing_core::TargetTransform::None => "none — `out` is already in target space; clamp at 0",
+    };
+    let embedding_dim = contract.pca.components_shape[1];
+    let ensemble_section = if is_blend {
+        "\n## Ensemble (blend)\n\nThis is an ensemble. Instead of a single `model.onnx`, the bundle has:\n\n\
+         - `members/<i>/model.onnx` — each member predictor, exported the same way.\n\
+         - `combination.json` — `{ rule, members:[{ index, predictor, dir, columns, n_cols, weight }] }`.\n\n\
+         To predict: build the full feature vector once (from `featurize.json`); for each member,\n\
+         select its `columns` (by name) out of the full vector, run its `model.onnx`, invert the\n\
+         target transform per member, then combine the members' target-space values by `rule`\n\
+         (`mean` uses the weights; `median` is an unweighted vote).\n"
+    } else {
+        ""
+    };
+    format!(
+        "# Lensing model export — `{name}`\n\n\
+         Portable, self-contained export of a trained `{predictor}` model. Everything here is\n\
+         framework-agnostic: an ONNX graph plus a declarative preprocessing spec. The only thing\n\
+         you bring is an ONNX runtime (e.g. `onnxruntime-web`) and, optionally, the reference\n\
+         featurizer `@lensing/inference`.\n\n\
+         ## Files\n\n\
+         - `lensing-export.json` — manifest: schema version, predictor family, target spec, file index.\n\
+         - `model.onnx` — the trained predictor as an ONNX graph.\n  \
+           - input `input`: `float32[N, {n_cols}]` — the **assembled feature vector**.\n  \
+           - output `output`: `float32[N, 1]` — the target in **transformed space**.\n\
+         - `featurize.json` — how to build the feature vector from a raw item (see below).\n\
+         - `pca_components.f32` — PCA basis, row-major `float32[{pca_dims}, {embedding_dim}]`.\n\
+         - `input-schema.json` — the fields a caller must provide.\n{ensemble_section}\n\
+         ## Building the feature vector (`featurize.json`)\n\n\
+         `featurize.json.columns` is an ordered list of {n_cols} instructions, one per feature\n\
+         column, each tagged by `op`:\n\n\
+         - `pca` — component of the PCA projection of the embedding: subtract `pca.mean` from the\n  \
+           `{embedding_dim}`-dim embedding, multiply by `pca_components.f32` (`[dims, {embedding_dim}]`).\n\
+         - `numeric_verbatim` / `numeric_log1p` / `numeric_present_raw` / `numeric_missing_flag` —\n  \
+           read `field` from the item (0/absent treated as unspecified); see each op's rule.\n\
+         - `coord_lat` / `coord_lon` / `coord_missing` — read `field` as `{{lat, lon}}`; in-bounds\n  \
+           (`bounds = [[lat_min,lat_max],[lon_min,lon_max]]`) → value, else 0 / missing-flag 1.\n\
+         - `onehot` — 1 when the item's `group` equals `value`; the trailing `value=\"__other__\"`\n  \
+           column is the catch-all for unseen values.\n\n\
+         If `featurize.json.imputation` is present, fill missing numerics with the frozen medians\n\
+         (keyed by the outlier-group field) **before** encoding.\n\n\
+         ## Target\n\n\
+         `featurize.json.target.transform` = {transform}.\n\n\
+         ## Inference recipe\n\n\
+         1. Get the item's `{embedding_dim}`-dim embedding (same embedding model the corpus used).\n\
+         2. Build `features: float32[N, {n_cols}]` per `featurize.json.columns`.\n\
+         3. Run `model.onnx` with input `input=features` → `output[N,1]` (transformed space).\n\
+         4. Invert the target transform and clamp at 0.\n\n\
+         Provenance: model `{name}` · run `{run_id}` · dataset `{dataset_id}` · created {created}.\n",
+        name = name,
+        predictor = record.predictor,
+        n_cols = contract.n_cols,
+        pca_dims = contract.pca.dims,
+        embedding_dim = embedding_dim,
+        transform = transform,
+        ensemble_section = ensemble_section,
+        run_id = record.run_id,
+        dataset_id = record.dataset_id,
+        created = record.created_at,
+    )
+}
+
+/// Relative paths of every file already staged (before the envelope is added).
+fn list_bundle_files(stage: &Path) -> Result<Vec<String>> {
+    let mut out = Vec::new();
+    fn rec(base: &Path, dir: &Path, out: &mut Vec<String>) -> Result<()> {
+        for e in std::fs::read_dir(dir)?.flatten() {
+            let path = e.path();
+            if e.file_type()?.is_dir() {
+                rec(base, &path, out)?;
+            } else {
+                out.push(path.strip_prefix(base).unwrap().to_string_lossy().into_owned());
+            }
+        }
+        Ok(())
+    }
+    rec(stage, stage, &mut out)?;
+    Ok(out)
 }
 
 /// One predict request: raw items and/or Qdrant point ids.
