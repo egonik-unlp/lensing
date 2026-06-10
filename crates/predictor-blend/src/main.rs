@@ -58,6 +58,15 @@ enum Command {
         #[arg(long)]
         output: PathBuf,
     },
+    /// Export the ensemble: export each included member to ONNX under
+    /// `members/<i>/model.onnx` and write a `combination.json` describing how
+    /// the consumer recombines them.
+    Export {
+        #[arg(long)]
+        model: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+    },
 }
 
 /// Contract: progress as JSON-lines on stdout.
@@ -72,7 +81,83 @@ fn main() -> Result<()> {
     match cli.command {
         Command::Train { dataset, output, hyperparams } => train(dataset, output, hyperparams),
         Command::Predict { model, input, output } => predict(model, input, output),
+        Command::Export { model, output } => export(model, output),
     }
+}
+
+/// `combination.json`: how a consumer recombines the exported member ONNX
+/// graphs. Each member's `model.onnx` takes its own column subset of the
+/// blend's assembled feature vector (selected by `columns`), is inverted to
+/// target space (per the shared featurize.json target), then combined by
+/// `rule` with the given weights.
+#[derive(serde::Serialize)]
+struct Combination {
+    rule: Rule,
+    members: Vec<CombinationMember>,
+}
+
+#[derive(serde::Serialize)]
+struct CombinationMember {
+    index: usize,
+    predictor: String,
+    /// Export-relative directory holding this member's `model.onnx`.
+    dir: String,
+    /// Names (in order) of the blend feature columns this member consumes.
+    columns: Vec<String>,
+    n_cols: usize,
+    /// Combination weight (mean rule); 1 for every voter under median.
+    weight: f64,
+}
+
+/// Export the blend: recursively export each included member to ONNX, then
+/// write `combination.json`. Members that cannot be exported (their predictor
+/// has no `export` support) fail the whole export with a clear message.
+fn export(model_dir: PathBuf, output: PathBuf) -> Result<()> {
+    let blend: BlendFile = serde_json::from_str(
+        &std::fs::read_to_string(model_dir.join("blend.json"))
+            .context("read blend.json from model dir")?,
+    )
+    .context("parse blend.json")?;
+    let registry = Registry::load(Path::new("registry.toml"))?;
+    std::fs::create_dir_all(&output)?;
+
+    let mut members = Vec::new();
+    for m in blend.members.iter().filter(|m| m.included) {
+        let label = format!("m{} {}", m.index, m.source.as_deref().unwrap_or(&m.predictor));
+        let predictor = registry
+            .get(&m.predictor)
+            .with_context(|| format!("member predictor {:?} not in registry", m.predictor))?;
+        ensure!(
+            predictor.supports_export(),
+            "member {label}: predictor {} has no ONNX export — the blend cannot be exported \
+             until every included member's family supports export",
+            m.predictor
+        );
+        let member_model_dir = model_dir.join("members").join(m.index.to_string());
+        let dir = format!("members/{}", m.index);
+        let member_out_dir = output.join("members").join(m.index.to_string());
+        child::export_member(&label, predictor, &member_model_dir, &member_out_dir)?;
+        emit(json!({"event": "log", "msg": format!("[{label}] exported {dir}/model.onnx")}));
+        members.push(CombinationMember {
+            index: m.index,
+            predictor: m.predictor.clone(),
+            dir,
+            columns: m.columns.clone(),
+            n_cols: m.n_cols,
+            weight: blend.weights[m.index],
+        });
+    }
+    ensure!(!members.is_empty(), "blend.json has no included members to export");
+
+    let combination = Combination { rule: blend.rule, members };
+    std::fs::write(
+        output.join("combination.json"),
+        serde_json::to_vec_pretty(&combination)?,
+    )?;
+    emit(json!({"event": "log", "msg": format!(
+        "exported {} members, rule {:?}", combination.members.len(), blend.rule)}));
+    emit(json!({"event": "done"}));
+    Ok(())
 }
 
 /// `models.toml` at the repository root (cwd is the repo root by contract).

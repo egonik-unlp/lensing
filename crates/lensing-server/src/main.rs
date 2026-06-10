@@ -271,6 +271,7 @@ async fn main() -> Result<()> {
         .route("/models/{name}/viz", get(api::get_model_viz))
         .route("/models/{name}/blend", get(api::get_model_blend))
         .route("/models/{name}/contract", get(api::get_model_contract))
+        .route("/models/{name}/export", get(api::export_model))
         .route("/models/{name}/predict", axum::routing::post(api::predict_model))
         .route("/models/{name}/rename", axum::routing::post(api::rename_model))
         .route("/best-models", get(api::get_best_models).put(api::put_best_models))

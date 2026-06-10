@@ -1,0 +1,25 @@
+{
+  "name": "@lensing/inference",
+  "version": "0.1.0",
+  "description": "Run a lensing model export (ONNX + featurize.json) in Node, the browser, or Cloudflare Workers.",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./featurize": "./src/featurize.js"
+  },
+  "files": ["src"],
+  "scripts": {
+    "example:node": "node examples/node.mjs"
+  },
+  "keywords": ["lensing", "onnx", "inference", "ml"],
+  "license": "MIT",
+  "peerDependencies": {
+    "onnxruntime-node": "*",
+    "onnxruntime-web": "*"
+  },
+  "peerDependenciesMeta": {
+    "onnxruntime-node": { "optional": true },
+    "onnxruntime-web": { "optional": true }
+  }
+}

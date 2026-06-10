@@ -1,0 +1,13 @@
+[package]
+name = "lensing-onnx"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# A tiny, dependency-free ONNX (protobuf) writer. Just enough of the ONNX
+# schema to serialize the feed-forward / conv graphs the burn predictors
+# export — no codegen, no protoc, no network: keeps the Rust predictors
+# self-contained while still emitting a standard `model.onnx`.
+
+[dependencies]

@@ -11,6 +11,7 @@ description = "Feed-forward net on PCA embeddings + metadata one-hots. Rust, CPU
 command = "target/release/predictor-burn-mlp"
 args = ["train", "--dataset", "{dataset}", "--output", "{run_dir}", "--hyperparams", "{hyperparams}"]
 predict_args = ["predict", "--model", "{model}", "--input", "{input}", "--output", "{output}"]
+export_args = ["export", "--model", "{model}", "--output", "{output}"]
 supports_stop = true
 visualization = true
 
@@ -152,6 +153,7 @@ description = "1D conv net over PCA embeddings; metadata one-hots join the dense
 command = "target/release/predictor-burn-cnn"
 args = ["train", "--dataset", "{dataset}", "--output", "{run_dir}", "--hyperparams", "{hyperparams}"]
 predict_args = ["predict", "--model", "{model}", "--input", "{input}", "--output", "{output}"]
+export_args = ["export", "--model", "{model}", "--output", "{output}"]
 supports_stop = true
 visualization = true
 
@@ -224,6 +226,7 @@ description = "1D conv net over PCA embeddings; metadata one-hots join the dense
 command = "predictors/.venv/bin/python"
 args = ["predictors/torch-cnn/train.py", "train", "--dataset", "{dataset}", "--output", "{run_dir}", "--hyperparams", "{hyperparams}"]
 predict_args = ["predictors/torch-cnn/train.py", "predict", "--model", "{model}", "--input", "{input}", "--output", "{output}"]
+export_args = ["predictors/torch-cnn/train.py", "export", "--model", "{model}", "--output", "{output}"]
 supports_stop = true
 visualization = true
 
@@ -368,6 +371,7 @@ description = "L2-regularized linear regression on PCA embeddings + metadata one
 command = "predictors/.venv/bin/python"
 args = ["predictors/ridge/ridge.py", "train", "--dataset", "{dataset}", "--output", "{run_dir}", "--hyperparams", "{hyperparams}"]
 predict_args = ["predictors/ridge/ridge.py", "predict", "--model", "{model}", "--input", "{input}", "--output", "{output}"]
+export_args = ["predictors/ridge/ridge.py", "export", "--model", "{model}", "--output", "{output}"]
 
 [[predictors.params]]
 name = "auto_alpha"
@@ -415,6 +419,7 @@ description = "Support vector regression with selectable kernel on PCA embedding
 command = "predictors/.venv/bin/python"
 args = ["predictors/svm/train.py", "train", "--dataset", "{dataset}", "--output", "{run_dir}", "--hyperparams", "{hyperparams}"]
 predict_args = ["predictors/svm/train.py", "predict", "--model", "{model}", "--input", "{input}", "--output", "{output}"]
+export_args = ["predictors/svm/train.py", "export", "--model", "{model}", "--output", "{output}"]
 
 [[predictors.params]]
 name = "kernel"
@@ -472,6 +477,7 @@ description = "Kernel ridge regression: the SVR's rbf kernel (same expm1 protect
 command = "predictors/.venv/bin/python"
 args = ["predictors/kernel-ridge/train.py", "train", "--dataset", "{dataset}", "--output", "{run_dir}", "--hyperparams", "{hyperparams}"]
 predict_args = ["predictors/kernel-ridge/train.py", "predict", "--model", "{model}", "--input", "{input}", "--output", "{output}"]
+export_args = ["predictors/kernel-ridge/train.py", "export", "--model", "{model}", "--output", "{output}"]
 
 [[predictors.params]]
 name = "kernel"
@@ -636,6 +642,7 @@ description = "Gradient-boosted trees on PCA embeddings + metadata one-hots. Pyt
 command = "predictors/.venv/bin/python"
 args = ["predictors/xgboost/train.py", "train", "--dataset", "{dataset}", "--output", "{run_dir}", "--hyperparams", "{hyperparams}"]
 predict_args = ["predictors/xgboost/train.py", "predict", "--model", "{model}", "--input", "{input}", "--output", "{output}"]
+export_args = ["predictors/xgboost/train.py", "export", "--model", "{model}", "--output", "{output}"]
 supports_stop = true
 
 [[predictors.params]]
@@ -734,6 +741,7 @@ description = "Gradient-boosted trees (leaf-wise growth) on PCA embeddings + met
 command = "predictors/.venv/bin/python"
 args = ["predictors/lightgbm/train.py", "train", "--dataset", "{dataset}", "--output", "{run_dir}", "--hyperparams", "{hyperparams}"]
 predict_args = ["predictors/lightgbm/train.py", "predict", "--model", "{model}", "--input", "{input}", "--output", "{output}"]
+export_args = ["predictors/lightgbm/train.py", "export", "--model", "{model}", "--output", "{output}"]
 supports_stop = true
 
 [[predictors.params]]
@@ -840,6 +848,7 @@ description = "Bagged tree ensemble (scikit-learn) on PCA embeddings + metadata 
 command = "predictors/.venv/bin/python"
 args = ["predictors/random-forest/train.py", "train", "--dataset", "{dataset}", "--output", "{run_dir}", "--hyperparams", "{hyperparams}"]
 predict_args = ["predictors/random-forest/train.py", "predict", "--model", "{model}", "--input", "{input}", "--output", "{output}"]
+export_args = ["predictors/random-forest/train.py", "export", "--model", "{model}", "--output", "{output}"]
 
 [[predictors.params]]
 name = "n_estimators"
@@ -898,6 +907,7 @@ description = "Meta-predictor: combines member models' target-space predictions 
 command = "target/release/predictor-blend"
 args = ["train", "--dataset", "{dataset}", "--output", "{run_dir}", "--hyperparams", "{hyperparams}"]
 predict_args = ["predict", "--model", "{model}", "--input", "{input}", "--output", "{output}"]
+export_args = ["export", "--model", "{model}", "--output", "{output}"]
 supports_stop = true
 visualization = true
 

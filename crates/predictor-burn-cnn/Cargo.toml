@@ -8,6 +8,7 @@ description = "Lensing 1D-CNN predictor (burn)"
 
 [dependencies]
 lensing-core = { workspace = true }
+lensing-onnx = { workspace = true }
 anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

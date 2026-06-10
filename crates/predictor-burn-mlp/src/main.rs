@@ -2,6 +2,7 @@
 //! burn 0.21, ndarray CPU backend, hand-written training loop.
 
 mod model;
+mod onnx_export;
 mod scaler;
 mod viz;
 
@@ -40,6 +41,15 @@ enum Command {
         model: PathBuf,
         #[arg(long)]
         input: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+    },
+    /// Export the trained model as a portable `model.onnx` into the output
+    /// directory. The graph's input is the assembled feature vector (scaler +
+    /// network baked in); output is the transformed-space target.
+    Export {
+        #[arg(long)]
+        model: PathBuf,
         #[arg(long)]
         output: PathBuf,
     },
@@ -100,7 +110,41 @@ fn main() -> Result<()> {
     match cli.command {
         Command::Train { dataset, output, hyperparams } => train(dataset, output, hyperparams),
         Command::Predict { model, input, output } => predict(model, input, output),
+        Command::Export { model, output } => export(model, output),
     }
+}
+
+/// Export the trained MLP to `<output>/model.onnx`: rebuild the architecture
+/// from the hyperparams snapshot, load the weights and scaler, and bake the
+/// standardizer + dense stack (+ optional output clamp) into one ONNX graph.
+fn export(model_dir: PathBuf, output: PathBuf) -> Result<()> {
+    let hp: Hyperparams = serde_json::from_str(
+        &std::fs::read_to_string(model_dir.join("hyperparams.json"))
+            .context("read hyperparams.json from model dir")?,
+    )
+    .context("parse hyperparams.json")?;
+
+    let scaler = scaler::Scaler::load(&model_dir.join("scaler.json"))
+        .context("load scaler.json from model dir")?;
+    let n_cols = scaler.mean.len();
+    let mlp = model::load(&model_dir.join("model"), n_cols, &hp.hidden, hp.dropout, hp.activation)?;
+
+    let clamp_max_t = if hp.clamp_output {
+        let clamp: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(model_dir.join("clamp.json"))
+                .context("clamp_output model is missing clamp.json")?,
+        )?;
+        Some(clamp["max_t"].as_f64().context("clamp.json missing max_t")? as f32)
+    } else {
+        None
+    };
+
+    onnx_export::write_onnx(&mlp, &scaler, clamp_max_t, &output)?;
+    emit(json!({"event":"log","msg":format!(
+        "exported model.onnx: input [N, {n_cols}] (scaler + {} dense layers baked in)",
+        hp.hidden.len() + 1)}));
+    emit(json!({"event":"done"}));
+    Ok(())
 }
 
 fn predict(model_dir: PathBuf, input_dir: PathBuf, output: PathBuf) -> Result<()> {

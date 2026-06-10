@@ -7,6 +7,7 @@
 //! predictors/flux-cnn (Flux.jl).
 
 mod model;
+mod onnx_export;
 mod scaler;
 mod viz;
 
@@ -46,6 +47,14 @@ enum Command {
         model: PathBuf,
         #[arg(long)]
         input: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+    },
+    /// Export the trained model as a portable `model.onnx` into the output
+    /// directory (scaler + conv/dense stack baked into one graph).
+    Export {
+        #[arg(long)]
+        model: PathBuf,
         #[arg(long)]
         output: PathBuf,
     },
@@ -102,7 +111,46 @@ fn main() -> Result<()> {
     match cli.command {
         Command::Train { dataset, output, hyperparams } => train(dataset, output, hyperparams),
         Command::Predict { model, input, output } => predict(model, input, output),
+        Command::Export { model, output } => export(model, output),
     }
+}
+
+/// Export the trained CNN to `<output>/model.onnx`. The PCA/meta split is read
+/// from the frozen contract's columns; the architecture is rebuilt from the
+/// hyperparams snapshot before loading weights.
+fn export(model_dir: PathBuf, output: PathBuf) -> Result<()> {
+    let hp: Hyperparams = serde_json::from_str(
+        &std::fs::read_to_string(model_dir.join("hyperparams.json"))
+            .context("read hyperparams.json from model dir")?,
+    )
+    .context("parse hyperparams.json")?;
+
+    // The PCA signal width comes from the frozen contract's column list.
+    let contract: lensing_core::Contract = serde_json::from_str(
+        &std::fs::read_to_string(model_dir.join("contract.json"))
+            .context("read contract.json from model dir")?,
+    )
+    .context("parse contract.json")?;
+    let n_cols = contract.n_cols;
+    let n_pca = count_pca(&contract.columns);
+    anyhow::ensure!(n_pca > 0, "contract has no pca columns; the CNN needs a signal");
+
+    let scaler = scaler::Scaler::load(&model_dir.join("scaler.json"))
+        .context("load scaler.json from model dir")?;
+    anyhow::ensure!(
+        scaler.mean.len() == n_cols,
+        "scaler was fit on {} columns, contract has {n_cols}",
+        scaler.mean.len()
+    );
+
+    let arch = arch_from(&hp, n_pca, n_cols);
+    let cnn = model::load(&model_dir.join("model"), &arch)?;
+    onnx_export::write_onnx(&cnn, &scaler, &output)?;
+    emit(json!({"event":"log","msg":format!(
+        "exported model.onnx: input [N, {n_cols}] ({n_pca} pca signal + {} meta)",
+        n_cols - n_pca)}));
+    emit(json!({"event":"done"}));
+    Ok(())
 }
 
 fn arch_from(hp: &Hyperparams, n_pca: usize, n_cols: usize) -> model::Arch {
