@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { RunMeta } from '../api/types'
 import DensityToggle from '../components/DensityToggle'
+import LatticeMark from '../components/LatticeMark'
 import ViewHeader from '../components/ViewHeader'
 import { useDensity } from '../hooks/useDensity'
 import { DatasetRef, PredictorRef, RunRef } from '../components/EntityRef'
@@ -436,6 +437,7 @@ function EmptyRuns({
 }) {
   return (
     <section className="empty-state" aria-label="No runs yet">
+      <LatticeMark />
       <h1>No runs yet</h1>
       <p>This bench compares {targetNoun}-prediction models. The loop:</p>
       <ol className="empty-steps">

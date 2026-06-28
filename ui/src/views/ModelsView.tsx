@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import type { BestModelGroup } from '../api/types'
 import BestModelsPanel from '../components/BestModelsPanel'
+import LatticeMark from '../components/LatticeMark'
 import { DatasetRef, ModelRef, PredictorRef, RunRef } from '../components/EntityRef'
 import ViewHeader from '../components/ViewHeader'
 import DensityToggle from '../components/DensityToggle'
@@ -49,6 +50,7 @@ export default function ModelsView() {
           <div className="skeleton skeleton-sm" />
         ) : list.length === 0 ? (
           <section className="empty-state" aria-label="No models yet">
+            <LatticeMark />
             <h1>No models yet</h1>
             <p>
               A model is a promoted training run: its weights and featurization contract, frozen

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { ModelDefinition } from '../api/types'
 import { DefinitionRef, PredictorRef } from '../components/EntityRef'
+import LatticeMark from '../components/LatticeMark'
 import HyperparamForm from '../components/HyperparamForm'
 import SubmitRow from '../components/SubmitRow'
 import ViewHeader from '../components/ViewHeader'
@@ -54,6 +55,7 @@ export default function DefinitionsView() {
         <div className="skeleton skeleton-sm" />
       ) : list.length === 0 && !showNew ? (
         <section className="empty-state" aria-label="No definitions yet">
+          <LatticeMark />
           <h1>No definitions yet</h1>
           <p>
             A definition is a named, reusable configuration — a predictor plus the exact

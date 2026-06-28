@@ -4,6 +4,7 @@ import { api } from '../api/client'
 import type { ListingMetadata } from '../api/types'
 import DensityToggle from '../components/DensityToggle'
 import { ListingRef } from '../components/EntityRef'
+import LatticeMark from '../components/LatticeMark'
 import ListingImage from '../components/ListingImage'
 import ViewHeader from '../components/ViewHeader'
 import { useAsync } from '../hooks/useAsync'
@@ -159,6 +160,7 @@ export default function ListingsView() {
           <div className="skeleton skeleton-sm" />
         ) : list.length === 0 ? (
           <section className="empty-state" aria-label={`No ${nounPl} yet`}>
+            <LatticeMark />
             <h1>No {nounPl} yet</h1>
             <p>
               A manual {noun} is one you describe yourself: the server embeds the

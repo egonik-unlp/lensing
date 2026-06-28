@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { ColumnDesc, Manifest } from '../api/types'
 import DensityToggle from '../components/DensityToggle'
+import LatticeMark from '../components/LatticeMark'
 import ViewHeader from '../components/ViewHeader'
 import { useDensity } from '../hooks/useDensity'
 import { DatasetRef } from '../components/EntityRef'
@@ -234,6 +235,7 @@ function DatasetRow({
 function EmptyDatasets() {
   return (
     <section className="empty-state" aria-label="No datasets yet">
+      <LatticeMark />
       <h1>No datasets yet</h1>
       <p>
         A dataset freezes everything downstream work depends on: a Qdrant pull under a recorded

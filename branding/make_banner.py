@@ -35,7 +35,7 @@ MARK_DARK = ROOT / "ui/public/brand/mark-dark.svg"
 # --- copy --------------------------------------------------------------------
 WORDMARK = "lensing"
 INSTANCE = "· framework"  # the topbar instance form: [mark] lensing · <instance>
-TAGLINE = "a prediction-lab framework that bends around your data, the way mass bends light"
+TAGLINE = "a prediction lab that bends to fit your data"
 
 # --- Control Room tokens (ui/src/styles/tokens.css), as OKLCH ----------------
 TOK = {
@@ -130,7 +130,7 @@ def build():
         tag = Text(TAGLINE, INTER, 400, 25 * avail / tag.advance)
     tag_baseline = baseline + 54
 
-    svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-label="lensing: a prediction-lab framework that bends around your data, the way mass bends light">
+    svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-label="lensing: a prediction lab that bends to fit your data">
   <title>lensing</title>
   <!-- The Control Room topbar as a lockup: slate chrome bezel, the Velocity Map
        mark, the Sora wordmark, a dim instance form, an Inter tagline. Wordmark

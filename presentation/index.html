@@ -30,14 +30,14 @@
       <!-- ===================================================== 01 PORTADA ===== -->
       <section class="slide bleed no-bezel" data-bg="slate" data-section="Estructura">
         <div class="hero-bg"><div class="fallback"></div><div class="img" style="background-image:url('assets/hero-cosmos.jpg'); background-position:78% 50%; opacity:0.85"></div></div>
-        <div class="hero-content">
-          <div class="stack" style="max-width:60cqw">
+        <div class="hero-content" style="justify-content:center; padding-bottom:6cqh">
+          <div class="stack" style="max-width:46cqw; gap:0">
             <div class="lockup">
               <div class="mark-orbit"><img class="mark-art" src="assets/mark-dark.svg" alt=""/></div>
               <span class="brandword">lensing</span>
             </div>
-            <p class="lead" style="margin-top:3.5cqh; color:var(--on-chrome-dim); max-width:34ch">Un framework para construir modelos de predicción sobre un corpus propio.</p>
-            <p class="small mono" style="margin-top:2cqh; color:var(--on-chrome-faint)">Expandiendo Ideas · IA Lab</p>
+            <p class="lead" style="margin-top:2.6cqh; color:var(--on-chrome-dim); max-width:32ch">Un framework para construir modelos de predicción sobre un corpus propio.</p>
+            <p class="small mono" style="margin-top:1.8cqh; color:var(--on-chrome-faint)">Expandiendo Ideas · IA Lab</p>
           </div>
         </div>
         <aside class="notes">
@@ -46,9 +46,135 @@
         </aside>
       </section>
 
-      <!-- ============================================= 02 CÓMO SE MODELA HOY === -->
+      <!-- ============================================= 02 MODELAR ES UN PIPELINE = -->
       <section class="slide" data-bg="paper" data-section="Estructura">
-        <div class="slide-head tight"><span class="kicker">El problema</span><h1>¿Cómo modelamos datos?</h1></div>
+        <div class="slide-head tight"><span class="kicker">Modelar es un pipeline</span><h1>Los pasos son siempre los mismos.</h1></div>
+        <div class="fill" style="display:flex; flex-direction:column; gap:1.6cqh; justify-content:center">
+          <p class="wf2-lead">Todos los pasos apuntan a lo mismo: que el modelo <b>encuentre el patrón</b> en tus datos.</p>
+          <div class="wf2">
+            <!-- 1 · evaluar y limpiar — datos buenos vs rotos -->
+            <div class="wcard">
+              <div class="wc-h"><span class="wc-n">1</span><b>Evaluar y limpiar</b></div>
+              <div class="wc-ill">
+                <table class="minigrid">
+                  <tr><td>US$ 120k</td><td>45 m²</td><td class="st ok">✓</td></tr>
+                  <tr class="bad"><td>—</td><td>38 m²</td><td class="st">falta</td></tr>
+                  <tr class="bad"><td>US$ 2</td><td>60 m²</td><td class="st">raro</td></tr>
+                  <tr><td>US$ 95k</td><td>52 m²</td><td class="st ok">✓</td></tr>
+                </table>
+              </div>
+              <div class="wc-cap">Te quedás con lo confiable; descartás lo que falta o no tiene sentido.</div>
+            </div>
+            <!-- 2 · transformar — varias formas de reexpresar -->
+            <div class="wcard">
+              <div class="wc-h"><span class="wc-n">2</span><b>Transformar</b></div>
+              <div class="wc-ill">
+                <div class="xform">
+                  <div class="xrow"><span class="cur">AR$</span><span class="ar">→</span><span class="cur">US$</span><span class="xl">moneda</span></div>
+                  <div class="xrow">
+                    <svg class="xg" viewBox="0 0 24 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M2 7 q3 -5 6 0 t6 0 t6 0"/></svg>
+                    <span class="ar">→</span>
+                    <svg class="xg" viewBox="0 0 18 14" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="12" x2="4" y2="7"/><line x1="9" y1="12" x2="9" y2="3"/><line x1="14" y1="12" x2="14" y2="8"/></svg>
+                    <span class="xl">Fourier</span>
+                  </div>
+                  <div class="xrow">
+                    <svg class="xg" viewBox="0 0 26 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="12" x2="3" y2="6"/><line x1="7" y1="12" x2="7" y2="3"/><line x1="11" y1="12" x2="11" y2="8"/><line x1="15" y1="12" x2="15" y2="5"/><line x1="19" y1="12" x2="19" y2="9"/><line x1="23" y1="12" x2="23" y2="6"/></svg>
+                    <span class="ar">→</span>
+                    <svg class="xg" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><line x1="5" y1="12" x2="5" y2="6"/><line x1="11" y1="12" x2="11" y2="4"/></svg>
+                    <span class="xl">menos dims</span>
+                  </div>
+                </div>
+              </div>
+              <div class="wc-cap">Reexpresás los datos en algo que el modelo aproveche.</div>
+            </div>
+            <!-- 3 · elegir modelo — familias y para qué sirven -->
+            <div class="wcard">
+              <div class="wc-h"><span class="wc-n">3</span><b>Elegir modelo</b></div>
+              <div class="wc-ill">
+                <div class="models">
+                  <div class="mrow">
+                    <svg class="mg-ic" viewBox="0 0 28 18" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="15" x2="25" y2="4" stroke-width="2"/><g fill="currentColor" stroke="none"><circle cx="5" cy="14" r="1.4"/><circle cx="11" cy="11" r="1.4"/><circle cx="17" cy="8" r="1.4"/><circle cx="23" cy="5" r="1.4"/></g></svg>
+                    <span class="mtxt"><span class="mn">Lineal</span><span class="mg">relaciones simples</span></span>
+                  </div>
+                  <div class="mrow">
+                    <svg class="mg-ic" viewBox="0 0 28 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M14 3 L8 9 M14 3 L20 9 M8 9 L5 15 M8 9 L11 15 M20 9 L17 15 M20 9 L23 15"/><g fill="currentColor" stroke="none"><circle cx="14" cy="3" r="1.6"/><circle cx="8" cy="9" r="1.3"/><circle cx="20" cy="9" r="1.3"/><circle cx="5" cy="15" r="1.2"/><circle cx="11" cy="15" r="1.2"/><circle cx="17" cy="15" r="1.2"/><circle cx="23" cy="15" r="1.2"/></g></svg>
+                    <span class="mtxt"><span class="mn">Árbol</span><span class="mg">reglas y cortes</span></span>
+                  </div>
+                  <div class="mrow">
+                    <svg class="mg-ic" viewBox="0 0 28 18" fill="none" stroke="currentColor" stroke-linecap="round" aria-hidden="true"><g stroke-width="0.7" opacity="0.5"><path d="M5 4 L14 4 M5 4 L14 9 M5 4 L14 14 M5 9 L14 4 M5 9 L14 9 M5 9 L14 14 M5 14 L14 4 M5 14 L14 9 M5 14 L14 14 M14 4 L23 7 M14 9 L23 7 M14 14 L23 7 M14 4 L23 13 M14 9 L23 13 M14 14 L23 13"/></g><g fill="currentColor" stroke="none"><circle cx="5" cy="4" r="1.3"/><circle cx="5" cy="9" r="1.3"/><circle cx="5" cy="14" r="1.3"/><circle cx="14" cy="4" r="1.3"/><circle cx="14" cy="9" r="1.3"/><circle cx="14" cy="14" r="1.3"/><circle cx="23" cy="7" r="1.3"/><circle cx="23" cy="13" r="1.3"/></g></svg>
+                    <span class="mtxt"><span class="mn">Red neuronal</span><span class="mg">patrones complejos</span></span>
+                  </div>
+                </div>
+              </div>
+              <div class="wc-cap">Cada familia capta una forma distinta de patrón.</div>
+            </div>
+            <!-- 4 · elegir hiperparámetros — las perillas moldean el ajuste -->
+            <div class="wcard">
+              <div class="wc-h"><span class="wc-n">4</span><b>Elegir hiperparámetros</b></div>
+              <div class="wc-ill">
+                <div class="knobs">
+                  <div class="knob"><span class="kl">profundidad</span><span class="ktk"><i style="left:62%"></i></span></div>
+                  <div class="knob"><span class="kl">learning rate</span><span class="ktk"><i style="left:34%"></i></span></div>
+                </div>
+                <svg class="fitfig" viewBox="0 0 64 34" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M6 3 V28 H60" stroke-width="1.2" class="muted"/>
+                  <path d="M9 25 L58 7" stroke-width="1.4" stroke-dasharray="2 2.6" class="muted"/>
+                  <path class="over" d="M9 25 Q 13 16 17 21 Q 21 27 25 18 Q 29 10 33 14 Q 37 19 42 11 Q 47 5 51 9 Q 55 13 58 7" stroke-width="1.3"/>
+                  <path d="M9 25 C 22 22 26 15 34 13 S 52 8 58 6" stroke-width="2.3"/>
+                  <g fill="currentColor" stroke="none"><circle cx="11" cy="24" r="1.3"/><circle cx="19" cy="20" r="1.3"/><circle cx="26" cy="18" r="1.3"/><circle cx="34" cy="12" r="1.3"/><circle cx="42" cy="12" r="1.3"/><circle cx="50" cy="8" r="1.3"/><circle cx="56" cy="6" r="1.3"/></g>
+                </svg>
+                <div class="fitleg"><span class="lg simple"><i class="sw"></i>de menos</span><span class="lg justo"><i class="sw"></i>justo</span><span class="lg over"><i class="sw"></i>de más</span></div>
+              </div>
+              <div class="wc-cap">Las perillas deciden cuánto se ajusta al patrón.</div>
+            </div>
+            <!-- 5 · entrenar — el modelo baja el error -->
+            <div class="wcard">
+              <div class="wc-h"><span class="wc-n">5</span><b>Entrenar</b></div>
+              <div class="wc-ill">
+                <svg class="losscurve" viewBox="0 0 60 40" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M9 3 V33 H56" stroke-width="1.2" class="muted"/>
+                  <path d="M11 9 C 22 27, 34 31, 54 32" stroke-width="1.5" stroke-dasharray="2 2.4" class="muted"/>
+                  <path d="M11 12 C 22 29, 34 33, 54 34" stroke-width="2.4"/>
+                  <circle cx="54" cy="34" r="1.9" fill="currentColor" stroke="none"/>
+                </svg>
+                <div class="axlab"><span>↑ error</span><span>épocas →</span></div>
+              </div>
+              <div class="wc-cap">Con cada pasada baja el error: el modelo va aprendiendo.</div>
+            </div>
+            <!-- 6 · evaluar resultados — predicción vs real -->
+            <div class="wcard">
+              <div class="wc-h"><span class="wc-n">6</span><b>Evaluar resultados</b></div>
+              <div class="wc-ill">
+                <table class="predtbl">
+                  <tr><th></th><th>predice</th><th>error</th></tr>
+                  <tr><td class="mn">modelo A</td><td>138k</td><td>−12k</td></tr>
+                  <tr class="best"><td class="mn">modelo B</td><td>151k</td><td>+1k ✓</td></tr>
+                  <tr><td class="mn">modelo C</td><td>119k</td><td>−31k</td></tr>
+                </table>
+                <div class="predreal">valor real · <b>150k</b></div>
+              </div>
+              <div class="wc-cap">Comparás cada predicción con el valor real.</div>
+            </div>
+          </div>
+          <!-- brackets aligned under the tiles: prep (1–2) · iterate loop (3–6) -->
+          <div class="wf2-under">
+            <div class="wf2-prep">preparás los datos</div>
+            <div class="wf2-loopbar"><span class="lb-lbl">↺ iterás</span><span class="lb-txt">si no convence, cambiás de modelo o de perillas y repetís</span></div>
+          </div>
+          <div class="wf2-out"><span class="ok">✓</span> cuando los resultados convencen, el modelo pasa a <b>producción</b></div>
+        </div>
+        <aside class="notes">
+          <p><b>Bloque 1 — los pasos reales.</b> Modelar datos es casi siempre la misma secuencia, sea cual sea el dato. <b>Primero entendés y arreglás los datos:</b> evaluás la calidad de lo que tenés y lo limpiás — quitás o imputás faltantes (NaN) y valores inválidos, detectás filas incoherentes y las filtrás.</p>
+          <p><b>Después los transformás</b> para que el modelo los pueda usar: desde conversiones de unidad (o de moneda) hasta reducción de dimensionalidad o una proyección a otro espacio. Ejemplo claro: una <b>transformada de Fourier</b> (FT) — pensá en una canción, que pasa de la onda de sonido en el tiempo a sus frecuencias, como las barras de un ecualizador; eso es lo que dibuja el ícono. (La FFT es solo una forma rápida de calcular la FT.)</p>
+          <p>Recién ahí, <b>entendiendo tus datos, elegís un modelo</b> (paso 3) — hay familias según la forma del patrón: una recta para relaciones simples, árboles para reglas y cortes, redes neuronales para patrones complejos (texto, imágenes, sonido). Después <b>elegís sus hiperparámetros</b> (paso 4): son las "perillas" del modelo y deciden cuánto se ajusta — de menos no ve el patrón, de más copia el ruido (la figura del paso 4). Con eso fijado, <b>entrenás</b> (paso 5): el modelo ajusta sus números pasada tras pasada hasta bajar el error.</p>
+          <p>Por último <b>mirás los resultados</b> (paso 6): comparás lo que predice cada candidato contra el valor real y medís el error. ¿Convence? Si no, cambiás de modelo o de perillas y repetís — <b>iterás</b>; ese es el lazo naranja, que abarca los pasos 3 a 6. Si sí, el modelo pasa a producción.</p>
+          <p>El hilo conductor — y por eso el subtítulo — es que <b>todos los pasos apuntan a lo mismo: que el modelo encuentre el patrón en los datos</b>. Esto es claramente un <b>pipeline</b>: una secuencia de pasos bien definidos con un lazo de iteración. Un software que entienda esta abstracción es muy útil — pero antes veamos cómo se hace esto hoy.</p>
+        </aside>
+      </section>
+
+      <!-- ============================================= 03 CÓMO SE MODELA HOY === -->
+      <section class="slide" data-bg="paper" data-section="Estructura">
+        <div class="slide-head tight"><span class="kicker">El problema</span><h1>Dos formas habituales.</h1></div>
         <div class="cols cols-2 fill center-y">
           <div class="panel" style="display:flex; flex-direction:column; gap:1.8cqh; justify-content:center">
             <b style="font-size:2.7cqh">Una herramienta</b>
@@ -71,31 +197,8 @@ model.fit(X, y)</div>
           </div>
         </div>
         <aside class="notes">
-          <p><b>Bloque 1 — qué hacés para modelar datos.</b> Dos caminos. Uno: usás un programa al que tenés que <i>meterle</i> tus datos y <i>enseñarle</i> a entenderlos — comas vs. puntos como separador decimal, conversiones de tipo y de moneda, one-hot de categóricas, etc. — y además decirle qué querés hacer con ellos.</p>
+          <p><b>Bloque 2 — cómo se hace hoy.</b> Para correr ese pipeline hay dos caminos típicos, y los dos tienen problemas. Uno: usás un programa al que tenés que <i>meterle</i> tus datos y <i>enseñarle</i> a entenderlos — comas vs. puntos como separador decimal, conversiones de tipo y de moneda, one-hot de categóricas, etc. — y además decirle qué querés hacer con ellos.</p>
           <p>Dos: te armás un script de análisis a medida (incluso podés pedirle a una IA que lo escriba). El problema del script a medida es que encaja con UN problema específico y nada más; cambiás de dataset u objetivo y a empezar de cero.</p>
-        </aside>
-      </section>
-
-      <!-- ============================================= 03 MODELAR ES UN PIPELINE = -->
-      <section class="slide" data-bg="paper" data-section="Estructura">
-        <div class="slide-head tight"><span class="kicker">Modelar es un pipeline</span><h1>Los pasos son siempre los mismos.</h1></div>
-        <div class="fill center-y" style="gap:2.4cqh; justify-content:space-evenly">
-          <div class="flow">
-            <div class="node"><b>Limpiar y codificar</b><span class="meta">one-hot · imputar · moneda</span></div>
-            <span class="arrow">→</span>
-            <div class="node"><b>Reducir dimensiones</b><span class="meta">PCA · autoencoder</span></div>
-            <span class="arrow">→</span>
-            <div class="node"><b>Entrenar</b><span class="meta">un modelo</span></div>
-            <span class="arrow">→</span>
-            <div class="node"><b>Interpretar</b><span class="meta">¿qué falló?</span></div>
-          </div>
-          <p class="mono" style="text-align:center; color:var(--ink-faint); font-size:2cqh">↺ &nbsp; iterás, probás otro modelo &nbsp; — &nbsp; una y otra vez</p>
-          <div class="callout" style="align-self:center"><p>La fuente es una <b>base vectorial</b>: el embedding representa de más. Reducir dimensiones retiene solo lo que tu dataset realmente usa.</p></div>
-        </div>
-        <aside class="notes">
-          <p><b>Bloque 2 — los pasos reales.</b> Casi siempre: preprocesás y limpiás antes de usar los datos, porque los modelos no los ingieren tal cual (one-hot, imputar faltantes, descartar filas sospechosas, convertir monedas, etc.).</p>
-          <p>Como nuestra fuente es una base de datos vectorial hay un problema extra: un embedding está diseñado para representar un rango enorme de conceptos, pero tu dataset no usa todo ese poder de representación. Reducir dimensionalidad (PCA, autoencoder, lo que sea) retiene solo la información representativa.</p>
-          <p>Después elegís un modelo, lo entrenás, interpretás el resultado, iterás sobre lo que no funcionó, probás otro modelo que arregle el problema, etc. Esto es claramente un pipeline — así que un software que entienda esta abstracción es muy útil.</p>
         </aside>
       </section>
 
@@ -151,6 +254,9 @@ model.fit(X, y)</div>
                     <div class="mock-li"><span class="lab">PH · Centro, 2 amb</span><span class="val money">US$ 92.500</span></div>
                     <div class="mock-li"><span class="lab">Casa · City Bell</span><span class="val money">US$ 210.000</span></div>
                     <div class="mock-li"><span class="lab">Depto · La Plata</span><span class="val money">US$ 78.000</span></div>
+                    <div class="mock-li"><span class="lab">Casa · Gonnet</span><span class="val money">US$ 305.000</span></div>
+                    <div class="mock-li"><span class="lab">Depto · Tolosa</span><span class="val money">US$ 64.000</span></div>
+                    <div class="mock-li"><span class="lab">PH · Berisso</span><span class="val money">US$ 58.000</span></div>
                     <div class="mock-model mstruct"><svg class="mock-glyph" viewBox="0 0 24 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M12 3 L7 8 M12 3 L17 8 M7 8 L5 13 M7 8 L9 13 M17 8 L15 13 M17 8 L19 13" stroke-linecap="round"/><g fill="currentColor" stroke="none"><circle cx="12" cy="3" r="1.5"/><circle cx="7" cy="8" r="1.3"/><circle cx="17" cy="8" r="1.3"/><circle cx="5" cy="13" r="1.2"/><circle cx="9" cy="13" r="1.2"/><circle cx="15" cy="13" r="1.2"/><circle cx="19" cy="13" r="1.2"/></g></svg><span><b>xgb</b></span><span class="op">+</span><svg class="mock-glyph" viewBox="0 0 24 16" fill="none" stroke="currentColor" stroke-width="0.8"><g opacity="0.55"><path d="M5 5 L12 4 M5 5 L12 8 M5 5 L12 12 M5 11 L12 4 M5 11 L12 8 M5 11 L12 12 M12 4 L19 6 M12 8 L19 6 M12 12 L19 6 M12 4 L19 10 M12 8 L19 10 M12 12 L19 10"/></g><g fill="currentColor" stroke="none"><circle cx="5" cy="5" r="1.3"/><circle cx="5" cy="11" r="1.3"/><circle cx="12" cy="4" r="1.3"/><circle cx="12" cy="8" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="6" r="1.3"/><circle cx="19" cy="10" r="1.3"/></g></svg><span><b>MLP×3</b></span><span class="op">→</span><span>blend · MAE 28.282</span></div>
                   </div>
                   <span class="cap">inmuebles · precio</span>
@@ -163,7 +269,10 @@ model.fit(X, y)</div>
                     <div class="mock-band">Score de anomalía</div>
                     <div class="mock-li"><span class="lab">aviso #4821</span><span class="val tag">0,94</span></div>
                     <div class="mock-li"><span class="lab">aviso #1190</span><span class="val tag">0,88</span></div>
+                    <div class="mock-li"><span class="lab">aviso #2056</span><span class="val tag">0,79</span></div>
                     <div class="mock-li"><span class="lab">aviso #3307</span><span class="val">0,41</span></div>
+                    <div class="mock-li"><span class="lab">aviso #5512</span><span class="val">0,33</span></div>
+                    <div class="mock-li"><span class="lab">aviso #0934</span><span class="val">0,12</span></div>
                     <div class="mock-model"><svg class="mock-glyph" viewBox="0 0 24 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M12 3 L7 8 M12 3 L17 8 M7 8 L5 13 M7 8 L9 13 M17 8 L15 13 M17 8 L19 13" stroke-linecap="round"/><g fill="currentColor" stroke="none"><circle cx="12" cy="3" r="1.5"/><circle cx="7" cy="8" r="1.3"/><circle cx="17" cy="8" r="1.3"/><circle cx="5" cy="13" r="1.2"/><circle cx="9" cy="13" r="1.2"/><circle cx="15" cy="13" r="1.2"/><circle cx="19" cy="13" r="1.2"/></g></svg><span><b>lightgbm</b> · RMSE 0,133</span></div>
                   </div>
                   <span class="cap">inmuebles · anomalía</span>
@@ -174,9 +283,12 @@ model.fit(X, y)</div>
                 <div class="body">
                   <div class="mock">
                     <div class="mock-band">¿Vuelve a sonar?</div>
-                    <div class="mock-li"><span class="lab">Inertia Creeps</span><span class="val yes">0,77 ✓</span></div>
-                    <div class="mock-li"><span class="lab">Avenida Principal</span><span class="val yes">0,66 ✓</span></div>
-                    <div class="mock-li"><span class="lab">Mucha Data</span><span class="val no">0,16 ✗</span></div>
+                    <div class="mock-li"><span class="lab">Paradise Circus · Massive Attack</span><span class="val yes">0,93 ✓</span></div>
+                    <div class="mock-li"><span class="lab">The Number Song · DJ Shadow</span><span class="val yes">0,75 ✓</span></div>
+                    <div class="mock-li"><span class="lab">MMMBop · Hanson</span><span class="val yes">0,58 ✓</span></div>
+                    <div class="mock-li"><span class="lab">Read My Mind · The Killers</span><span class="val no">0,40 ✗</span></div>
+                    <div class="mock-li"><span class="lab">Promises · Wiz Khalifa</span><span class="val no">0,27 ✗</span></div>
+                    <div class="mock-li"><span class="lab">Tattva · Kula Shaker</span><span class="val no">0,14 ✗</span></div>
                     <div class="mock-model"><svg class="mock-glyph" viewBox="0 0 24 16" fill="none" stroke="currentColor" stroke-width="0.8"><g opacity="0.55"><path d="M5 5 L12 4 M5 5 L12 8 M5 5 L12 12 M5 11 L12 4 M5 11 L12 8 M5 11 L12 12 M12 4 L19 6 M12 8 L19 6 M12 12 L19 6 M12 4 L19 10 M12 8 L19 10 M12 12 L19 10"/></g><g fill="currentColor" stroke="none"><circle cx="5" cy="5" r="1.3"/><circle cx="5" cy="11" r="1.3"/><circle cx="12" cy="4" r="1.3"/><circle cx="12" cy="8" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="6" r="1.3"/><circle cx="19" cy="10" r="1.3"/></g></svg><span><b>burn-deep · Rust</b> · AUC 0,719</span></div>
                   </div>
                   <span class="cap">canciones · taste-fit</span>
@@ -300,9 +412,44 @@ model.fit(X, y)</div>
       <!-- ===================================================== /BOOTSTRAP ===== -->
       <section class="slide" data-bg="slate" data-section="Estructura">
         <div class="slide-head tight"><span class="kicker">Flujo</span><h1 style="color:var(--on-chrome)">/bootstrap</h1></div>
-        <div class="cols cols-8-12 fill center-y">
+        <div class="cols cols-2 fill center-y" style="gap:5cqw">
+          <div style="display:flex; flex-direction:column; gap:3.4cqh; align-self:center">
+            <div>
+              <b style="font-size:2.9cqh; color:var(--on-chrome)">Un comando, dos caras</b>
+              <p class="small" style="margin-top:1.4cqh; color:var(--on-chrome-dim); max-width:34ch; font-size:2.1cqh; line-height:1.5">Una <b style="color:var(--on-chrome)">skill</b> que invocás vos y un <b style="color:var(--on-chrome)">agente</b> que corre las fases de forma autónoma.</p>
+            </div>
+            <div class="bootmorph">
+              <div class="bm-card"><span class="bm-k">plantilla</span><span class="bm-s">sin configurar</span></div>
+              <span class="bm-ar" aria-hidden="true">→</span>
+              <div class="bm-card live"><span class="bm-k">instancia</span><span class="bm-s">lista para la 1ª campaña</span></div>
+            </div>
+            <p class="small" style="color:var(--on-chrome-faint); max-width:36ch; font-size:1.8cqh; line-height:1.45">Al terminar, la plantilla quedó configurada como una instancia propia, lista para entrenar.</p>
+          </div>
+          <div class="steps" style="align-self:center; gap:2.4cqh">
+            <div class="step"><span class="n">0</span><span class="t"><b>Sonda el corpus</b><span class="sub">Recorre la colección Qdrant e infiere el esquema de la metadata.</span></span></div>
+            <div class="step"><span class="n">1</span><span class="t"><b>Entrevista → domain.toml</b><span class="sub">Pregunta objetivo, features y métricas; renderiza la capa de agentes.</span></span></div>
+            <div class="step"><span class="n">2</span><span class="t"><b>Inicializa el registro de conclusiones</b><span class="sub">experiments/ y el informe científico, listos para esta instancia.</span></span></div>
+            <div class="step"><span class="n">3</span><span class="t"><b>Define la ingesta</b><span class="sub">Cómo entran items nuevos al corpus (scrape, alta manual, API).</span></span></div>
+            <div class="step"><span class="n">4·5</span><span class="t"><b>Primer dataset y modelos</b><span class="sub">Construye el dataset inicial y entrena los primeros modelos.</span></span></div>
+          </div>
+        </div>
+        <aside class="notes">
+          <p><b>Cómo nace una instancia.</b> /bootstrap es a la vez una <b>skill</b> (la invocás vos) y un <b>agente</b> (corre las fases de forma autónoma). Recorre el corpus Qdrant e infiere el esquema (fase 0); te entrevista y escribe domain.toml, y renderiza la capa de agentes (1); inicializa el registro de conclusiones (2); define cómo entran items nuevos (3); y construye el primer dataset y los primeros modelos (4–5).</p>
+          <p>Al final, la plantilla sin configurar quedó como una instancia lista para la primera campaña.</p>
+        </aside>
+      </section>
+
+      <!-- ===================================== 04b DIVISOR · PRIMERA PARTE ===== -->
+      <section class="slide bleed no-bezel" data-bg="slate" data-section="Estructura">
+        <div class="hero-bg"><div class="fallback"></div><div class="img" style="background-image:url('assets/blackhole-milkyway.jpg'); background-size:cover; background-position:50% 47%; opacity:0.6"></div></div>
+        <div class="hero-content" style="display:grid; grid-template-columns:1.15fr 1fr; align-items:center; gap:4cqw">
+          <div class="stack">
+            <span class="kicker" style="color:var(--accent-on-chrome)">Primera parte</span>
+            <h1 class="title-lg" style="color:var(--on-chrome)">Modelar con lensing.</h1>
+            <p class="lead" style="color:var(--on-chrome-dim)">Cómo un corpus propio se convierte en <b style="color:var(--on-chrome)">modelos que predicen</b>.</p>
+          </div>
           <div class="lensviz">
-            <svg viewBox="0 0 100 100" class="lvfig bhlens" aria-hidden="true">
+            <svg viewBox="0 0 100 100" class="lvfig bhlens" style="height:56cqh; opacity:0.95" aria-hidden="true">
               <defs>
                 <radialGradient id="galGlow" cx="50%" cy="50%" r="50%">
                   <stop offset="0%"   stop-color="oklch(0.98 0.04 92)" stop-opacity="1"/>
@@ -325,17 +472,10 @@ model.fit(X, y)</div>
               </g>
             </svg>
           </div>
-          <div class="steps">
-            <div class="step"><span class="n">0</span><span class="t"><b>Sonda el corpus</b><span class="sub">Recorre la colección Qdrant e infiere el esquema de la metadata.</span></span></div>
-            <div class="step"><span class="n">1</span><span class="t"><b>Entrevista → domain.toml</b><span class="sub">Pregunta objetivo, features y métricas; renderiza la capa de agentes.</span></span></div>
-            <div class="step"><span class="n">2</span><span class="t"><b>Inicializa el registro de conclusiones</b><span class="sub">experiments/ y el informe científico, listos para esta instancia.</span></span></div>
-            <div class="step"><span class="n">3</span><span class="t"><b>Define la ingesta</b><span class="sub">Cómo entran items nuevos al corpus (scrape, alta manual, API).</span></span></div>
-            <div class="step"><span class="n">4·5</span><span class="t"><b>Primer dataset y modelos</b><span class="sub">Construye el dataset inicial y entrena los primeros modelos.</span></span></div>
-          </div>
         </div>
         <aside class="notes">
-          <p><b>Cómo nace una instancia.</b> /bootstrap es a la vez una <b>skill</b> (la invocás vos) y un <b>agente</b> (corre las fases de forma autónoma). Recorre el corpus Qdrant e infiere el esquema (fase 0); te entrevista y escribe domain.toml, y renderiza la capa de agentes (1); inicializa el registro de conclusiones (2); define cómo entran items nuevos (3); y construye el primer dataset y los primeros modelos (4–5).</p>
-          <p>Al final, la plantilla sin configurar quedó como una instancia lista para la primera campaña.</p>
+          <p><b>Primera parte — el recorrido del modelado.</b> Ya vimos la idea y cómo nace una instancia con <code>/bootstrap</code>. Ahora, paso a paso, cómo un corpus propio se convierte en modelos que predicen sobre él: preprocesamiento, predictores, entrenar y comparar, el registro científico, el modelo y el showcase.</p>
+          <p>Imagen de fondo: simulación de un agujero negro pasando frente a la Vía Láctea (Ute Kraus · fondo de Axel Mellinger) — su gravedad curva la luz de la galaxia de fondo en un anillo. La animación al costado es ese mismo tránsito, esquematizado: el agujero negro pasa frente a un objeto luminoso y, al alinearse, forma un anillo de Einstein.</p>
         </aside>
       </section>
 
@@ -653,6 +793,27 @@ model.fit(X, y)</div>
         </aside>
       </section>
 
+      <!-- ===================================== 15b RECORRIDO POR AGENTE ===== -->
+      <section class="slide" data-bg="paper" data-section="Estructura">
+        <div class="slide-head tight"><span class="kicker">Tareas y artefactos</span><h1>Qué produce cada tarea, y quién lo usa.</h1><p class="lead">Cada flecha es un artefacto: la salida de una tarea es la entrada de la siguiente.</p></div>
+        <div class="fill" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1.4cqh">
+          <svg id="task-graph" class="taskgraph" viewBox="0 0 1240 512" aria-hidden="true">
+            <defs>
+              <marker id="tg-ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M1 1 L9 5 L1 9 z" class="tg-arrow"/></marker>
+              <marker id="tg-ahl" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M1 1 L9 5 L1 9 z" class="tg-arrow loop"/></marker>
+            </defs>
+            <g class="tg-edges"></g>
+            <g class="tg-nodes"></g>
+            <g class="tg-labels"></g>
+          </svg>
+          <p class="tg-foot">Fuera de este flujo: <b>upstream-sync</b> y <b>upstream-contribute</b> mantienen el código del framework, no los datos.</p>
+        </div>
+        <aside class="notes">
+          <p><b>El flujo de artefactos.</b> Acá no importan las etapas sino las <b>tareas</b> y cómo se encadenan: cada flecha es un artefacto que produce una tarea y consume la siguiente. <code>sondea el corpus</code> escribe <code>domain.toml</code>, que junto con los <code>embeddings</code> alimenta a <code>construye el dataset</code> → la <b>matriz de features</b>. Esa matriz, más el <b>diseño del scan</b> que propone el designer, son lo que <code>corre los runs</code> consume.</p>
+          <p>El runner es el nudo: produce tres cosas. Los <b>reportes</b> (<code>experiments/*.md</code>) los toma <code>consolida el informe</code> para el PDF; las <b>métricas y modelos</b> los toma <code>promueve el modelo</code>; y los <b>PROJECT-FACTS</b> vuelven a <code>propone el scan</code> — ese es el lazo (naranja). El modelo promovido alimenta el <b>export a ONNX</b> y el <b>showcase</b>, y el bundle exportado también puede ir al showcase.</p>
+        </aside>
+      </section>
+
       <!-- ============================================ 14b DIVISOR TÉCNICO ===== -->
       <section class="slide bleed no-bezel" data-bg="slate" data-section="Ingeniería">
         <div class="hero-bg"><div class="fallback"></div><div class="img" style="background-image:url('assets/deepfield-smacs.jpg'); background-size:122%; background-position:80% 50%; opacity:0.5"></div></div>
@@ -663,24 +824,26 @@ model.fit(X, y)</div>
             <p class="lead" style="color:var(--on-chrome-dim)">Hasta acá, <b style="color:var(--on-chrome)">qué hace</b> lensing. Ahora, <b style="color:var(--on-chrome)">cómo está construido</b>.</p>
           </div>
           <div class="lensviz demo-fig">
-            <svg viewBox="0 0 100 100" class="lvfig wg" aria-hidden="true">
-              <g class="wg-grid">
-                <path class="wg-line" d="M6,18 Q50,31 94,18"/>
-                <path class="wg-line" d="M6,34 Q50,46 94,34"/>
-                <path class="wg-line" d="M6,66 Q50,54 94,66"/>
-                <path class="wg-line" d="M6,82 Q50,69 94,82"/>
-                <path class="wg-line" d="M18,6 Q31,50 18,94"/>
-                <path class="wg-line" d="M34,6 Q46,50 34,94"/>
-                <path class="wg-line" d="M66,6 Q54,50 66,94"/>
-                <path class="wg-line" d="M82,6 Q69,50 82,94"/>
-              </g>
-              <circle cx="50" cy="50" r="3.4" class="lv-mass"/>
+            <svg id="well-orbit" class="lvfig wellfig" viewBox="0 0 220 150" aria-hidden="true">
+              <defs>
+                <radialGradient id="wo-mglow" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%"  stop-color="oklch(0.92 0.13 85)" stop-opacity="0.55"/>
+                  <stop offset="55%" stop-color="oklch(0.8 0.12 70)"  stop-opacity="0.13"/>
+                  <stop offset="100%" stop-color="oklch(0.8 0.12 70)" stop-opacity="0"/>
+                </radialGradient>
+                <filter id="wo-soft" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="0.8"/></filter>
+              </defs>
+              <g class="g-grid"></g>
+              <g class="g-trail"></g>
+              <g class="g-back"></g>
+              <g class="g-mass"></g>
+              <g class="g-front"></g>
             </svg>
           </div>
         </div>
         <aside class="notes">
           <p><b>Cambio de marcha.</b> Cierra la parte de producto/flujo; arranca la parte técnica: por qué Rust, cómo está partido en crates y cómo corren los showcases en el cliente.</p>
-          <p>Imagen de fondo: primer campo profundo del JWST (SMACS 0723, 2022) — la masa del cúmulo curva el espacio-tiempo y estira las galaxias de fondo en arcos. La grilla deformada al costado es esa misma distorsión, esquematizada.</p>
+          <p>Imagen de fondo: primer campo profundo del JWST (SMACS 0723, 2022) — la masa del cúmulo curva el espacio-tiempo y estira las galaxias de fondo en arcos. La grilla al costado esquematiza esa curvatura, y un objeto cae por ella en una órbita que acelera cerca de la masa y precesa (un rosetón).</p>
         </aside>
       </section>
 
@@ -699,8 +862,8 @@ model.fit(X, y)</div>
               <p><b>Tokio</b> (runtime asíncrono) + <b>Axum</b> (servidor web). Rust no trae un runtime async propio — elegís cuál usar, y nosotros elegimos Tokio. Con eso todo pasa a la vez: entrenamientos corriendo, inferencia mientras se entrena, cola de tareas, la API, y el progreso de cada run llegando en vivo a la pantalla.</p>
             </div>
             <div class="techcard">
-              <div class="tc-h"><svg class="lz"><use href="#lz-run"/></svg><b>Un binario, tres roles</b></div>
-              <p>El mismo binario es <b>hub</b>, <b>worker</b> de entrenamiento o <b>nodo de inferencia</b>; se coordinan por Postgres y escalás sumando workers.</p>
+              <div class="tc-h"><svg class="lz" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="M7.5 10 l3 2.5 l-3 2.5" stroke-width="1.7"/><line x1="12.8" y1="15" x2="16.5" y2="15" stroke-width="1.7"/></svg><b>Compilado, runtime mínimo</b></div>
+              <p>Compila a un <b>binario nativo</b> — sin máquina virtual ni recolector de basura. No necesita un runtime instalado como Python o la JVM: un ejecutable estático que corre hasta en una imagen Docker <b>vacía</b> (<code>FROM scratch</code>) — arranca al instante, imagen mínima.</p>
             </div>
             <div class="techcard">
               <div class="tc-h"><img class="tlogo" src="assets/logo-wasm.svg" alt="WebAssembly"><b>Compila a WASM</b></div>
@@ -709,7 +872,7 @@ model.fit(X, y)</div>
           </div>
         </div>
         <aside class="notes">
-          <p><b>Por qué el core es Rust.</b> El sistema hace mucho cálculo fuera del entrenamiento (ajuste de PCA, análisis de componentes, armado del bundle ONNX, featurización) que en JS/Python sería lento; es muy concurrente (Tokio como runtime asíncrono, Axum como servidor — entrenamientos, inferencia simultánea, cola de tareas, streams en vivo); se despliega como un único binario con tres roles (ver DEPLOY.md); y compila a WASM, así que el mismo código corre en el navegador. Ese último punto es clave: el featurizer es el mismo en server y cliente, una sola fuente de verdad.</p>
+          <p><b>Por qué el core es Rust.</b> El sistema hace mucho cálculo fuera del entrenamiento (ajuste de PCA, análisis de componentes, armado del bundle ONNX, featurización) que en JS/Python sería lento; es muy concurrente (Tokio como runtime asíncrono, Axum como servidor — entrenamientos, inferencia simultánea, cola de tareas, streams en vivo); compila a un binario nativo de runtime mínimo (sin VM ni GC, corre hasta en una imagen vacía); y compila a WASM, así que el mismo código corre en el navegador. Ese último punto es clave: el featurizer es el mismo en server y cliente, una sola fuente de verdad.</p>
           <p><b>Sin runtime ni GC.</b> Rust no tiene recolector de basura ni máquina virtual, y su runtime es mínimo (sólo el arranque y el manejo de panics). El <code>async</code> tampoco trae executor incorporado: elegís cuál usar — hay varios (Tokio, async-std, smol) — y nosotros elegimos Tokio. Eso da latencia predecible (cero pausas de GC) y un binario chico, justo lo que querés en un servidor bajo carga y en WASM.</p>
         </aside>
       </section>
@@ -717,22 +880,10 @@ model.fit(X, y)</div>
       <!-- ===================================================== 16 CRATES ===== -->
       <section class="slide" data-bg="paper" data-section="Ingeniería">
         <div class="slide-head tight"><span class="kicker">Bajo el capó · arquitectura</span><h1>Cómo está hecho, y dónde corre.</h1></div>
-        <div class="fill center-y">
-          <div class="cols cols-2" style="align-items:center">
-            <div class="workload">
-              <div class="wl-h">Entrenar e inferir son cargas distintas</div>
-              <div class="wl-card">
-                <div class="wl-t"><b>Entrenar</b> — intenso y esporádico</div>
-                <svg viewBox="0 0 100 24" class="wl-spark" preserveAspectRatio="none"><line x1="0" y1="22" x2="100" y2="22" class="axis"/><g class="bars train"><rect x="6" y="20" width="4" height="2"/><rect x="15" y="20.5" width="4" height="1.5"/><rect x="24" y="2" width="4" height="20"/><rect x="33" y="20.5" width="4" height="1.5"/><rect x="42" y="20" width="4" height="2"/><rect x="51" y="20.5" width="4" height="1.5"/><rect x="60" y="1" width="4" height="21"/><rect x="69" y="20.5" width="4" height="1.5"/><rect x="78" y="20" width="4" height="2"/><rect x="87" y="3" width="4" height="19"/></g></svg>
-              </div>
-              <div class="wl-card">
-                <div class="wl-t"><b>Inferir</b> — liviano, pero muchos a la vez</div>
-                <svg viewBox="0 0 100 24" class="wl-spark" preserveAspectRatio="none"><line x1="0" y1="22" x2="100" y2="22" class="axis"/><g class="bars infer"><rect x="3" y="16" width="2" height="6"/><rect x="7" y="14" width="2" height="8"/><rect x="11" y="17" width="2" height="5"/><rect x="15" y="15" width="2" height="7"/><rect x="19" y="16" width="2" height="6"/><rect x="23" y="14" width="2" height="8"/><rect x="27" y="15" width="2" height="7"/><rect x="31" y="17" width="2" height="5"/><rect x="35" y="14" width="2" height="8"/><rect x="39" y="16" width="2" height="6"/><rect x="43" y="15" width="2" height="7"/><rect x="47" y="17" width="2" height="5"/><rect x="51" y="14" width="2" height="8"/><rect x="55" y="16" width="2" height="6"/><rect x="59" y="15" width="2" height="7"/><rect x="63" y="14" width="2" height="8"/><rect x="67" y="17" width="2" height="5"/><rect x="71" y="15" width="2" height="7"/><rect x="75" y="16" width="2" height="6"/><rect x="79" y="14" width="2" height="8"/><rect x="83" y="17" width="2" height="5"/><rect x="87" y="15" width="2" height="7"/><rect x="91" y="16" width="2" height="6"/><rect x="95" y="14" width="2" height="8"/></g></svg>
-              </div>
-              <p class="wl-note">Por eso <b>lensing-server</b> corre en el rol que haga falta: entrenamiento e inferencia <b>en la misma máquina</b>, o <b>en hardware separado</b> cuando la carga lo pide. Las instancias se coordinan por Postgres.</p>
-            </div>
+        <div class="fill" style="display:flex; flex-direction:column; justify-content:center">
+          <div class="cols cols-2" style="align-items:stretch; gap:3cqw; flex:1; min-height:0">
             <div class="crates2">
-              <div class="cl-h">Los crates</div>
+              <div class="cl-h">Cómo está hecho · los crates</div>
               <div class="crate-hero">
                 <div class="ch-top"><b>lensing-server</b><span class="tag">el corazón</span></div>
                 <span class="ch-role">orquesta todo: API, UI, runs, promoción</span>
@@ -745,6 +896,31 @@ model.fit(X, y)</div>
               </div>
               <div class="crate-casual">predictores — aparte, en Rust o ejecutables externos, vía el contrato</div>
             </div>
+            <div class="deploy3">
+              <div class="d3-h">Dónde corre</div>
+              <div class="d3-bin"><b>lensing-server</b> · un binario, en el rol que haga falta</div>
+              <div class="d3-roles">
+                <div class="d3-role"><b>hub</b><span>API · UI · orquesta</span></div>
+                <div class="d3-role"><b>worker</b><span>entrena</span></div>
+                <div class="d3-role"><b>infer</b><span>predice</span></div>
+              </div>
+              <div class="d3-load">
+                <div class="d3-load-i">
+                  <span class="d3-lt"><b>entrenar</b> · intenso, a ratos</span>
+                  <svg viewBox="0 0 100 24" class="wl-spark" preserveAspectRatio="none"><line x1="0" y1="22" x2="100" y2="22" class="axis"/><g class="bars train"><rect x="6" y="20" width="4" height="2"/><rect x="15" y="20.5" width="4" height="1.5"/><rect x="24" y="2" width="4" height="20"/><rect x="33" y="20.5" width="4" height="1.5"/><rect x="42" y="20" width="4" height="2"/><rect x="51" y="20.5" width="4" height="1.5"/><rect x="60" y="1" width="4" height="21"/><rect x="69" y="20.5" width="4" height="1.5"/><rect x="78" y="20" width="4" height="2"/><rect x="87" y="3" width="4" height="19"/></g></svg>
+                </div>
+                <div class="d3-load-i">
+                  <span class="d3-lt"><b>inferir</b> · liviano, constante</span>
+                  <svg viewBox="0 0 100 24" class="wl-spark" preserveAspectRatio="none"><line x1="0" y1="22" x2="100" y2="22" class="axis"/><g class="bars infer"><rect x="3" y="16" width="2" height="6"/><rect x="7" y="14" width="2" height="8"/><rect x="11" y="17" width="2" height="5"/><rect x="15" y="15" width="2" height="7"/><rect x="19" y="16" width="2" height="6"/><rect x="23" y="14" width="2" height="8"/><rect x="27" y="15" width="2" height="7"/><rect x="31" y="17" width="2" height="5"/><rect x="35" y="14" width="2" height="8"/><rect x="39" y="16" width="2" height="6"/><rect x="43" y="15" width="2" height="7"/><rect x="47" y="17" width="2" height="5"/><rect x="51" y="14" width="2" height="8"/><rect x="55" y="16" width="2" height="6"/><rect x="59" y="15" width="2" height="7"/><rect x="63" y="14" width="2" height="8"/><rect x="67" y="17" width="2" height="5"/><rect x="71" y="15" width="2" height="7"/><rect x="75" y="16" width="2" height="6"/><rect x="79" y="14" width="2" height="8"/><rect x="83" y="17" width="2" height="5"/><rect x="87" y="15" width="2" height="7"/><rect x="91" y="16" width="2" height="6"/><rect x="95" y="14" width="2" height="8"/></g></svg>
+                </div>
+              </div>
+              <div class="d3-hosts">
+                <div class="d3-host"><b>1 máquina</b><span>los 3 roles juntos</span></div>
+                <span class="d3-or">o</span>
+                <div class="d3-host"><b>N máquinas</b><span>un rol por host · escalás</span></div>
+              </div>
+              <div class="d3-pg">se coordinan por <b>Postgres</b> — sin disco compartido</div>
+            </div>
           </div>
         </div>
         <aside class="notes">
@@ -756,38 +932,83 @@ model.fit(X, y)</div>
       <!-- ===================================================== 17 SHOWCASE TECH ===== -->
       <section class="slide" data-bg="paper" data-section="Ingeniería">
         <div class="slide-head tight"><span class="kicker">Bajo el capó · showcases</span><h1>Correr el modelo en el cliente.</h1></div>
-        <div class="fill center-y" style="gap:2.4cqh">
-          <div class="cols cols-2" style="align-items:stretch">
+        <div class="fill" style="display:flex; flex-direction:column; gap:2.4cqh; justify-content:center">
+          <div class="cols cols-2" style="align-items:stretch; flex:1; min-height:0">
             <div class="techcard">
               <div class="tc-h"><span class="logos"><img class="tlogo" src="assets/logo-ts.svg" alt="TypeScript"><img class="tlogo" src="assets/logo-onnx.svg" alt="ONNX"></span><b>@lensing/inference</b></div>
-              <p>Para predicciones <b>simples</b>: carga el modelo (un archivo ONNX) y devuelve un número, en el navegador.</p>
+              <p>Para predicciones <b>simples</b>: reproduce el <b>featurizer del server</b> en JS y corre el <b>model.onnx</b> en el navegador — sin Python.</p>
               <div class="lib-graphic">
-                <div class="lg-item"><span>barrio · Palermo</span><span>48 m² · 2 amb · 5° piso</span></div>
-                <span class="lg-arr">↓ <i>featurize</i></span>
-                <span class="lg-onnx">model.onnx <i>· onnxruntime-web</i></span>
-                <span class="lg-arr">↓</span>
-                <span class="lg-out">USD 142.000</span>
+                <div class="lg-card">
+                  <div class="lg-row"><span class="lg-k">barrio</span><span class="lg-v">Palermo</span></div>
+                  <div class="lg-row"><span class="lg-k">área</span><span class="lg-v">48 m²</span></div>
+                  <div class="lg-row"><span class="lg-k">tipo</span><span class="lg-v">depto · 2 amb</span></div>
+                </div>
+                <span class="lg-arr">↓ <i>featurize.json · igual que el server</i></span>
+                <div class="lg-stage">
+                  <div class="lg-vec"><i></i><i class="on"></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+                  <span class="lg-vcap">vector numérico · PCA + one-hot + log1p</span>
+                </div>
+                <span class="lg-arr">↓ <i>model.onnx · onnxruntime-web</i></span>
+                <div class="lg-stage">
+                  <span class="lg-out">USD 142.000</span>
+                  <span class="lg-vcap">expm1 invierte el log → valor real</span>
+                </div>
               </div>
             </div>
             <div class="techcard">
               <div class="tc-h"><span class="logos"><img class="tlogo" src="assets/logo-ferris.svg" alt="Rust (Ferris)"><img class="tlogo" src="assets/logo-wasm.svg" alt="WebAssembly"></span><b>worker-core</b></div>
-              <p>Para algo <b>pesado e interactivo</b>: el motor entero, compilado a WASM, corre en el navegador — como la galaxia 3D de Pathfinder.</p>
+              <p>El <b>motor entero</b> en WASM — hace todo esto en el navegador, <b>sin servidor</b> (es el de Pathfinder):</p>
               <div class="wcore">
-                <div class="wc-isolate">
-                  <div class="wc-isolate-h"><svg class="lz"><use href="#lz-export"/></svg> Isolate de Cloudflare · 128 MB</div>
-                  <div class="wc-mod">
-                    <div class="wc-mod-h">worker-core.wasm</div>
-                    <div class="wc-chips"><span>corpus</span><span>KNN</span><span>ruteo A*</span><span>layout 3D</span><span>scoring</span></div>
+                <div class="wc-ops">
+                  <div class="wc-op">
+                    <svg class="wo" viewBox="0 0 60 28" aria-hidden="true">
+                      <ellipse cx="7" cy="19" rx="3.4" ry="2.6" class="f"/>
+                      <path d="M10.2 19 V6" stroke-width="1.6"/><path d="M10.2 6 c4 0.6 5 3 3 5.8" stroke-width="1.6"/>
+                      <path d="M19 14 h7 m-3 -3 l3 3 l-3 3" stroke-width="1.4" class="dim"/>
+                      <g class="fdim"><circle cx="40" cy="9" r="1.3"/><circle cx="51" cy="9" r="1.3"/><circle cx="38" cy="21" r="1.3"/><circle cx="53" cy="20" r="1.3"/><circle cx="47" cy="23" r="1.3"/></g>
+                      <circle cx="46" cy="14" r="2.7" class="fa"/>
+                    </svg>
+                    <span class="wo-t">embebe items nuevos<br>→ un punto</span>
+                  </div>
+                  <div class="wc-op">
+                    <svg class="wo" viewBox="0 0 60 30" aria-hidden="true">
+                      <g class="dim" stroke-width="0.8"><line x1="9" y1="21" x2="21" y2="10"/><line x1="21" y1="10" x2="33" y2="19"/><line x1="33" y1="19" x2="47" y2="9"/><line x1="21" y1="10" x2="30" y2="5"/><line x1="33" y1="19" x2="50" y2="24"/><line x1="47" y1="9" x2="50" y2="24"/></g>
+                      <g class="fdim"><circle cx="30" cy="5" r="1.4"/><circle cx="50" cy="24" r="1.4"/><circle cx="33" cy="19" r="1.5"/></g>
+                      <polyline class="sa" stroke-width="1.7" points="9,21 21,10 33,19 47,9" fill="none"/>
+                      <g class="fa"><circle cx="9" cy="21" r="2"/><circle cx="21" cy="10" r="1.7"/><circle cx="47" cy="9" r="2"/></g>
+                    </svg>
+                    <span class="wo-t">vecinos (KNN)<br>→ ruta (A*)</span>
+                  </div>
+                  <div class="wc-op">
+                    <svg class="wo" viewBox="0 0 60 28" aria-hidden="true">
+                      <ellipse cx="7" cy="19" rx="3.4" ry="2.6" class="f"/>
+                      <path d="M10.2 19 V6" stroke-width="1.6"/><path d="M10.2 6 c4 0.6 5 3 3 5.8" stroke-width="1.6"/>
+                      <path d="M19 14 h7 m-3 -3 l3 3 l-3 3" stroke-width="1.4" class="dim"/>
+                      <path d="M32 23 A12 12 0 0 1 56 23" stroke-width="1.7"/>
+                      <g class="dim" stroke-width="1.1"><line x1="33" y1="23" x2="35.4" y2="23"/><line x1="44" y1="11" x2="44" y2="13.4"/><line x1="55" y1="23" x2="52.6" y2="23"/></g>
+                      <line x1="44" y1="23" x2="51" y2="15" class="sa" stroke-width="1.9"/><circle cx="44" cy="23" r="1.9" class="fa"/>
+                    </svg>
+                    <span class="wo-t">estima el score<br>de cada track</span>
+                  </div>
+                  <div class="wc-op">
+                    <svg class="wo" viewBox="0 0 64 30" aria-hidden="true">
+                      <g class="dim" stroke-width="1.5"><line x1="3" y1="6" x2="3" y2="24"/><line x1="6.5" y1="10" x2="6.5" y2="24"/><line x1="10" y1="5" x2="10" y2="24"/><line x1="13.5" y1="12" x2="13.5" y2="24"/><line x1="17" y1="7" x2="17" y2="24"/><line x1="20.5" y1="11" x2="20.5" y2="24"/><line x1="24" y1="6" x2="24" y2="24"/></g>
+                      <path d="M30 15 h7 m-3 -3 l3 3 l-3 3" stroke-width="1.4" class="dim"/>
+                      <g stroke-width="1.3"><line x1="50" y1="24" x2="50" y2="8"/><line x1="50" y1="24" x2="41" y2="27"/><line x1="50" y1="24" x2="61" y2="21"/></g>
+                      <g class="fa"><circle cx="54" cy="14" r="1.7"/><circle cx="46" cy="19" r="1.5"/><circle cx="58" cy="18" r="1.5"/></g>
+                    </svg>
+                    <span class="wo-t">proyecta el embedding<br>a 3D (el mapa)</span>
                   </div>
                 </div>
-                <div class="wc-vs">reemplaza un stack Python · Torch · Qdrant de <b>~5,2 GB</b> que no entraba ahí</div>
+                <div class="wc-vs">Todo en un isolate de Cloudflare de <b>128 MB</b> — reemplaza ~5,2 GB de Python · Torch · Qdrant.</div>
               </div>
             </div>
           </div>
           <div class="callout"><p>El modelo que corre en el navegador suele ser una versión <b>más chica</b> (destilada) del que entrena el server — para que entre y responda al instante. La inferencia no toca ningún servidor.</p></div>
         </div>
         <aside class="notes">
-          <p><b>Cómo corren los showcases, por dentro.</b> Dos motores según el peso del caso. <code>@lensing/inference</code> (TypeScript): porta el featurizer exacto y ejecuta el model.onnx con onnxruntime-web — alcanza para modelos tabulares/de embedding. <code>worker-core</code> (Rust→WASM): el mismo motor de inferencia compilado a WASM, para showcases pesados y con estado — Pathfinder carga el corpus entero, rutea con A*, proyecta a 3D y puntúa, todo en el isolate de 128 MB; el stack Python/Torch/Qdrant original (~5,2 GB) no entraba.</p>
+          <p><b>Cómo corren los showcases, por dentro.</b> Dos motores según el peso del caso. <code>@lensing/inference</code> (TypeScript): porta el featurizer exacto y ejecuta el model.onnx con onnxruntime-web — alcanza para modelos tabulares/de embedding. <code>worker-core</code> (Rust→WASM): el mismo motor de inferencia compilado a WASM, para showcases pesados y con estado. En Pathfinder hace cuatro cosas en el navegador: <b>embebe</b> el item nuevo (lo vuelve un punto), busca sus <b>vecinos (KNN)</b> y traza una <b>ruta con A*</b> sobre ese grafo de vecinos, <b>estima el score</b> de cada track y <b>proyecta el embedding a 3D</b> para armar el mapa navegable — todo en el isolate de 128 MB; el stack Python/Torch/Qdrant original (~5,2 GB) no entraba.</p>
+          <p><b>Cómo lo accede el TypeScript.</b> El crate se compila con <code>wasm-pack build worker-core --target web</code>, que con <b>wasm-bindgen</b> emite un paquete <code>pkg/</code>: el glue JS, los tipos <code>.d.ts</code> y el binario <code>worker_core_bg.wasm</code>. El worker (TS) hace <code>import { route, search, … } from "worker-core/pkg"</code> + <code>import wasm from "…/worker_core_bg.wasm"</code>, lo inicializa una vez con <code>initSync({ module: wasm })</code> y a partir de ahí llama las funciones Rust como si fueran TS (con tipos). wasm-bindgen se encarga del marshalling de strings y <code>Float32Array</code> a través de la memoria lineal del WASM. No hay servidor de inferencia: todo ocurre dentro del isolate.</p>
           <p>Detalle: en el cliente a veces corre un modelo distinto al del server — más chico/destilado (p. ej. el proyector de arranque en frío, o un scorer horneado a ONNX por ítem) — para caber en el isolate y responder al instante.</p>
         </aside>
       </section>

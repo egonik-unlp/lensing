@@ -1,12 +1,14 @@
-<p align="center"><img src="assets/logo.svg" width="760" alt="lensing: a prediction-lab framework that bends around your data, the way mass bends light"></p>
+<p align="center"><img src="assets/logo.svg" width="760" alt="lensing: a prediction lab that bends to fit your data"></p>
 
 # Lensing
 
-A prediction-lab framework that shapes itself around your dataset the way
-mass bends light. Point it at a Qdrant corpus of embedded documents, declare
-your target and fields in `domain.toml`, and it bends: dataset levers, model
-registry, experiment agents, UI and distributed training/inference all take
-your domain's shape. Run `/bootstrap` (or follow BOOTSTRAP.md) to begin.
+Point lensing at a Qdrant corpus of embedded documents, declare your target
+and fields in `domain.toml`, and the whole lab bends to fit: the dataset
+levers, model registry, experiment agents, UI, and distributed
+training/inference all take your domain's shape. Run `/bootstrap` (or follow
+BOOTSTRAP.md) to begin.
+
+<p align="center"><img src="assets/lattice.svg" width="540" alt="A regular grid curving around the mass of a dataset at its center, an Einstein ring lit where the deflection peaks: a generic framework taking the shape of your data the way mass curves spacetime"></p>
 
 The repository ships BLANK: `domain.toml` is a neutral placeholder and
 `/bootstrap` replaces it with your domain. A complete worked example (the
@@ -376,8 +378,20 @@ predictors/torch-cnn/      Python 1D CNN (PyTorch CPU), mirrors burn-cnn
 predictors/ridge/          Python ridge regression (scikit-learn)
 predictors/requirements.txt + predictors/.venv  shared Python env (py-setup)
 ui/                        Vite + React frontend
+clients/js/                @lensing/inference: run a model export (ONNX) outside lensing
+clients/showcase/          generated standalone demo apps (the `/showcase` skill)
 data/                      gitignored: datasets/, runs/ and models/
 ```
+
+A **showcase** is a small, standalone, Cloudflare-Worker-compatible app that
+publishes one promoted model to a live site — a demo. The `/showcase` skill
+helps you decide how to tell a compelling story with the model and data
+(curated predicted-vs-actual gallery or live free-text input) and spawns the
+`showcase-builder` agent, which owns all the plumbing: it exports the model to
+an ONNX bundle, scaffolds the Worker project under `clients/showcase/<app>/`,
+wires `@lensing/inference` + onnxruntime-web and the embedding path, builds a
+working default UI (polish it afterward with `/impeccable`), smoke-tests the
+prediction against the live server, and hands back the `wrangler deploy` steps.
 
 ## API
 

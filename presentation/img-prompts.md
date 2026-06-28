@@ -3,7 +3,7 @@
 El deck es **vector-first**: casi todas las ilustraciones están construidas en
 SVG/CSS (anillo de Einstein animado de la marca, diagramas de flujo, terminal,
 heatmap del scan, mapa de comps, mock del PDF, galaxia del showcase, rejilla de
-espacio-tiempo deformada). Las **únicas imágenes rasterizadas** son **3 fotos
+espacio-tiempo deformada). Las **únicas imágenes rasterizadas** son **4 fotos
 reales de telescopio** que ya vienen commiteadas en `assets/`, una por cada
 diapositiva a sangre completa.
 
@@ -11,20 +11,25 @@ No hay nada que generar: las fotos ya están. Este archivo documenta de dónde
 salieron (atribución) y las reglas del lenguaje visual por si hay que
 reemplazarlas.
 
-## Las 3 fotos de fondo (reales, ya incluidas)
+## Las 4 fotos de fondo (reales, ya incluidas)
 
 Cada una ilustra una manifestación distinta de la **lente gravitacional**, el
-hilo conductor del deck: anillo → campo profundo → agujero negro.
+hilo conductor del deck: anillo → tránsito que curva la luz de una galaxia →
+campo profundo → agujero negro.
 
 | Archivo | Slide | Qué es | Fuente |
 |---|---|---|---|
 | `assets/hero-cosmos.jpg` | 1 (Portada) | Anillo de Einstein real | NASA / Hubble (dominio público) |
-| `assets/deepfield-smacs.jpg` | 15 (divisor "Bajo el capó") | Primer campo profundo de JWST, SMACS 0723 (2022) — galaxias de fondo deformadas en arcos por la masa del cúmulo | NASA / ESA / CSA / STScI |
-| `assets/blackhole-m87.jpg` | 19 (Demo) | El agujero negro supermasivo M87\* (2019) | Event Horizon Telescope (CC BY 4.0, ESO) |
+| `assets/blackhole-milkyway.jpg` | 9 (divisor "Primera parte · Modelar con lensing") | Simulación de un agujero negro pasando frente a la Vía Láctea — su gravedad curva la luz de la galaxia de fondo en un anillo | Ute Kraus (fondo de Axel Mellinger), CC BY-SA |
+| `assets/deepfield-smacs.jpg` | 16 (divisor "Bajo el capó") | Primer campo profundo de JWST, SMACS 0723 (2022) — galaxias de fondo deformadas en arcos por la masa del cúmulo | NASA / ESA / CSA / STScI |
+| `assets/blackhole-m87.jpg` | 20 (Demo) | El agujero negro supermasivo M87\* (2019) | Event Horizon Telescope (CC BY 4.0, ESO) |
 
-Las tres se montan como fondo a sangre completa (`.hero-bg .img`), atenuadas y
-paneadas para dejar lugar al texto y a la animación vectorial al lado. El deck
-trae *fallbacks* en CSS (gradientes radiales) por si falta algún archivo.
+Las cuatro se montan como fondo a sangre completa (`.hero-bg .img`), atenuadas y
+paneadas para dejar lugar al texto y a la animación vectorial al lado. En los
+divisores 1 y 9 la foto se aparea con un esquema vectorial del mismo fenómeno
+(el anillo de Einstein animado de la marca y el tránsito `bhlens`,
+respectivamente). El deck trae *fallbacks* en CSS (gradientes radiales) por si
+falta algún archivo.
 
 ## Reglas del lenguaje visual (si reemplazás una foto)
 

@@ -24,6 +24,34 @@ python3 branding/make_mark.py --seed my-lab --hue-shift 40 --out-dir /tmp/x
   interpolated in Oklab). The grammar (sphere, swarm, rim, Sora) is constant;
   these two knobs are an instance's personality.
 
+## The lensed-lattice companion
+
+`make_lattice.py` generates the brand surfaces that carry the other half of the
+idea: a generic framework grid taking the shape of your data the way mass
+curves spacetime. It **complements** the Velocity Map mark, it does not replace
+it.
+
+```sh
+python3 branding/make_lattice.py   # assets/lattice.svg, assets/lattice-data.svg,
+                                    # ui/public/brand/lensing-icons.svg
+```
+
+- `assets/lattice.svg` — the README concept card: a warped lattice drawn into a
+  central mass, lit by an Einstein ring. The README hero alongside the banner.
+- `assets/lattice-data.svg` — a straight row of data points bent into a lensed
+  arc as it passes the mass.
+- `ui/public/brand/lensing-icons.svg` — an icon family built from the Einstein-
+  ring alignment sweep (dataset / run / model / predict / compare / export):
+  stroke inherits `currentColor`, `--brand-src` tints the source dot. It feeds
+  the app's empty-state mark; it is **not** a replacement for the text-monogram
+  EntityRef glyphs (run / ds / ml / def / pr / ls), which remain the app's
+  identity primitive.
+
+`explore/` keeps the direction panel these were chosen from
+(`python3 branding/explore/make_explore.py`, then open `explore/index.html`):
+the lattice well (mass present / implied / off-center), the Einstein-ring
+alignment sweep, and the lensed-data-row candidates.
+
 ## Design record
 
 `index.html` is the candidate showcase from the exploration that led here

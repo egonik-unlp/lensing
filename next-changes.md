@@ -1,0 +1,1 @@
+- The planning agent should give more information to the user somehow

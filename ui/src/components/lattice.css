@@ -1,0 +1,63 @@
+/* The empty-state lattice mark. Monochrome on paper; the ring draws in once. */
+
+.lattice-mark {
+  display: block;
+  width: 132px;
+  height: 132px;
+  margin: 0 auto var(--sp-5);
+  overflow: visible;
+}
+
+.lattice-grid polyline {
+  fill: none;
+  stroke: var(--hairline-strong);
+  stroke-width: 1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.lattice-ring {
+  fill: none;
+  stroke: var(--series-a);
+  stroke-width: 2.4;
+  /* circumference of r=30 ≈ 188.5; resting state is fully drawn */
+  stroke-dasharray: 188.5;
+  stroke-dashoffset: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: lattice-ring-draw 900ms var(--ease-out) both;
+}
+
+.lattice-mass {
+  fill: var(--ink);
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: lattice-mass-in 700ms var(--ease-out) both;
+}
+
+@keyframes lattice-ring-draw {
+  from {
+    stroke-dashoffset: 188.5;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes lattice-mass-in {
+  from {
+    transform: scale(0.2);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lattice-ring,
+  .lattice-mass {
+    animation: none;
+  }
+}
