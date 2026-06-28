@@ -21,9 +21,10 @@
 //!
 //! Step graph (A → B means A runs B first):
 //!   (default)     → backend, ui
-//!   serve         → backend, ui, db-up, then runs target/release/lensing-server
-//!   dataset       → backend, then runs target/release/lensing-pipeline build
-//!   db-up         → docker compose up -d postgres --wait
+//!   serve         → backend, ui, db-up, ensure-qdrant, then runs target/release/lensing-server
+//!   dataset       → backend, ensure-qdrant, then runs target/release/lensing-pipeline build
+//!   db-up         → docker compose up -d postgres --wait (host port = $LENSING_DB_PORT)
+//!   ensure-qdrant → scripts/ensure-qdrant.sh: start the corpus container ($LENSING_QDRANT_CONTAINER) if down
 //!   db-down       → docker compose down (the pgdata volume survives)
 //!   migrate-data  → backend, db-up, then lensing-server migrate-data (idempotent
 //!                   file→postgres backfill + consistency report)
@@ -44,11 +45,24 @@ pub fn build(b: *std.Build) void {
         "collection",
         "Qdrant collection (default: domain.toml corpus.collection)",
     );
+    // Build the default URL from the SAME knobs docker compose reads (.env /
+    // process env), so `db-up` and the server never disagree on the host port.
+    // Hardcoding 5433 here while `.env` remapped the container to e.g. 5455
+    // silently drops the server into file-only mode.
+    const default_db_url = b.fmt(
+        "postgres://{s}:{s}@localhost:{s}/{s}",
+        .{
+            resolveEnv(b, "LENSING_DB_USER", "pg"),
+            resolveEnv(b, "LENSING_DB_PASSWORD", "pg"),
+            resolveEnv(b, "LENSING_DB_PORT", "5433"),
+            resolveEnv(b, "LENSING_DB_NAME", "lensing"),
+        },
+    );
     const database_url = b.option(
         []const u8,
         "database-url",
-        "Postgres metadata database (default postgres://pg:pg@localhost:5433/lensing)",
-    ) orelse "postgres://pg:pg@localhost:5433/lensing";
+        "Postgres metadata database (default postgres://pg:pg@localhost:$LENSING_DB_PORT/lensing)",
+    ) orelse default_db_url;
 
     // ---------------- backend: the Rust workspace ----------------
     // Release profile on purpose: training and PCA are CPU-bound, and
@@ -125,6 +139,16 @@ pub fn build(b: *std.Build) void {
     run_server.step.dependOn(ui);
     run_server.step.dependOn(db_up);
 
+    // Bring the Qdrant corpus up too, so `serve` starts *everything*. The corpus
+    // usually lives in an external docker container (set $LENSING_QDRANT_CONTAINER
+    // in .env); ensure-qdrant.sh starts it if the URL isn't already healthy, and
+    // only warns (never blocks) when there's nothing it can manage.
+    const ensure_qdrant = b.addSystemCommand(&.{ "scripts/ensure-qdrant.sh", qdrant_url });
+    ensure_qdrant.setCwd(b.path("."));
+    ensure_qdrant.stdio = .inherit;
+    ensure_qdrant.has_side_effects = true;
+    run_server.step.dependOn(&ensure_qdrant.step);
+
     const serve = b.step("serve", "Build backend + UI, start the database, then run lensing-server (http://localhost:<port>)");
     serve.dependOn(&run_server.step);
 
@@ -176,6 +200,7 @@ pub fn build(b: *std.Build) void {
     run_pipeline.setCwd(b.path("."));
     run_pipeline.stdio = .inherit; // progress lines on stderr
     run_pipeline.step.dependOn(backend);
+    run_pipeline.step.dependOn(&ensure_qdrant.step); // dataset builds read the corpus
 
     const dataset = b.step("dataset", "Build a dataset artifact from Qdrant with default flags");
     dataset.dependOn(&run_pipeline.step);
@@ -291,4 +316,33 @@ pub fn build(b: *std.Build) void {
 
     const py_setup = b.step("py-setup", "Create predictors/.venv and install the Python predictor deps (one-time)");
     py_setup.dependOn(&pip_install.step);
+}
+
+/// Resolve an infra knob the way `docker compose` does: an exported process-env
+/// value wins, then the `.env` file (the same file compose reads), then the
+/// documented default. Keeps `db-up` and the server agreeing on one host port.
+fn resolveEnv(b: *std.Build, key: []const u8, default: []const u8) []const u8 {
+    if (std.process.getEnvVarOwned(b.allocator, key)) |v| {
+        if (v.len > 0) return v;
+    } else |_| {}
+    return dotenvLookup(b, key) orelse default;
+}
+
+/// Minimal `.env` reader: returns the value for `KEY` from `KEY=value` or
+/// `export KEY=value`, skipping blank/comment lines and stripping one layer of
+/// surrounding quotes. Returns null if the file or the key is absent.
+fn dotenvLookup(b: *std.Build, key: []const u8) ?[]const u8 {
+    const data = b.build_root.handle.readFileAlloc(b.allocator, ".env", 1 << 20) catch return null;
+    var lines = std.mem.splitScalar(u8, data, '\n');
+    while (lines.next()) |raw| {
+        var line = std.mem.trim(u8, raw, " \t\r");
+        if (line.len == 0 or line[0] == '#') continue;
+        if (std.mem.startsWith(u8, line, "export ")) line = std.mem.trimLeft(u8, line["export ".len..], " \t");
+        const eq = std.mem.indexOfScalar(u8, line, '=') orelse continue;
+        if (!std.mem.eql(u8, std.mem.trim(u8, line[0..eq], " \t"), key)) continue;
+        var v = std.mem.trim(u8, line[eq + 1 ..], " \t");
+        if (v.len >= 2 and (v[0] == '"' or v[0] == '\'') and v[v.len - 1] == v[0]) v = v[1 .. v.len - 1];
+        return v;
+    }
+    return null;
 }
