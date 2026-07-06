@@ -1,0 +1,38 @@
+# Example intake pipeline. Copy to `pipeline.toml`, edit, then run:
+#   cargo run -p lensing-intake -- --config pipeline.toml
+#
+# Everything is per-instance: point `url`s at THIS instance's own services
+# (its own Qdrant/Postgres ports). Never share a destination with another
+# instance.
+
+[embedding]
+provider = "ollama"          # ollama | openai
+model    = "nomic-embed-text"
+dims     = 768
+distance = "cosine"          # cosine | euclid | dot | manhattan
+extends  = false             # true = append to an already-populated target
+
+# --- Source: where the data comes from (pick one `kind`) ---
+[source]
+kind       = "postgres"      # postgres | sql-sqlite | sql-mysql | file | http
+url        = "postgres://user:pw@localhost:5436/app"
+query      = "SELECT id, title, body FROM tracks"
+identifier = "tracks"
+# batch_size = 500           # 0 (default) = one batch
+
+# Other source examples:
+#   kind = "file",       path = "corpus.jsonl", identifier = "c", format = "jsonl"
+#   kind = "sql-sqlite", path = "data.db",      query = "SELECT * FROM t", identifier = "t"
+#   kind = "http",       url  = "https://api.example.com/items", identifier = "i",
+#                        pointer = "/data/items", page_param = "page"
+
+# --- Sinks: where it goes (list several; authoritative store first) ---
+[[sink]]
+kind  = "postgres"           # internal lensing project DB (rows -> jsonb, idempotent)
+url   = "postgres://user:pw@localhost:5436/app"
+table = "corpus_items"
+
+[[sink]]
+kind = "qdrant"              # vector store (this instance's Qdrant port)
+url  = "http://localhost:6335"
+# api_key = "..."            # set only for a remote/cloud Qdrant
