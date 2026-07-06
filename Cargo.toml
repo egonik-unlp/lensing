@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/lensing-core",
     "crates/lensing-db",
+    "crates/lensing-intake",
     "crates/lensing-onnx",
     "crates/lensing-pipeline",
     "crates/lensing-server",

@@ -1,0 +1,23 @@
+[package]
+name = "lensing-intake"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Config-driven intake pipeline: data origins -> embeddings -> Qdrant + Postgres, built on the lvv crate"
+
+[dependencies]
+# The reusable pipeline library (Source/Sink traits, connectors, JobQueue).
+# 0.4.2 is required for QdrantDatabase::connect honouring the configured
+# Location (per-instance port-partitioning).
+lvv = { version = "0.4.2", features = ["postgres", "sql", "http"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }
+toml = { workspace = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+
+[[bin]]
+name = "lensing-intake"
+path = "src/main.rs"
