@@ -210,6 +210,11 @@ pair = ["ARS", "USD"]
 outlier_group = "propertyType"
 capped_numeric = "bedrooms"
 
+# Interpretability-subsystem parameters (the /api/interp/* probe tools).
+[interp]
+# The worked example slices probes by property type (its canonical segment axis).
+segment_field = "propertyType"
+
 # Agentic-layer parameters, consumed by agents-src/render.py (NOT by the
 # Rust code) to render the skills/agents under .claude/, .agents/, .gemini/.
 # After editing anything in this file, run: zig build render-agents

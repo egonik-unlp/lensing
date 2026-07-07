@@ -484,3 +484,157 @@ export interface CreateListingRequest extends Record<string, unknown> {
   images?: string[]
   sourceUrl?: string
 }
+
+/* ---------------- interpretability ---------------- */
+
+/** A model the layer probe can analyze (a native burn net). */
+export interface InterpModel {
+  name: string
+  predictor: string
+  hidden: number[]
+  activation: string
+  n_cols: number | null
+}
+
+/** One probed stage: the input, a hidden layer, or the model's own output. */
+export interface LayerProbeStage {
+  index: number
+  name: string
+  dim: number
+  /** Ridge penalty chosen for the probe; null for the model-output reference. */
+  lambda: number | null
+  train_r2_log: number
+  test_r2_log: number
+  test_r2_target: number
+  test_mae: number
+  test_medape: number
+}
+
+export interface LayerProbeReport {
+  tool: string
+  method: string
+  model_dir: string
+  dataset_id: string
+  n_train: number
+  n_test: number
+  hidden: number[]
+  activation: string
+  target_transform: string
+  stages: LayerProbeStage[]
+  /** Feature-family attribution probes on the input columns (PCA, metadata,
+   * per one-hot group / numeric field) — a separate axis from the depth curve. */
+  feature_groups?: LayerProbeStage[]
+}
+
+/** One model's probe in a comparison run; `error` is set if its probe failed. */
+export interface CompareModelReport {
+  model: string
+  report: LayerProbeReport | null
+  error: string | null
+}
+
+/** Several models probed on one shared dataset, for overlaying their curves. */
+export interface LayerProbeComparison {
+  dataset_id: string
+  reports: CompareModelReport[]
+}
+
+/* -------- Tool: embedding probe (P1, absent-vs-unused) -------- */
+
+export interface EmbProbeMetrics {
+  mae: number
+  medape: number
+  target_r2: number
+  log_r2: number
+}
+
+/** One view's probes for a segment (type-median floor / global / segment-only
+ *  linear / segment MLP). `skip` is set when the segment has too few rows. */
+export interface EmbViewResult {
+  view: string
+  type_median?: EmbProbeMetrics
+  global_linear?: EmbProbeMetrics
+  seg_linear?: EmbProbeMetrics
+  seg_mlp?: EmbProbeMetrics
+  n_test: number
+  n_train_seg: number
+  skip?: string
+}
+
+export interface EmbSegment {
+  name: string
+  views: EmbViewResult[]
+}
+
+export interface EmbSegmentDecode {
+  accuracy: number
+  macro_f1: number
+  majority_acc: number
+  /** AUC of the hardest segment's value vs. the rest, from its softmax column. */
+  hardest_vs_rest_auc?: number
+  /** The value `hardest_vs_rest_auc` is computed for (the hardest segment). */
+  hardest_value?: string
+  n_test: number
+}
+
+/** Result of the embedding probe (`POST /api/interp/embedding-probe`). */
+export interface EmbeddingProbeReport {
+  tool: string
+  dataset: string
+  /** The one-hot group the rows were sliced by. */
+  split_by: string
+  /** All one-hot groups present in the dataset (the other axes to re-run on). */
+  available_splits: string[]
+  emb_dim: number
+  n_rows: number
+  n_train: number
+  n_test: number
+  views: string[]
+  /** Row count per value of the split group (incl. `__none__`). */
+  value_counts: Record<string, number>
+  segments: EmbSegment[]
+  segment_decode?: EmbSegmentDecode
+  verdict: string
+  raw_vs_pca128_gap?: number
+}
+
+/* -------- Tool #2: sparse autoencoder (dictionary learning) -------- */
+
+/** One ridge probe of either the raw embedding block or the SAE code, on a
+ *  segment (`pooled` or a categorical value). */
+export interface SaeProbe {
+  segment: string
+  /** `input:pca` (raw embeddings) or `sae:code` (the sparse code). */
+  stage: string
+  dim: number
+  test_r2_log: number
+  test_r2_target: number
+  test_mae: number
+  test_medape: number
+}
+
+/** A learned dictionary atom and how it relates to the target / the segment. */
+export interface SaeAtom {
+  atom: number
+  freq: number
+  target_corr?: number
+  separation?: number
+  /** Auto-interp label (Bills et al. 2023) — `null` unless labeling was run. */
+  label?: string | null
+}
+
+/** Result of an SAE analysis (`POST /api/interp/sae`). */
+export interface SaeReport {
+  tool: string
+  dataset_id: string
+  n_train: number
+  n_test: number
+  segment: string
+  /** True if the trained SAE was loaded from the content-addressed cache. */
+  cached?: boolean
+  config: { input_dims: number; n_atoms: number; l1: number; epochs: number; lr: number }
+  recon: { var_explained: number; l0_mean: number; l0_frac: number }
+  probes: SaeProbe[]
+  atoms_by_target_corr: SaeAtom[]
+  atoms_by_segment_separation: SaeAtom[]
+}

@@ -45,6 +45,9 @@ export default function Shell() {
             <NavLink to="/listings" className="nav-link">
               {cap(domain.project.entity_noun_plural)}
             </NavLink>
+            <NavLink to="/interpretability" className="nav-link">
+              Interpretability
+            </NavLink>
           </nav>
           {/* Quiet on purpose: the orange budget belongs to each page's own
               primary action (Start training, Compare runs, live state). */}

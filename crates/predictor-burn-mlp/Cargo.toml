@@ -8,6 +8,7 @@ description = "Lensing MLP predictor (burn)"
 
 [dependencies]
 lensing-core = { workspace = true }
+lensing-interp = { workspace = true }
 lensing-onnx = { workspace = true }
 anyhow = { workspace = true }
 serde = { workspace = true }

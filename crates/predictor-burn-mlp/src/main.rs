@@ -1,8 +1,11 @@
 //! MLP target-value predictor on the language-neutral dataset artifact.
 //! burn 0.21, ndarray CPU backend, hand-written training loop.
 
+mod embedding_probe;
 mod model;
+mod nn_probe;
 mod onnx_export;
+mod probe;
 mod scaler;
 mod viz;
 
@@ -52,6 +55,41 @@ enum Command {
         model: PathBuf,
         #[arg(long)]
         output: PathBuf,
+    },
+    /// Layer-wise linear probes (Alain & Bengio 2016): fit a cheap ridge probe
+    /// on each stage's activations (input + every hidden layer) and write how
+    /// decodable the target is by depth to `output` (JSON). The interpretability
+    /// `/api/interp/layer-probe` engine.
+    LayerProbe {
+        #[arg(long)]
+        model: PathBuf,
+        #[arg(long)]
+        dataset: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        /// Ridge penalty; 0 (default) picks it by a small internal hold-out CV.
+        #[arg(long, default_value_t = 0.0)]
+        lambda: f64,
+    },
+    /// Embedding probe (P1, Alain & Bengio in spirit): on a dataset artifact
+    /// (no model needed), fit linear + MLP probes on the raw embeddings vs
+    /// PCA-128, sliced into segments by a categorical one-hot group, against a
+    /// per-segment-median floor — deciding whether the hardest segment's error
+    /// is information-ABSENT or merely UNUSED. Writes the report to `output`
+    /// (JSON). The `/api/interp/embedding-probe` engine.
+    EmbeddingProbe {
+        #[arg(long)]
+        dataset: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        /// One-hot categorical group to slice rows by (must exist in the
+        /// dataset). Empty (default) uses the domain's `[interp].segment_field`
+        /// (else the first categorical field).
+        #[arg(long, default_value = "")]
+        split_by: String,
+        /// Skip the (slower) nonlinear MLP ceiling probe.
+        #[arg(long)]
+        no_mlp: bool,
     },
 }
 
@@ -111,6 +149,12 @@ fn main() -> Result<()> {
         Command::Train { dataset, output, hyperparams } => train(dataset, output, hyperparams),
         Command::Predict { model, input, output } => predict(model, input, output),
         Command::Export { model, output } => export(model, output),
+        Command::LayerProbe { model, dataset, output, lambda } => {
+            probe::run(&model, &dataset, &output, lambda, &emit)
+        }
+        Command::EmbeddingProbe { dataset, output, split_by, no_mlp } => {
+            embedding_probe::run(&dataset, &output, !no_mlp, &split_by, &emit)
+        }
     }
 }
 

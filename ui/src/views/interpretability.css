@@ -1,0 +1,259 @@
+/* Interpretability section: a tool rail + the active tool's panel. */
+
+.interp {
+  display: grid;
+  grid-template-columns: 14rem minmax(0, 1fr);
+  gap: var(--sp-5);
+  align-items: start;
+}
+
+@media (max-width: 56rem) {
+  .interp {
+    grid-template-columns: 1fr;
+  }
+}
+
+.interp-tools {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  position: sticky;
+  top: var(--sp-4);
+}
+
+.interp-tool {
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  background: var(--surface, #fff);
+}
+
+.interp-tool.is-active {
+  border-color: var(--accent-strong, #2563eb);
+  color: var(--accent-strong, #2563eb);
+  font-weight: 600;
+}
+
+.interp-tool.is-soon {
+  color: var(--ink-secondary, #6b7280);
+  border-style: dashed;
+}
+
+.interp-tools-note {
+  font-size: 0.78rem;
+  color: var(--ink-secondary, #6b7280);
+  margin: var(--sp-2) 0 0;
+  line-height: 1.4;
+}
+
+.interp-main {
+  min-width: 0;
+}
+
+.interp-lede {
+  max-width: 60rem;
+  line-height: 1.55;
+  color: var(--ink-secondary, #374151);
+  margin: 0 0 var(--sp-4);
+}
+
+.interp-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+
+.interp-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  color: var(--ink-secondary, #6b7280);
+}
+
+.interp-controls select {
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--hairline-strong, #d1d5db);
+  border-radius: var(--radius);
+  background: var(--bg, #fff);
+  color: var(--ink, #111);
+  font: inherit;
+  min-width: 18rem;
+  max-width: 28rem;
+}
+
+.interp-controls select:focus-visible {
+  outline: 2px solid var(--accent-strong, #2563eb);
+  outline-offset: 2px;
+}
+
+.interp-progress {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.85rem;
+  color: var(--ink-secondary, #6b7280);
+  padding: var(--sp-2) 0;
+}
+
+.interp-metric-toggle {
+  margin-bottom: var(--sp-2);
+}
+
+.interp-caption {
+  font-size: 0.8rem;
+  color: var(--ink-secondary, #6b7280);
+  font-family: var(--font-mono, monospace);
+  margin: var(--sp-2) 0 var(--sp-3);
+}
+
+.interp-table {
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  width: 100%;
+  max-width: 48rem;
+}
+
+.interp-table th,
+.interp-table td {
+  text-align: right;
+  padding: 0.3rem 0.7rem;
+  border-bottom: 1px solid var(--hairline, #eee);
+}
+
+.interp-table th:first-child,
+.interp-table td:first-child {
+  text-align: left;
+  font-family: var(--font-mono, monospace);
+}
+
+.interp-table tr.is-output td {
+  font-weight: 600;
+  border-top: 1px solid var(--hairline-strong, #d1d5db);
+}
+
+/* Hollow markers on the chart denote the model's own output (reference). */
+
+/* Model picker: checkboxes so one or several models can be probed/compared. */
+.interp-models {
+  border: 1px solid var(--hairline, #eee);
+  border-radius: var(--radius);
+  padding: var(--sp-3);
+  margin-bottom: var(--sp-4);
+  max-width: 48rem;
+}
+
+.interp-models legend {
+  font-size: 0.8rem;
+  color: var(--ink-secondary, #6b7280);
+  padding: 0 0.4rem;
+}
+
+.interp-model-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 0.2rem 1rem;
+}
+
+.interp-model-opt {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  padding: 0.25rem 0.3rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.interp-model-opt:hover {
+  background: var(--surface, #f8f8f8);
+}
+
+.interp-model-name {
+  font-family: var(--font-mono, monospace);
+}
+
+.interp-model-arch {
+  color: var(--ink-secondary, #6b7280);
+  font-size: 0.78rem;
+  margin-left: auto;
+}
+
+/* Overlay-comparison legend below the multi-series chart. */
+.probe-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.1rem;
+  margin-top: var(--sp-2);
+  font-size: 0.82rem;
+  font-family: var(--font-mono, monospace);
+}
+
+.probe-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.probe-legend-swatch {
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 2px;
+}
+
+.interp-fgroups {
+  margin-top: var(--sp-5);
+}
+
+.interp-fgroups h4 {
+  margin: 0 0 var(--sp-1);
+  font-size: 0.95rem;
+}
+
+/* Tool-rail entries are buttons (tool switcher); keep the .interp-tool look. */
+button.interp-tool {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+button.interp-tool:focus-visible {
+  outline: 2px solid var(--accent-strong, #2563eb);
+  outline-offset: 2px;
+}
+
+/* Side-by-side atom tables (target-aligned | segment-separating). */
+.sae-atom-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-3);
+}
+
+@media (max-width: 44rem) {
+  .sae-atom-cols {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Auto-interp: the "label atoms with GPT" toggle + the label cells. */
+.interp-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--ink-secondary, #6b7280);
+  cursor: pointer;
+}
+
+td.sae-label {
+  text-align: left;
+  font-size: 0.8rem;
+  max-width: 16rem;
+  white-space: normal;
+  line-height: 1.3;
+}

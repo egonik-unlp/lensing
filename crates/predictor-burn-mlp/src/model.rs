@@ -102,6 +102,20 @@ impl<B: Backend> Mlp<B> {
         }
         self.output.forward(x)
     }
+
+    /// Post-activation output of each hidden layer for a batch, in forward
+    /// order — the stages a layer probe scores (Alain & Bengio 2016). Excludes
+    /// the input and the final scalar output. Dropout is inference-inactive on
+    /// the eval backend, so it contributes nothing here.
+    pub fn forward_capture(&self, x: Tensor<B, 2>) -> Vec<Tensor<B, 2>> {
+        let mut acts = Vec::with_capacity(self.layers.len());
+        let mut h = x;
+        for layer in &self.layers {
+            h = self.activation.apply(layer.forward(h));
+            acts.push(h.clone());
+        }
+        acts
+    }
 }
 
 pub struct TrainInputs<'a> {
@@ -356,4 +370,53 @@ impl Mlp<Inner> {
     pub fn activation_kind(&self) -> Activation {
         self.activation
     }
+}
+
+/// One captured stage: row-major `[n_rows, dim]` activations the layer probe
+/// fits on.
+pub struct LayerActs {
+    pub name: String,
+    pub dim: usize,
+    pub values: Vec<f32>,
+}
+
+/// Run the loaded model over `x` (already scaler-standardized, row-major
+/// `[n_rows, n_cols]`) and materialize the representation at each probe stage:
+/// stage 0 is the input itself, stages 1..=H are the post-activation outputs of
+/// each hidden layer. The final scalar output is the model's prediction and is
+/// scored separately. Powers the layer-probe interpretability analysis.
+pub fn capture_stage_activations(
+    model: &Mlp<Inner>,
+    x: &[f32],
+    n_cols: usize,
+    batch_size: usize,
+) -> Vec<LayerActs> {
+    let device = NdArrayDevice::default();
+    let n = x.len() / n_cols;
+    let dims: Vec<usize> = model
+        .layers
+        .iter()
+        .map(|l| {
+            let [_w_in, w_out] = l.weight.dims();
+            w_out
+        })
+        .collect();
+    let mut hidden: Vec<Vec<f32>> = dims.iter().map(|&d| Vec::with_capacity(n * d)).collect();
+    let rows: Vec<usize> = (0..n).collect();
+    for batch in rows.chunks(batch_size.max(1)) {
+        let t = batch_tensor::<Inner>(x, batch, n_cols, &device);
+        for (i, a) in model.forward_capture(t).into_iter().enumerate() {
+            hidden[i].extend(a.into_data().to_vec::<f32>().unwrap());
+        }
+    }
+    let mut stages = Vec::with_capacity(dims.len() + 1);
+    stages.push(LayerActs { name: "input".into(), dim: n_cols, values: x.to_vec() });
+    for (i, &d) in dims.iter().enumerate() {
+        stages.push(LayerActs {
+            name: format!("hidden_{}", i + 1),
+            dim: d,
+            values: std::mem::take(&mut hidden[i]),
+        });
+    }
+    stages
 }
