@@ -2,6 +2,7 @@ mod api;
 mod best_models;
 mod definitions;
 mod infer;
+mod interp;
 mod models;
 mod registry;
 mod runs;
@@ -294,6 +295,14 @@ async fn main() -> Result<()> {
         )
         .route("/definitions/{name}/rename", axum::routing::post(api::rename_definition))
         .route("/definitions/{name}/clone", axum::routing::post(api::clone_definition))
+        .route("/interp/models", get(interp::list_models))
+        .route("/interp/layer-probe", axum::routing::post(interp::start_layer_probe))
+        .route(
+            "/interp/layer-probe/compare",
+            axum::routing::post(interp::start_layer_probe_compare),
+        )
+        .route("/interp/embedding-probe", axum::routing::post(interp::start_embedding_probe))
+        .route("/interp/sae", axum::routing::post(interp::start_sae))
         .with_state(state);
 
     let app = Router::new()

@@ -26,6 +26,7 @@ import NewDatasetView from './views/NewDatasetView'
 import ListingsView from './views/ListingsView'
 import NewListingView from './views/NewListingView'
 import ListingDetailView from './views/ListingDetailView'
+import InterpretabilityView from './views/InterpretabilityView'
 
 const router = createBrowserRouter([
   {
@@ -48,6 +49,7 @@ const router = createBrowserRouter([
       { path: 'listings/new', element: <NewListingView /> },
       { path: 'listings/:id', element: <ListingDetailView /> },
       { path: 'listings/:id/edit', element: <NewListingView /> },
+      { path: 'interpretability', element: <InterpretabilityView /> },
     ],
   },
 ])

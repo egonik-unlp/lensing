@@ -1,0 +1,21 @@
+[package]
+name = "lensing-sae"
+version = "0.1.0"
+edition = "2021"
+
+# P2 — sparse-autoencoder / dictionary learning on the embeddings. A burn-trained
+# SAE (fast matmuls) whose sparse code is then probed with the burn-free lensing-interp
+# ridge engine and inspected for interpretable atoms. Invoked by lensing-server's
+# /api/interp/sae job (shells out, like the layer-probe), keeping burn out of the
+# server. Operates on a DATASET's embedding block, not a promoted model.
+
+[dependencies]
+lensing-core = { workspace = true }
+lensing-interp = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+clap = { workspace = true }
+burn = { version = "0.21", features = ["ndarray", "autodiff"] }
+# Auto-interp: label SAE atoms from their top-activating items via an LLM.
+reqwest = { version = "0.13", features = ["blocking", "json"] }

@@ -34,11 +34,11 @@ impl From<anyhow::Error> for ApiError {
     }
 }
 
-fn not_found(what: &str) -> ApiError {
+pub(crate) fn not_found(what: &str) -> ApiError {
     ApiError(StatusCode::NOT_FOUND, format!("{what} not found"))
 }
 
-fn bad_request(msg: String) -> ApiError {
+pub(crate) fn bad_request(msg: String) -> ApiError {
     ApiError(StatusCode::BAD_REQUEST, msg)
 }
 

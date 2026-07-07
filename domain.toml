@@ -116,6 +116,13 @@ default_on = true
 # rules to your fields; unbound rules simply never flag anything.
 [quality]
 
+# Interpretability-subsystem parameters (the /api/interp/* probe tools). All
+# optional; empty values fall back to the domain's own fields.
+[interp]
+# Categorical field the embedding / SAE probes slice rows by. "" = the first
+# categorical field declared above.
+segment_field = ""
+
 # Agentic-layer parameters, consumed by agents-src/render.py (NOT by the
 # Rust code) to render the skills/agents under .claude/, .agents/, .gemini/.
 # After editing anything in this file, run: zig build render-agents

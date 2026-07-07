@@ -1,0 +1,14 @@
+[package]
+name = "lensing-interp"
+version = "0.1.0"
+edition = "2021"
+
+# Interpretability engine: family-agnostic linear (ridge) probes over a
+# network's per-stage activations (Alain & Bengio 2016). Pure math — no `burn`,
+# no external linear algebra — so any predictor crate can depend on it and feed
+# in the activation matrices its own forward pass captured.
+[dependencies]
+lensing-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
