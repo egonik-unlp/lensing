@@ -62,6 +62,12 @@ enum Command {
         /// No-op unless OPENAI_API_KEY is set.
         #[arg(long)]
         label_atoms: bool,
+        /// Emit each surfaced target atom's full per-row activation vector
+        /// (`code`) into the result — lets a per-model SAE correlate its own
+        /// atoms against these embedding concepts (the dropped-signal diff).
+        /// Off by default (the vectors are large and the UI doesn't need them).
+        #[arg(long)]
+        emit_codes: bool,
         /// Cache dir for trained SAEs (content-addressed by dataset + config).
         /// A hit skips training; omit to always train fresh.
         #[arg(long)]
@@ -104,10 +110,11 @@ fn main() -> Result<()> {
             seed,
             segment,
             label_atoms,
+            emit_codes,
             cache_dir,
         } => analyze(
             dataset, output, max_dims, n_atoms, l1, epochs, lr, batch, seed, segment, label_atoms,
-            cache_dir,
+            emit_codes, cache_dir,
         ),
     }
 }
@@ -125,6 +132,7 @@ fn analyze(
     seed: u64,
     segment: String,
     label_atoms: bool,
+    emit_codes: bool,
     cache_dir: Option<PathBuf>,
 ) -> Result<()> {
     let ds = Dataset::load(&dataset)?;
@@ -244,13 +252,34 @@ fn analyze(
     } else {
         HashMap::new()
     };
+    // `top_rows`: the dataset row indices whose code most strongly activates each
+    // surfaced atom (same order label_atoms_concurrent uses). Downstream tools
+    // join these to the corpus metadata to build a per-atom exemplar set.
+    // `code` (per-row activation vector) is included only under --emit-codes:
+    // a per-model SAE reads it to correlate its own atoms against these
+    // embedding concepts (the dropped-signal diff), and it's large.
+    let atom_code = |a: usize| -> Vec<f32> {
+        (0..n_rows).map(|r| out.code_all[r * m + a]).collect()
+    };
     let atoms_by_target: Vec<Value> = target
         .iter()
-        .map(|(a, c, f)| json!({"atom": a, "target_corr": c, "freq": f, "label": labels.get(a)}))
+        .map(|(a, c, f)| {
+            let mut v = json!({
+                "atom": a, "target_corr": c, "freq": f, "label": labels.get(a),
+                "top_rows": top_k_rows(&out.code_all, m, *a, 12),
+            });
+            if emit_codes {
+                v["code"] = json!(atom_code(*a));
+            }
+            v
+        })
         .collect();
     let atoms_by_segment: Vec<Value> = sep
         .iter()
-        .map(|(a, s, f)| json!({"atom": a, "separation": s, "freq": f, "label": labels.get(a)}))
+        .map(|(a, s, f)| json!({
+            "atom": a, "separation": s, "freq": f, "label": labels.get(a),
+            "top_rows": top_k_rows(&out.code_all, m, *a, 12),
+        }))
         .collect();
 
     // Two stages to probe: the raw embedding block vs the SAE code.
@@ -277,6 +306,29 @@ fn analyze(
         }
     }
 
+    // Query-time encoder for the surfaced atoms (union of the two rankings): a
+    // client standardizes a query's PCA vector with (mean,std), then
+    // relu(z·W[:,j] + b[j]) gives atom j's activation — lighting up the concepts
+    // a novel composed query fires.
+    let mut surfaced: Vec<usize> = Vec::new();
+    {
+        let mut seen = HashSet::new();
+        for t in target.iter().chain(sep.iter()) {
+            if seen.insert(t.0) {
+                surfaced.push(t.0);
+            }
+        }
+    }
+    let (enc_w, enc_b) = model.encoder_params(); // enc_w row-major [d, m]
+    let enc_atoms: serde_json::Map<String, Value> = surfaced
+        .iter()
+        .map(|&j| {
+            let row: Vec<f32> = (0..d).map(|i| enc_w[i * m + j]).collect();
+            (j.to_string(), json!({"w": row, "b": enc_b.get(j).copied().unwrap_or(0.0)}))
+        })
+        .collect();
+    let encoder = json!({"mean": mean, "std": std, "atoms": enc_atoms});
+
     let result = json!({
         "tool": "sae",
         "method": "sparse autoencoder (dictionary learning) on the embedding block; lensing-interp ridge probe of the code",
@@ -294,6 +346,7 @@ fn analyze(
         "probes": probes,
         "atoms_by_target_corr": atoms_by_target,
         "atoms_by_segment_separation": atoms_by_segment,
+        "encoder": encoder,
     });
 
     if let Some(parent) = output.parent() {
