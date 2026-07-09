@@ -1,0 +1,165 @@
+/* Command palette: the ⌘K jump-to-anything dialog + its topbar trigger.
+   Floating instrument; every token here is defined in styles/tokens.css. */
+
+/* The palette affordance: a quiet inset slot, not a button fighting the CTA. */
+.topbar-search {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 0.25rem 0.55rem;
+  font: inherit;
+  font-size: var(--text-dense);
+  color: var(--on-chrome-faint);
+  background: var(--chrome-raised);
+  border: 1px solid var(--chrome-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
+}
+
+.topbar-search:hover {
+  color: var(--on-chrome);
+  background: var(--chrome-hover);
+}
+
+.topbar-search kbd {
+  background: var(--chrome);
+  border-color: var(--chrome-border);
+  color: var(--on-chrome-dim);
+}
+
+.palette {
+  /* Native dialog reset: the panel inside draws the chrome. */
+  background: none;
+  border: none;
+  padding: 0;
+  width: min(38rem, calc(100vw - 2 * var(--sp-4)));
+  margin: 12vh auto auto;
+  color: var(--ink);
+}
+
+.palette::backdrop {
+  background: oklch(0 0 0 / 0.55);
+}
+
+.palette-panel {
+  background: var(--surface-raised);
+  border: 1px solid var(--hairline-strong);
+  border-radius: 8px;
+  box-shadow: var(--shadow-overlay);
+  overflow: hidden;
+  animation: palette-in var(--dur-fast) var(--ease-out);
+}
+
+@keyframes palette-in {
+  from {
+    transform: translateY(-6px);
+    opacity: 0;
+  }
+}
+
+.palette-input {
+  width: 100%;
+  padding: var(--sp-3) var(--sp-4);
+  font: inherit;
+  font-size: var(--text-title);
+  color: var(--ink);
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--hairline);
+  outline: none;
+}
+
+.palette-input::placeholder {
+  color: var(--ink-faint);
+}
+
+.palette-results {
+  list-style: none;
+  margin: 0;
+  padding: var(--sp-2);
+  max-height: min(48vh, 26rem);
+  overflow-y: auto;
+}
+
+.palette-results ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.palette-group + .palette-group {
+  margin-top: var(--sp-2);
+}
+
+.palette-group-label {
+  display: block;
+  padding: var(--sp-1) var(--sp-2);
+  font-size: var(--text-label);
+  font-weight: 570;
+  color: var(--ink-faint);
+}
+
+.palette-opt {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: var(--text-body);
+}
+
+.palette-opt.is-active {
+  background: var(--select-tint);
+  box-shadow: inset 0 0 0 1px var(--select-border);
+}
+
+.palette-opt-label {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.palette-opt-sub {
+  font-size: var(--text-label);
+  color: var(--ink-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-left: auto;
+}
+
+.palette-empty {
+  padding: var(--sp-4);
+  color: var(--ink-secondary);
+  text-align: center;
+}
+
+.palette-foot {
+  display: flex;
+  gap: var(--sp-4);
+  padding: var(--sp-2) var(--sp-4);
+  border-top: 1px solid var(--hairline);
+  font-size: var(--text-label);
+  color: var(--ink-faint);
+}
+
+.palette-foot kbd {
+  margin-right: 0.4ch;
+}
+
+@media (max-width: 720px) {
+  .topbar-search-word {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .palette-panel {
+    animation: none;
+  }
+}

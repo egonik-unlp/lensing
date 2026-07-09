@@ -2,7 +2,10 @@ import { useEffect, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { useDomain } from '../lib/DomainContext'
 import { cap } from '../lib/format'
+import CommandPalette from './CommandPalette'
 import './shell.css'
+
+const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform)
 
 export default function Shell() {
   const domain = useDomain()
@@ -14,6 +17,19 @@ export default function Shell() {
     onScroll()
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  // ⌘K / Ctrl+K from anywhere opens the palette.
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setPaletteOpen((o) => !o)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
   }, [])
 
   return (
@@ -49,6 +65,14 @@ export default function Shell() {
               Interpretability
             </NavLink>
           </nav>
+          <button
+            className="topbar-search"
+            onClick={() => setPaletteOpen(true)}
+            aria-label="Open command palette"
+          >
+            <span className="topbar-search-word">Jump to…</span>
+            <kbd>{IS_MAC ? '⌘K' : 'Ctrl K'}</kbd>
+          </button>
           {/* Quiet on purpose: the orange budget belongs to each page's own
               primary action (Start training, Compare runs, live state). */}
           <NavLink to="/new" className="btn-on-chrome topbar-cta">
@@ -59,6 +83,7 @@ export default function Shell() {
       <main className="content">
         <Outlet />
       </main>
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
     </>
   )
 }
