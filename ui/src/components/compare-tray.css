@@ -1,0 +1,111 @@
+/* Compare tray: the floating A-vs-B workbench docked to the bottom edge.
+   Floating instrument; every token here is defined in styles/tokens.css. */
+
+/* ---------- the luminous button ----------
+   The inverse-fill action for floating instruments (tray): bright ink on
+   graphite reads as "the thing to press" without spending the accent. */
+.btn-bright {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--chrome);
+  font-weight: 600;
+}
+
+.btn-bright:hover:not(:disabled) {
+  background: oklch(1 0 0);
+  border-color: oklch(1 0 0);
+  color: var(--chrome);
+}
+
+/* A floating instrument docked to the bottom edge: A vs B, then launch. */
+.compare-tray {
+  position: fixed;
+  bottom: var(--sp-4);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--z-tray);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-4);
+  background: var(--chrome);
+  color: var(--on-chrome);
+  border: 1px solid var(--hairline-strong);
+  border-radius: 6px;
+  box-shadow: var(--shadow-overlay);
+  animation: tray-in var(--dur-base) var(--ease-out);
+  max-width: calc(100vw - 2 * var(--sp-4));
+}
+
+@keyframes tray-in {
+  from {
+    transform: translateX(-50%) translateY(8px);
+    opacity: 0;
+  }
+}
+
+.compare-tray-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: 600;
+  color: var(--on-chrome-faint);
+  letter-spacing: 0.04em;
+  user-select: none;
+}
+
+.compare-tray-slot {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.6ch;
+  font-size: var(--text-dense);
+}
+
+.compare-tray-slot.is-empty {
+  color: var(--on-chrome-faint);
+}
+
+.side-tag-mini {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: 600;
+  color: var(--on-chrome-dim);
+  user-select: none;
+}
+
+.compare-tray-vs {
+  font-size: var(--text-label);
+  color: var(--on-chrome-faint);
+  user-select: none;
+}
+
+.compare-tray-hint {
+  font-size: var(--text-dense);
+  color: var(--on-chrome-dim);
+  white-space: nowrap;
+}
+
+.compare-tray .btn-inline {
+  color: var(--on-chrome-dim);
+}
+
+.compare-tray .btn-inline:hover {
+  color: var(--on-chrome);
+}
+
+.compare-tray :focus-visible {
+  outline-color: var(--accent-on-chrome);
+}
+
+@media (max-width: 720px) {
+  .compare-tray {
+    bottom: var(--sp-2);
+    gap: var(--sp-2);
+    padding: var(--sp-2) var(--sp-3);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .compare-tray {
+    animation: none;
+  }
+}
