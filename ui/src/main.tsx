@@ -10,6 +10,7 @@ import './styles/tokens.css'
 import './styles/base.css'
 
 import { DomainProvider } from './lib/DomainContext'
+import { CompareProvider } from './lib/CompareContext'
 import Shell from './components/Shell'
 import RunsView from './views/RunsView'
 import NewRunView from './views/NewRunView'
@@ -57,7 +58,9 @@ const router = createBrowserRouter([
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <DomainProvider>
-      <RouterProvider router={router} />
+      <CompareProvider>
+        <RouterProvider router={router} />
+      </CompareProvider>
     </DomainProvider>
   </StrictMode>,
 )
