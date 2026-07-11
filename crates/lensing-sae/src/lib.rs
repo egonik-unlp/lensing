@@ -8,5 +8,6 @@
 //! share this identical training/encode/cache code; only the input block and the
 //! surrounding analysis differ.
 
+pub mod autointerp;
 pub mod llm;
 pub mod sae;
