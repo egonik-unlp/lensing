@@ -1,7 +1,7 @@
 //! Typed query layer over tokio-postgres.
 
 use anyhow::{Context, Result};
-use lensing_core::{BestModelEntry, ModelDefinition, ModelRecord, RunMeta};
+use lensing_core::{BestModelEntry, InterpAnalysis, ModelDefinition, ModelRecord, RunMeta};
 
 use crate::Db;
 
@@ -465,6 +465,113 @@ pub async fn upsert_preset(db: &Db, name: &str, hyperparams: &serde_json::Value)
         )
         .await?;
     Ok(())
+}
+
+// ---------------- interp analyses (mirror of data/interp/*) ----------------
+
+fn interp_from_row(row: &tokio_postgres::Row, with_result: bool) -> InterpAnalysis {
+    InterpAnalysis {
+        id: row.get("id"),
+        tool: row.get("tool"),
+        model: row.get("model"),
+        dataset_id: row.get("dataset_id"),
+        predictor: row.get("predictor"),
+        config: row.get::<_, serde_json::Value>("config"),
+        status: row.get("status"),
+        error: row.get("error"),
+        source: row.get("source"),
+        created_at: row.get("created_at"),
+        finished_at: row.get("finished_at"),
+        result: if with_result { row.get::<_, Option<serde_json::Value>>("result") } else { None },
+    }
+}
+
+pub async fn upsert_interp_analysis(db: &Db, a: &InterpAnalysis) -> Result<()> {
+    let client = db.client().await?;
+    client
+        .execute(
+            "INSERT INTO interp_analyses
+               (id, tool, model, dataset_id, predictor, config, status, error, source,
+                created_at, finished_at, result)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+             ON CONFLICT (id) DO UPDATE SET
+               tool = EXCLUDED.tool, model = EXCLUDED.model, dataset_id = EXCLUDED.dataset_id,
+               predictor = EXCLUDED.predictor, config = EXCLUDED.config, status = EXCLUDED.status,
+               error = EXCLUDED.error, source = EXCLUDED.source, created_at = EXCLUDED.created_at,
+               finished_at = EXCLUDED.finished_at,
+               result = COALESCE(EXCLUDED.result, interp_analyses.result)",
+            &[
+                &a.id,
+                &a.tool,
+                &a.model,
+                &a.dataset_id,
+                &a.predictor,
+                &a.config,
+                &a.status,
+                &a.error,
+                &a.source,
+                &a.created_at,
+                &a.finished_at,
+                &a.result,
+            ],
+        )
+        .await
+        .with_context(|| format!("upsert interp analysis {}", a.id))?;
+    Ok(())
+}
+
+/// All analyses, newest first, WITHOUT the heavy `result` document.
+pub async fn load_interp_analyses(db: &Db) -> Result<Vec<InterpAnalysis>> {
+    let client = db.client().await?;
+    let rows = client
+        .query(
+            "SELECT id, tool, model, dataset_id, predictor, config, status, error, source,
+                    created_at, finished_at
+             FROM interp_analyses ORDER BY created_at DESC, id DESC",
+            &[],
+        )
+        .await
+        .context("load interp analyses")?;
+    Ok(rows.iter().map(|r| interp_from_row(r, false)).collect())
+}
+
+/// One analysis, WITH its `result` document.
+pub async fn load_interp_analysis(db: &Db, id: &str) -> Result<Option<InterpAnalysis>> {
+    let client = db.client().await?;
+    let row = client
+        .query_opt("SELECT * FROM interp_analyses WHERE id = $1", &[&id])
+        .await?;
+    Ok(row.as_ref().map(|r| interp_from_row(r, true)))
+}
+
+pub async fn delete_interp_analysis(db: &Db, id: &str) -> Result<()> {
+    let client = db.client().await?;
+    client.execute("DELETE FROM interp_analyses WHERE id = $1", &[&id]).await?;
+    Ok(())
+}
+
+/// The ids already present, so the backfill can skip them (never clobber a live
+/// row's source/curation with a disk-derived one).
+pub async fn interp_analysis_ids(db: &Db) -> Result<std::collections::HashSet<String>> {
+    let client = db.client().await?;
+    let rows = client.query("SELECT id FROM interp_analyses", &[]).await?;
+    Ok(rows.iter().map(|r| r.get::<_, String>("id")).collect())
+}
+
+/// True when a non-failed per-model SAE analysis already exists for `model`
+/// (the auto-queue dedup: promotion should queue at most one).
+pub async fn model_has_interp_analysis(db: &Db, model: &str) -> Result<bool> {
+    let client = db.client().await?;
+    let row = client
+        .query_one(
+            "SELECT EXISTS(
+               SELECT 1 FROM interp_analyses
+               WHERE model = $1 AND tool = 'model-sae' AND status <> 'failed'
+             ) AS present",
+            &[&model],
+        )
+        .await?;
+    Ok(row.get::<_, bool>("present"))
 }
 
 pub async fn count(db: &Db, table: &str) -> Result<i64> {

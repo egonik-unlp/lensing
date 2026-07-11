@@ -1,6 +1,7 @@
 import type {
   BestModelGroup,
   InterpModel,
+  InterpAnalysis,
   BlendFile,
   BuildRequest,
   BuildStatus,
@@ -91,6 +92,29 @@ export const api = {
     segment?: string
     label_atoms?: boolean
   }) => request<{ job_id: string }>('/api/interp/sae', post(req)).then((r) => r.job_id),
+  startModelSae: (req: {
+    model: string
+    dataset?: string
+    layers?: string
+    n_atoms?: number
+    l1?: number
+    epochs?: number
+    label_atoms?: boolean
+    compare_embedding?: boolean
+  }) => request<{ job_id: string }>('/api/interp/model-sae', post(req)).then((r) => r.job_id),
+  // Persisted analyses: list (metadata only), fetch one (with its full result),
+  // and delete. These read back saved SAE / probe runs with no recomputation.
+  listInterpAnalyses: (filters?: { tool?: string; model?: string; dataset?: string }) => {
+    const qs = new URLSearchParams(
+      Object.entries(filters ?? {}).filter(([, v]) => !!v) as [string, string][],
+    ).toString()
+    return request<{ analyses: InterpAnalysis[] }>(
+      `/api/interp/analyses${qs ? `?${qs}` : ''}`,
+    ).then((r) => r.analyses)
+  },
+  getInterpAnalysis: (id: string) => request<InterpAnalysis>(`/api/interp/analyses/${id}`),
+  deleteInterpAnalysis: (id: string) =>
+    request<{ ok: boolean }>(`/api/interp/analyses/${id}`, { method: 'DELETE' }),
   getItems: (id: string) => request<Items>(`/api/datasets/${id}/items`),
   getDatasetSplit: (id: string) => request<DatasetSplit>(`/api/datasets/${id}/split`),
   buildDataset: (req: BuildRequest) =>

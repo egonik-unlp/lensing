@@ -12,16 +12,58 @@
 //! can be probed is declared in `registry.toml` via `probe_args` (only the
 //! native burn nets, whose activations are reachable from Rust, set it).
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
-use axum::extract::State;
+use axum::extract::{Path, Query, State};
 use axum::Json;
+use chrono::Utc;
+use lensing_core::InterpAnalysis;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::api::{bad_request, not_found, ApiError};
 use crate::state::{AppState, JobStatus};
 use crate::{models, registry, runs};
+
+// ---------- persistence helpers (shared by every interp tool) ----------
+
+/// Register a starting interp job: the in-memory `Running` status the UI polls,
+/// plus — when the database is up — a `running` row so the analysis is listable
+/// the moment it is queued.
+fn begin_interp_job(state: &AppState, analysis: &InterpAnalysis) {
+    state
+        .jobs
+        .lock()
+        .unwrap()
+        .insert(analysis.id.clone(), JobStatus::Running { stage: "queued".into() });
+    if let Some(sink) = &state.db_sink {
+        sink.interp_upsert(analysis);
+    }
+}
+
+/// Record a finished interp job: update the in-memory status (unchanged
+/// live-polling behavior) and mirror the terminal row — `result`/`error` plus
+/// `finished_at` — to the database. Callers pass the `running` analysis they
+/// began with; this stamps the outcome onto it.
+fn finish_interp_job(state: &AppState, mut analysis: InterpAnalysis, status: JobStatus) {
+    match &status {
+        JobStatus::Done { result } => {
+            analysis.status = "done".into();
+            analysis.result = Some(result.clone());
+        }
+        JobStatus::Failed { error } => {
+            analysis.status = "failed".into();
+            analysis.error = Some(error.clone());
+        }
+        JobStatus::Running { .. } => {}
+    }
+    analysis.finished_at = Some(Utc::now().to_rfc3339());
+    if let Some(sink) = &state.db_sink {
+        sink.interp_upsert(&analysis);
+    }
+    state.jobs.lock().unwrap().insert(analysis.id.clone(), status);
+}
 
 #[derive(Deserialize)]
 pub struct LayerProbeRequest {
@@ -83,6 +125,11 @@ pub async fn list_models(State(state): State<Arc<AppState>>) -> Result<Json<Valu
             let hidden = hyperparams.get("hidden").cloned().unwrap_or_else(|| json!([]));
             let activation =
                 hyperparams.get("activation").and_then(|a| a.as_str()).unwrap_or("relu");
+            let supports_model_sae = state
+                .registry
+                .get(&record.predictor)
+                .map(|pr| pr.supports_model_sae())
+                .unwrap_or(false);
             out.push(json!({
                 "name": name,
                 "predictor": record.predictor,
@@ -91,6 +138,7 @@ pub async fn list_models(State(state): State<Arc<AppState>>) -> Result<Json<Valu
                 "hidden": hidden,
                 "activation": activation,
                 "hyperparams": hyperparams,
+                "supports_model_sae": supports_model_sae,
             }));
         }
     }
@@ -129,11 +177,17 @@ pub async fn start_layer_probe(
     }
 
     let job_id = format!("interp-{}", runs::new_run_id("lp"));
-    state
-        .jobs
-        .lock()
-        .unwrap()
-        .insert(job_id.clone(), JobStatus::Running { stage: "queued".into() });
+    let analysis = InterpAnalysis::running(
+        job_id.clone(),
+        "layer-probe",
+        Some(req.model.clone()),
+        dataset.clone(),
+        Some(record.predictor.clone()),
+        json!({ "lambda": req.lambda }),
+        "manual",
+        Utc::now().to_rfc3339(),
+    );
+    begin_interp_job(&state, &analysis);
 
     let out_file = state.root.join("data/interp").join(&job_id).join("layer-probe.json");
     let mut args = registry::substitute(
@@ -186,7 +240,7 @@ pub async fn start_layer_probe(
             },
             Err(e) => JobStatus::Failed { error: format!("{e:#}") },
         };
-        st.jobs.lock().unwrap().insert(id, status);
+        finish_interp_job(&st, analysis, status);
     });
 
     Ok(Json(json!({ "job_id": job_id })))
@@ -237,11 +291,17 @@ pub async fn start_layer_probe_compare(
     }
 
     let job_id = format!("interp-{}", runs::new_run_id("cmp"));
-    state
-        .jobs
-        .lock()
-        .unwrap()
-        .insert(job_id.clone(), JobStatus::Running { stage: "queued".into() });
+    let analysis = InterpAnalysis::running(
+        job_id.clone(),
+        "layer-probe-compare",
+        None,
+        dataset.clone(),
+        None,
+        json!({ "models": req.models, "lambda": req.lambda }),
+        "manual",
+        Utc::now().to_rfc3339(),
+    );
+    begin_interp_job(&state, &analysis);
 
     let lambda = req.lambda;
     let root = state.root.clone();
@@ -290,8 +350,9 @@ pub async fn start_layer_probe_compare(
             };
             reports.push(entry);
         }
-        st.jobs.lock().unwrap().insert(
-            id,
+        finish_interp_job(
+            &st,
+            analysis,
             JobStatus::Done { result: json!({ "dataset_id": dataset_id, "reports": reports }) },
         );
     });
@@ -335,11 +396,17 @@ pub async fn start_embedding_probe(
         .ok_or_else(|| bad_request("burn-mlp engine is not registered".into()))?;
 
     let job_id = format!("interp-{}", runs::new_run_id("ep"));
-    state
-        .jobs
-        .lock()
-        .unwrap()
-        .insert(job_id.clone(), JobStatus::Running { stage: "queued".into() });
+    let analysis = InterpAnalysis::running(
+        job_id.clone(),
+        "embedding-probe",
+        None,
+        req.dataset.clone(),
+        None,
+        json!({ "split_by": req.split_by, "no_mlp": req.no_mlp }),
+        "manual",
+        Utc::now().to_rfc3339(),
+    );
+    begin_interp_job(&state, &analysis);
 
     let out_file = state.root.join("data/interp").join(&job_id).join("embedding-probe.json");
     let mut args = vec![
@@ -392,7 +459,7 @@ pub async fn start_embedding_probe(
             },
             Err(e) => JobStatus::Failed { error: format!("{e:#}") },
         };
-        st.jobs.lock().unwrap().insert(id, status);
+        finish_interp_job(&st, analysis, status);
     });
 
     Ok(Json(json!({ "job_id": job_id })))
@@ -460,11 +527,20 @@ pub async fn start_sae(
     }
 
     let job_id = format!("interp-{}", runs::new_run_id("sae"));
-    state
-        .jobs
-        .lock()
-        .unwrap()
-        .insert(job_id.clone(), JobStatus::Running { stage: "queued".into() });
+    let analysis = InterpAnalysis::running(
+        job_id.clone(),
+        "sae",
+        None,
+        req.dataset.clone(),
+        None,
+        json!({
+            "max_dims": req.max_dims, "n_atoms": req.n_atoms, "l1": req.l1,
+            "epochs": req.epochs, "segment": req.segment, "label_atoms": req.label_atoms,
+        }),
+        "manual",
+        Utc::now().to_rfc3339(),
+    );
+    begin_interp_job(&state, &analysis);
 
     let out_file = state.root.join("data/interp").join(&job_id).join("sae.json");
     let mut args: Vec<String> = vec![
@@ -525,8 +601,376 @@ pub async fn start_sae(
             },
             Err(e) => JobStatus::Failed { error: format!("{e:#}") },
         };
-        st.jobs.lock().unwrap().insert(id, status);
+        finish_interp_job(&st, analysis, status);
     });
 
     Ok(Json(json!({ "job_id": job_id })))
+}
+
+#[derive(Deserialize)]
+pub struct ModelSaeRequest {
+    /// Model directory name under `data/models/` (must be an MLP-family model
+    /// whose predictor declares `model_sae_args`).
+    pub model: String,
+    /// Dataset id to analyze on; defaults to the model's training dataset. Must
+    /// match the model's `n_cols`.
+    #[serde(default)]
+    pub dataset: Option<String>,
+    /// Comma-separated 1-based hidden layers to analyze; empty ⇒ all.
+    #[serde(default)]
+    pub layers: String,
+    /// SAE atom count; `0`/absent ⇒ 2× the layer width.
+    #[serde(default)]
+    pub n_atoms: usize,
+    #[serde(default = "sae_l1")]
+    pub l1: f64,
+    #[serde(default = "sae_epochs")]
+    pub epochs: usize,
+    /// Label the surfaced atoms with an LLM (auto-interp). No-op on the engine
+    /// side unless OPENAI_API_KEY is set in the server's environment.
+    #[serde(default)]
+    pub label_atoms: bool,
+    /// Also diff against the embedding: first train a dataset SAE (with codes)
+    /// on the same dataset, then report target-relevant embedding concepts the
+    /// model drops. Roughly doubles the run time.
+    #[serde(default)]
+    pub compare_embedding: bool,
+}
+
+/// `POST /api/interp/model-sae` — the per-model sibling of `/sae`: train a sparse
+/// autoencoder on a promoted model's OWN hidden activations (per layer) and
+/// report capacity, per-segment representation, concept-vs-decodability depth,
+/// and — with `compare_embedding` — the target-relevant signal the model drops
+/// relative to the embedding. Returns `{ job_id }`; poll `GET /api/jobs/{id}`,
+/// whose `result` is the model-SAE JSON. Shells out to the predictor's own
+/// `model-sae` subcommand (keeps `burn` out of the server).
+pub async fn start_model_sae(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<ModelSaeRequest>,
+) -> Result<Json<Value>, ApiError> {
+    let job_id = spawn_model_sae(state, req, "manual").await?;
+    Ok(Json(json!({ "job_id": job_id })))
+}
+
+/// Start a per-model SAE analysis and return its job id. Shared by the HTTP
+/// handler (`source = "manual"`) and the promotion auto-queue
+/// (`source = "auto"`): it validates synchronously, registers the job (in-memory
+/// + a persisted `running` row), spawns the engine work, and mirrors the
+/// terminal row on completion. Takes a plain `Arc<AppState>` / `ModelSaeRequest`
+/// so it is callable off the HTTP path.
+pub async fn spawn_model_sae(
+    state: Arc<AppState>,
+    req: ModelSaeRequest,
+    source: &str,
+) -> Result<String, ApiError> {
+    let model_dir = state.models_dir().join(&req.model);
+    let record = models::read_record(&model_dir).map_err(|_| not_found("model"))?;
+    let predictor = state
+        .registry
+        .get(&record.predictor)
+        .ok_or_else(|| bad_request(format!("predictor {} is not registered", record.predictor)))?;
+    let (command, args_template) = predictor
+        .model_sae_invocation()
+        .map(|(c, a)| (c.to_string(), a.to_vec()))
+        .ok_or_else(|| {
+            bad_request(format!("predictor {} has no per-model SAE support", record.predictor))
+        })?;
+
+    let dataset = req.dataset.clone().unwrap_or_else(|| record.dataset_id.clone());
+    let dataset_dir = state.datasets_dir().join(&dataset);
+    if !dataset_dir.join("manifest.json").exists() {
+        return Err(not_found("dataset"));
+    }
+
+    // The embedding diff needs the lensing-sae engine to produce a codes-bearing
+    // dataset SAE first.
+    let sae_bin = state.root.join("target/release/lensing-sae");
+    if req.compare_embedding && !sae_bin.exists() {
+        return Err(bad_request(
+            "lensing-sae engine not built — run `cargo build --release -p lensing-sae`".into(),
+        ));
+    }
+
+    let job_id = format!("interp-{}", runs::new_run_id("msae"));
+    let analysis = InterpAnalysis::running(
+        job_id.clone(),
+        "model-sae",
+        Some(req.model.clone()),
+        dataset.clone(),
+        Some(record.predictor.clone()),
+        json!({
+            "layers": req.layers, "n_atoms": req.n_atoms, "l1": req.l1, "epochs": req.epochs,
+            "label_atoms": req.label_atoms, "compare_embedding": req.compare_embedding,
+        }),
+        source,
+        Utc::now().to_rfc3339(),
+    );
+    begin_interp_job(&state, &analysis);
+
+    let job_dir = state.root.join("data/interp").join(&job_id);
+    let out_file = job_dir.join("model-sae.json");
+    let ds_sae_file = job_dir.join("dataset-sae.json");
+    let cache_dir = state.root.join("data/interp/sae-cache");
+
+    let mut args = registry::substitute(
+        &args_template,
+        &[
+            ("model", model_dir.to_string_lossy().into_owned()),
+            ("dataset", dataset_dir.to_string_lossy().into_owned()),
+            ("output", out_file.to_string_lossy().into_owned()),
+        ],
+    );
+    if !req.layers.trim().is_empty() {
+        args.push("--layers".into());
+        args.push(req.layers.clone());
+    }
+    args.push("--n-atoms".into());
+    args.push(req.n_atoms.to_string());
+    args.push("--l1".into());
+    args.push(req.l1.to_string());
+    args.push("--epochs".into());
+    args.push(req.epochs.to_string());
+    args.push("--cache-dir".into());
+    args.push(cache_dir.to_string_lossy().into_owned());
+    if req.label_atoms {
+        args.push("--label-atoms".into());
+    }
+    if req.compare_embedding {
+        args.push("--dataset-sae".into());
+        args.push(ds_sae_file.to_string_lossy().into_owned());
+    }
+
+    // Args for the prerequisite dataset SAE (only used when comparing). Label
+    // its atoms too when labelling was requested, so the embedding concepts in
+    // the "dropped signal vs. the embedding" section carry names, not just ids.
+    let mut sae_args: Vec<String> = vec![
+        "analyze".into(),
+        "--dataset".into(),
+        dataset_dir.to_string_lossy().into_owned(),
+        "--output".into(),
+        ds_sae_file.to_string_lossy().into_owned(),
+        "--l1".into(),
+        req.l1.to_string(),
+        "--epochs".into(),
+        req.epochs.to_string(),
+        "--emit-codes".into(),
+        "--cache-dir".into(),
+        cache_dir.to_string_lossy().into_owned(),
+    ];
+    if req.label_atoms {
+        sae_args.push("--label-atoms".into());
+    }
+    let sae_command = sae_bin.to_string_lossy().into_owned();
+    let compare = req.compare_embedding;
+    let root = state.root.clone();
+    let st = state.clone();
+    let id = job_id.clone();
+    tokio::spawn(async move {
+        let _permit = st.build_slots.clone().acquire_owned().await.unwrap();
+        let st2 = st.clone();
+        let id2 = id.clone();
+        let on_line = move |line: &str| {
+            if let Ok(v) = serde_json::from_str::<Value>(line) {
+                if v.get("event").and_then(|e| e.as_str()) == Some("log") {
+                    if let Some(msg) = v.get("msg").and_then(|m| m.as_str()) {
+                        st2.jobs
+                            .lock()
+                            .unwrap()
+                            .insert(id2.clone(), JobStatus::Running { stage: msg.to_string() });
+                    }
+                }
+            }
+        };
+
+        // Stage 1 (optional): the embedding SAE with codes, for the diff.
+        if compare {
+            match runs::spawn_and_capture(&sae_command, &sae_args, &root, &on_line).await {
+                Ok((0, _)) => {}
+                Ok((code, stderr)) => {
+                    finish_interp_job(
+                        &st,
+                        analysis,
+                        JobStatus::Failed {
+                            error: format!("dataset-sae engine exited {code}: {stderr}"),
+                        },
+                    );
+                    return;
+                }
+                Err(e) => {
+                    finish_interp_job(&st, analysis, JobStatus::Failed { error: format!("{e:#}") });
+                    return;
+                }
+            }
+        }
+
+        // Stage 2: the per-model SAE (reads the stage-1 codes when comparing).
+        let res = runs::spawn_and_capture(&command, &args, &root, &on_line).await;
+        let status = match res {
+            Ok((0, _)) => match std::fs::read_to_string(&out_file)
+                .ok()
+                .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+            {
+                Some(result) => JobStatus::Done { result },
+                None => JobStatus::Failed {
+                    error: "model-sae engine finished but produced no result file".into(),
+                },
+            },
+            Ok((code, stderr)) => JobStatus::Failed {
+                error: format!("model-sae engine exited {code}: {stderr}"),
+            },
+            Err(e) => JobStatus::Failed { error: format!("{e:#}") },
+        };
+        finish_interp_job(&st, analysis, status);
+    });
+
+    Ok(job_id)
+}
+
+/// Queue a per-model SAE analysis for a freshly promoted model — fire-and-forget,
+/// mirroring [`crate::best_models::spawn_recompute`]. It no-ops unless auto-queue
+/// is enabled (`LENSING_AUTO_MODEL_SAE`) and the model's predictor supports model-SAE,
+/// and dedups against an existing non-failed analysis so a model is analyzed at
+/// most once. The auto config is the embedding-diff read WITHOUT GPT labels;
+/// richer/labeled runs are launched manually and persist the same way.
+pub fn auto_queue_model_sae(state: Arc<AppState>, model: String) {
+    if !state.auto_model_sae {
+        return;
+    }
+    tokio::spawn(async move {
+        // Only MLP-family models expose a hidden activation space to decompose.
+        let Ok(record) = models::read_record(&state.models_dir().join(&model)) else {
+            return;
+        };
+        let supported = state
+            .registry
+            .get(&record.predictor)
+            .map(|p| p.supports_model_sae())
+            .unwrap_or(false);
+        if !supported {
+            return;
+        }
+        // Dedup: promotion should queue at most one analysis per model.
+        if let Some(db) = &state.db {
+            match lensing_db::queries::model_has_interp_analysis(db, &model).await {
+                Ok(true) => return,
+                Ok(false) => {}
+                Err(e) => eprintln!("[lensing-server] auto model-sae dedup check for {model}: {e:#}"),
+            }
+        }
+        let req = ModelSaeRequest {
+            model: model.clone(),
+            dataset: None,
+            layers: String::new(),
+            n_atoms: 0,
+            l1: sae_l1(),
+            epochs: sae_epochs(),
+            label_atoms: false,
+            compare_embedding: true,
+        };
+        if let Err(e) = spawn_model_sae(state.clone(), req, "auto").await {
+            eprintln!("[lensing-server] auto model-sae for {model} did not start: {}", e.message());
+        }
+    });
+}
+
+// ---------- persisted analyses: list / fetch / delete ----------
+
+#[derive(Deserialize)]
+pub struct AnalysesQuery {
+    #[serde(default)]
+    pub tool: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub dataset: Option<String>,
+}
+
+/// `GET /api/interp/analyses` — persisted analyses (metadata only, newest first),
+/// optionally filtered by `tool` / `model` / `dataset`. DB-first, with a disk
+/// merge for any job dir not yet mirrored (degraded mode / pre-backfill).
+pub async fn list_analyses(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<AnalysesQuery>,
+) -> Result<Json<Value>, ApiError> {
+    let mut out: Vec<InterpAnalysis> = Vec::new();
+    let mut known: HashSet<String> = HashSet::new();
+    if let Some(db) = &state.db {
+        if let Ok(rows) = lensing_db::queries::load_interp_analyses(db).await {
+            for a in rows {
+                known.insert(a.id.clone());
+                out.push(a);
+            }
+        }
+    }
+    let interp_root = state.root.join("data/interp");
+    let models_root = state.models_dir();
+    for id in interp_dir_ids(&interp_root) {
+        if known.contains(&id) {
+            continue;
+        }
+        if let Some(a) = InterpAnalysis::from_disk(&interp_root, &models_root, &id, false) {
+            out.push(a);
+        }
+    }
+    out.sort_by(|a, b| b.created_at.cmp(&a.created_at).then_with(|| b.id.cmp(&a.id)));
+    if let Some(t) = q.tool.as_deref().filter(|s| !s.is_empty()) {
+        out.retain(|a| a.tool == t);
+    }
+    if let Some(m) = q.model.as_deref().filter(|s| !s.is_empty()) {
+        out.retain(|a| a.model.as_deref() == Some(m));
+    }
+    if let Some(d) = q.dataset.as_deref().filter(|s| !s.is_empty()) {
+        out.retain(|a| a.dataset_id == d);
+    }
+    Ok(Json(json!({ "analyses": out })))
+}
+
+/// `GET /api/interp/analyses/{id}` — one analysis WITH its full result document.
+/// DB-first; falls back to reading the on-disk result file.
+pub async fn get_analysis(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<InterpAnalysis>, ApiError> {
+    if let Some(db) = &state.db {
+        if let Ok(Some(a)) = lensing_db::queries::load_interp_analysis(db, &id).await {
+            return Ok(Json(a));
+        }
+    }
+    let interp_root = state.root.join("data/interp");
+    InterpAnalysis::from_disk(&interp_root, &state.models_dir(), &id, true)
+        .map(Json)
+        .ok_or_else(|| not_found("analysis"))
+}
+
+/// `DELETE /api/interp/analyses/{id}` — drop the row and its job dir.
+pub async fn delete_analysis(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    if let Some(sink) = &state.db_sink {
+        sink.interp_delete(&id);
+    }
+    let dir = state.root.join("data/interp").join(&id);
+    if dir.is_dir() {
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    Ok(Json(json!({ "ok": true })))
+}
+
+/// Job-dir ids under `data/interp` (excludes the `sae-cache` dir).
+fn interp_dir_ids(interp_root: &std::path::Path) -> Vec<String> {
+    let mut ids = Vec::new();
+    if let Ok(rd) = std::fs::read_dir(interp_root) {
+        for e in rd.flatten() {
+            if !e.path().is_dir() {
+                continue;
+            }
+            if let Some(name) = e.file_name().to_str() {
+                if name.starts_with("interp-") {
+                    ids.push(name.to_string());
+                }
+            }
+        }
+    }
+    ids
 }

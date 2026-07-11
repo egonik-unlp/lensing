@@ -56,6 +56,16 @@ pub struct Predictor {
     /// nets, whose activations are reachable from Rust, implement it).
     #[serde(default)]
     pub probe_args: Option<Vec<String>>,
+    /// Model-SAE subcommand executable; defaults to `command` when absent.
+    #[serde(default)]
+    pub model_sae_command: Option<String>,
+    /// Per-model SAE args template ({model}/{dataset}/{output} tokens). The
+    /// subcommand trains a sparse autoencoder on the promoted model's own hidden
+    /// activations and writes a `model-sae.json` report into {output}. Absent
+    /// means the family has no per-model SAE (only the native burn nets, whose
+    /// activations are reachable from Rust, implement it).
+    #[serde(default)]
+    pub model_sae_args: Option<Vec<String>>,
     /// Honors the graceful-stop protocol: polls the run dir's STOP file
     /// between epochs and finishes early (eval + checkpoint, exit 0).
     /// Without it, stopping a run means killing the process.
@@ -180,6 +190,19 @@ impl Predictor {
             .as_deref()
             .map(|args| (self.probe_command.as_deref().unwrap_or(&self.command), args))
     }
+
+    /// Whether this predictor implements the optional per-model `model-sae`
+    /// subcommand (dictionary learning on its own hidden activations).
+    pub fn supports_model_sae(&self) -> bool {
+        self.model_sae_args.is_some()
+    }
+
+    /// Effective (command, args template) for a model-SAE invocation.
+    pub fn model_sae_invocation(&self) -> Option<(&str, &[String])> {
+        self.model_sae_args
+            .as_deref()
+            .map(|args| (self.model_sae_command.as_deref().unwrap_or(&self.command), args))
+    }
 }
 
 /// Substitute `{token}` placeholders in an args template.
@@ -215,6 +238,8 @@ mod tests {
             export_args: None,
             probe_command: None,
             probe_args: None,
+            model_sae_command: None,
+            model_sae_args: None,
             supports_stop: false,
             visualization: false,
             params: vec![Param {

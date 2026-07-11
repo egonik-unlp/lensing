@@ -11,6 +11,8 @@ import LayerProbeChart, { type ProbeMetric } from '../components/charts/LayerPro
 import LayerProbeCompareChart from '../components/charts/LayerProbeCompareChart'
 import SaeTool from './SaeTool'
 import EmbeddingProbeTool from './EmbeddingProbeTool'
+import ModelSaeTool from './ModelSaeTool'
+import SavedAnalysesTool from './SavedAnalysesTool'
 import ViewHeader from '../components/ViewHeader'
 import { useAsync } from '../hooks/useAsync'
 import { useDocTitle } from '../lib/DomainContext'
@@ -39,7 +41,9 @@ export default function InterpretabilityView() {
   const models = useAsync(() => api.listInterpModels(), [])
   const datasets = useAsync(() => api.listDatasets(), [])
 
-  const [tool, setTool] = useState<'layer-probe' | 'sae' | 'embedding'>('layer-probe')
+  const [tool, setTool] = useState<
+    'layer-probe' | 'sae' | 'model-sae' | 'embedding' | 'saved'
+  >('layer-probe')
   const [datasetId, setDatasetId] = useState('')
   const [selected, setSelected] = useState<string[]>([])
   const [metric, setMetric] = useState<ProbeMetric>('test_r2_log')
@@ -149,6 +153,20 @@ export default function InterpretabilityView() {
           >
             Embedding probe (P1)
           </button>
+          <button
+            type="button"
+            className={`interp-tool${tool === 'model-sae' ? ' is-active' : ''}`}
+            onClick={() => setTool('model-sae')}
+          >
+            Per-model SAE (P3)
+          </button>
+          <button
+            type="button"
+            className={`interp-tool${tool === 'saved' ? ' is-active' : ''}`}
+            onClick={() => setTool('saved')}
+          >
+            Saved analyses
+          </button>
           <p className="interp-tools-note">More tools land here over time.</p>
         </aside>
 
@@ -157,6 +175,10 @@ export default function InterpretabilityView() {
             <SaeTool />
           ) : tool === 'embedding' ? (
             <EmbeddingProbeTool />
+          ) : tool === 'model-sae' ? (
+            <ModelSaeTool />
+          ) : tool === 'saved' ? (
+            <SavedAnalysesTool />
           ) : (
           <>
           <p className="interp-lede">
