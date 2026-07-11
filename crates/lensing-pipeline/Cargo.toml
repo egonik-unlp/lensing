@@ -8,6 +8,7 @@ description = "Dataset pipeline for Lensing: Qdrant corpus to PCA+metadata featu
 
 [dependencies]
 lensing-core = { workspace = true }
+lensing-compression = { workspace = true }
 anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

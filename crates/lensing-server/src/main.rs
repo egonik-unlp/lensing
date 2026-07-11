@@ -5,6 +5,7 @@ mod infer;
 mod interp;
 mod models;
 mod registry;
+mod representations;
 mod runs;
 mod state;
 mod worker;
@@ -267,6 +268,12 @@ async fn main() -> Result<()> {
         .route("/collections", get(api::list_collections))
         .route("/collections/validate", axum::routing::post(api::validate_collection))
         .route("/collections/export", axum::routing::post(api::export_collection))
+        .route(
+            "/representations",
+            get(representations::list_representations).post(representations::build_representation),
+        )
+        .route("/representations/{id}", get(representations::get_representation))
+        .route("/representations/{id}/encode", axum::routing::post(representations::encode_representation))
         .route("/runs", get(api::list_runs).post(api::start_run))
         .route("/runs/{id}", get(api::get_run).delete(api::delete_run))
         .route("/runs/{id}/predictions", get(api::get_predictions))

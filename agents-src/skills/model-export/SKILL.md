@@ -62,6 +62,17 @@ models embed their ensemble; the neural nets and SVR/ridge bake their
 standardizer (and any output clamp) into the graph — so `model.onnx`'s input is
 always the *assembled feature vector*, and `featurize.json` is family-agnostic.
 
+### Latent-encoder export (representations)
+
+A **representation** (PCA / autoencoder from `lensing-compression`, the UI's
+"Representations" section) exports its *encoder* to ONNX the same way — an
+`encoder.onnx` written under the representation's artifact directory. The PCA
+encoder is a mean-center + single `Gemm` (`z = (x − mean)·componentsᵀ`, the same
+basis as `pca_components.f32`); the autoencoder encoder is a `Gemm`+activation
+stack. Input is the source vector (or the assembled multimodal feature row), and
+output is the latent — portable for encoding new items outside the framework,
+just like the predictor bundles above.
+
 ## Consuming it
 
 The embedding (`{{embedding_dim}}`-dim) is supplied by the caller — it comes
