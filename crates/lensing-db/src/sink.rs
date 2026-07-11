@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 
-use lensing_core::{BestModelEntry, ModelRecord, RunMeta};
+use lensing_core::{BestModelEntry, InterpAnalysis, ModelRecord, RunMeta};
 use tokio::sync::mpsc;
 
 use crate::queries;
@@ -25,6 +25,8 @@ enum Op {
     ModelArtifactsDelete(String),
     ModelArtifactsRename { old: String, new: String },
     BestModelsReplace(Vec<BestModelEntry>),
+    InterpUpsert(Box<InterpAnalysis>),
+    InterpDelete(String),
 }
 
 #[derive(Clone)]
@@ -85,6 +87,14 @@ impl DbSink {
     pub fn best_models_replace(&self, entries: &[BestModelEntry]) {
         let _ = self.tx.send(Op::BestModelsReplace(entries.to_vec()));
     }
+    /// Mirror an interpretability analysis (running row at start, terminal row
+    /// with `result`/`error` on completion).
+    pub fn interp_upsert(&self, a: &InterpAnalysis) {
+        let _ = self.tx.send(Op::InterpUpsert(Box::new(a.clone())));
+    }
+    pub fn interp_delete(&self, id: &str) {
+        let _ = self.tx.send(Op::InterpDelete(id.to_string()));
+    }
 }
 
 async fn worker(db: crate::Db, mut rx: mpsc::UnboundedReceiver<Op>) {
@@ -130,6 +140,8 @@ async fn worker(db: crate::Db, mut rx: mpsc::UnboundedReceiver<Op>) {
                 queries::rename_model_artifacts(&db, &old, &new).await
             }
             Op::BestModelsReplace(entries) => queries::replace_best_models(&db, &entries).await,
+            Op::InterpUpsert(a) => queries::upsert_interp_analysis(&db, &a).await,
+            Op::InterpDelete(id) => queries::delete_interp_analysis(&db, &id).await,
         };
         if let Err(e) = result {
             eprintln!("[lensing-db] mirror write failed (backfill will heal at next startup): {e:#}");

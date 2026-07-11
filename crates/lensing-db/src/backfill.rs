@@ -9,7 +9,7 @@
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use lensing_core::{ModelDefinition, ModelRecord, RunMeta};
+use lensing_core::{InterpAnalysis, ModelDefinition, ModelRecord, RunMeta};
 use serde::Deserialize;
 
 
@@ -25,6 +25,7 @@ pub struct BackfillReport {
     pub datasets_found: usize,
     pub presets_found: usize,
     pub best_models_found: usize,
+    pub interp_found: usize,
     /// Files that could not be read/parsed: (path, error). Skipped, kept on disk.
     pub problems: Vec<(String, String)>,
 }
@@ -61,6 +62,10 @@ impl BackfillReport {
             "  best models: {:>6} on disk                            | {:>6} in db\n",
             self.best_models_found, db.best_models
         ));
+        out.push_str(&format!(
+            "  interp:      {:>6} on disk                            | {:>6} in db\n",
+            self.interp_found, db.interp_analyses
+        ));
         if self.problems.is_empty() {
             out.push_str("  problems: none\n");
         } else {
@@ -82,6 +87,7 @@ impl BackfillReport {
             && db.datasets >= self.datasets_found as i64
             && db.hp_presets >= self.presets_found as i64
             && db.best_models >= self.best_models_found as i64
+            && db.interp_analyses >= self.interp_found as i64
     }
 }
 
@@ -94,6 +100,7 @@ pub struct TableCounts {
     pub datasets: i64,
     pub hp_presets: i64,
     pub best_models: i64,
+    pub interp_analyses: i64,
 }
 
 pub async fn table_counts(db: &crate::Db) -> Result<TableCounts> {
@@ -105,6 +112,7 @@ pub async fn table_counts(db: &crate::Db) -> Result<TableCounts> {
         datasets: queries::count(db, "datasets").await?,
         hp_presets: queries::count(db, "hp_presets").await?,
         best_models: queries::count(db, "best_models").await?,
+        interp_analyses: queries::count(db, "interp_analyses").await?,
     })
 }
 
@@ -242,6 +250,30 @@ pub async fn backfill(db: &crate::Db, root: &Path) -> Result<BackfillReport> {
                 }
             }
             Err(e) => report.problems.push((group_path.display().to_string(), format!("{e:#}"))),
+        }
+    }
+
+    // -------- interp analyses (file wins for missing; live rows kept) --------
+    // Reconstruct each completed analysis from its result file and upsert only
+    // the ones not already mirrored, so a live row's source/curation is never
+    // clobbered by a disk-derived one.
+    let interp_root = root.join("data/interp");
+    let models_root = root.join("data/models");
+    let existing = queries::interp_analysis_ids(db).await.unwrap_or_default();
+    for dir in subdirs(&interp_root) {
+        let id = match dir.file_name().and_then(|s| s.to_str()) {
+            Some(s) if s.starts_with("interp-") => s.to_string(),
+            _ => continue, // sae-cache and anything not a job dir
+        };
+        let Some(analysis) = InterpAnalysis::from_disk(&interp_root, &models_root, &id, true) else {
+            continue; // unrecognized, or no single result file (e.g. compare)
+        };
+        report.interp_found += 1;
+        if existing.contains(&id) {
+            continue;
+        }
+        if let Err(e) = queries::upsert_interp_analysis(db, &analysis).await {
+            report.problems.push((dir.display().to_string(), format!("{e:#}")));
         }
     }
 

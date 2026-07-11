@@ -48,6 +48,10 @@ pub struct AppState {
     /// Serializes best-models recomputes (a burst of run completions must
     /// not race on the group document).
     pub best_models_lock: tokio::sync::Mutex<()>,
+    /// Auto-queue a per-model SAE analysis when a model is promoted (env
+    /// `LENSING_AUTO_MODEL_SAE`, default on). Applies to the MLP families that
+    /// declare `model_sae_args`; other predictors are silently skipped.
+    pub auto_model_sae: bool,
 }
 
 impl AppState {

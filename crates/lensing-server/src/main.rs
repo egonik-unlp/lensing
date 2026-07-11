@@ -216,6 +216,13 @@ async fn main() -> Result<()> {
         eprintln!("[lensing-server] manual listings: embedding model {embedding_model}");
     }
 
+    // Auto-queue a per-model SAE analysis whenever a model is promoted; opt out
+    // with LENSING_AUTO_MODEL_SAE=0 (or =false). PG_AUTO_MODEL_SAE is honored as
+    // the legacy fallback, matching the other env knobs above.
+    let auto_model_sae = env_or_legacy("LENSING_AUTO_MODEL_SAE", "PG_AUTO_MODEL_SAE")
+        .map(|v| v != "0" && !v.eq_ignore_ascii_case("false"))
+        .unwrap_or(true);
+
     let db_sink = db.clone().map(lensing_db::sink::DbSink::spawn);
     let state = Arc::new(AppState {
         root: root.clone(),
@@ -236,6 +243,7 @@ async fn main() -> Result<()> {
         run_slots: Arc::new(Semaphore::new(cli.max_runs)),
         build_slots: Arc::new(Semaphore::new(1)),
         best_models_lock: tokio::sync::Mutex::new(()),
+        auto_model_sae,
     });
 
     let ui_dist = root.join("ui/dist");
@@ -303,6 +311,12 @@ async fn main() -> Result<()> {
         )
         .route("/interp/embedding-probe", axum::routing::post(interp::start_embedding_probe))
         .route("/interp/sae", axum::routing::post(interp::start_sae))
+        .route("/interp/model-sae", axum::routing::post(interp::start_model_sae))
+        .route("/interp/analyses", get(interp::list_analyses))
+        .route(
+            "/interp/analyses/{id}",
+            get(interp::get_analysis).delete(interp::delete_analysis),
+        )
         .with_state(state);
 
     let app = Router::new()

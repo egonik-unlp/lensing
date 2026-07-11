@@ -25,6 +25,7 @@ repository = "https://github.com/snappler/lensing"
 lensing-core = { package = "lensing-core", path = "crates/lensing-core", version = "0.1.0" }
 lensing-onnx = { package = "lensing-onnx", path = "crates/lensing-onnx", version = "0.1.0" }
 lensing-interp = { package = "lensing-interp", path = "crates/lensing-interp", version = "0.1.0" }
+lensing-sae = { package = "lensing-sae", path = "crates/lensing-sae", version = "0.1.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow = "1"

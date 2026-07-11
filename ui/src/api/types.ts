@@ -494,6 +494,8 @@ export interface InterpModel {
   hidden: number[]
   activation: string
   n_cols: number | null
+  /** Whether the family also implements the per-model SAE (`model-sae`). */
+  supports_model_sae?: boolean
 }
 
 /** One probed stage: the input, a hidden layer, or the model's own output. */
@@ -637,4 +639,115 @@ export interface SaeReport {
   probes: SaeProbe[]
   atoms_by_target_corr: SaeAtom[]
   atoms_by_segment_separation: SaeAtom[]
+}
+
+/* -------- Tool #3: per-model SAE (dictionary learning on activations) -------- */
+
+/** How much of a hidden layer's width the model actually uses (from its SAE). */
+export interface ModelSaeCapacity {
+  n_atoms: number
+  active_atoms: number
+  dead_atoms: number
+  rare_atoms: number
+  utilization: number
+  l0_mean: number
+  l0_frac: number
+  var_explained: number
+}
+
+/** One one-hot segment and whether the model built dedicated atoms for it. */
+export interface ModelSaeSegment {
+  segment: string
+  n_rows: number
+  represented: boolean
+  top_atoms: { atom: number; separation: number; freq: number }[]
+}
+
+/** Target-relevant embedding concepts this layer drops (correlation diff). It's
+ *  computed for every analyzed layer, so the layer to read is chosen post-hoc. */
+export interface LayerDroppedSignal {
+  n_checked: number
+  n_dropped: number
+  dropped: {
+    dataset_atom: number
+    target_corr: number
+    label?: string | null
+    best_match_corr: number
+  }[]
+}
+
+/** The per-model SAE analysis of one hidden layer. */
+export interface ModelSaeLayer {
+  layer: number
+  dim: number
+  capacity: ModelSaeCapacity
+  n_interpretable_concepts: number
+  /** Two ridge probes: the raw layer (`hidden_k:raw`) vs its SAE code (`:sae`). */
+  probe: LayerProbeStage[]
+  atoms_by_target_corr: SaeAtom[]
+  segments: ModelSaeSegment[]
+  /** Dropped-signal diff at THIS layer; null unless the embedding diff ran. */
+  dropped_vs_embedding: LayerDroppedSignal | null
+}
+
+/** Where the target becomes decodable vs where interpretable concepts form. */
+export interface ConceptVsDecodability {
+  layer: number
+  linear_r2_target: number | null
+  linear_r2_log: number | null
+  n_interpretable_concepts: number
+}
+
+/** Parameters + status of the embedding (dropped-signal) diff, if it ran. */
+export interface EmbeddingDiff {
+  ran: boolean
+  match_corr_threshold?: number
+  n_target_atoms?: number
+  n_missing_codes?: number
+}
+
+/** Result of a per-model SAE analysis (`POST /api/interp/model-sae`). */
+export interface ModelSaeReport {
+  tool: string
+  method: string
+  model_dir: string
+  dataset_id: string
+  n_train: number
+  n_test: number
+  hidden: number[]
+  activation: string
+  config: { n_atoms: number; l1: number; epochs: number; lr: number; seed: number }
+  /** Linear decodability at every stage (input → hidden layers → model output). */
+  depth_linear_probe: LayerProbeStage[]
+  layers: ModelSaeLayer[]
+  concept_vs_decodability: ConceptVsDecodability[]
+  embedding_diff: EmbeddingDiff
+}
+
+/* -------- persisted interpretability analyses -------- */
+
+/** The tools whose analyses are persisted and listable. */
+export type InterpTool =
+  | 'model-sae'
+  | 'sae'
+  | 'layer-probe'
+  | 'layer-probe-compare'
+  | 'embedding-probe'
+
+/** One saved analysis. List rows carry metadata only; `result` is present just
+ *  from `GET /api/interp/analyses/{id}`. `tool` selects the report renderer for
+ *  `result`, whose shape is the matching `*Report` (or `LayerProbeComparison`). */
+export interface InterpAnalysis {
+  id: string
+  tool: InterpTool
+  model?: string | null
+  dataset_id: string
+  predictor?: string | null
+  config: Record<string, unknown>
+  status: 'running' | 'done' | 'failed'
+  error?: string | null
+  source: 'manual' | 'auto'
+  created_at: string
+  finished_at?: string | null
+  result?: unknown
 }
