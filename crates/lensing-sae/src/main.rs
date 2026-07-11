@@ -8,12 +8,9 @@
 //!      segment from the rest?
 //! Output is a single JSON result; lensing-server's /api/interp/sae runs it as a job.
 
-mod llm;
-mod sae;
-
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use anyhow::{ensure, Context, Result};
 use clap::{Parser, Subcommand};
@@ -22,6 +19,7 @@ use serde_json::{json, Value};
 use lensing_core::domain::Domain;
 use lensing_core::{ColumnKind, Dataset};
 use lensing_interp::{fit_stages, gather_targets, Stage, StageKind};
+use lensing_sae::{autointerp, llm, sae};
 
 #[derive(Parser)]
 #[command(name = "lensing-sae")]
@@ -234,12 +232,13 @@ fn analyze(
                     target.iter().chain(sep.iter()).map(|t| t.0).filter(|a| seen.insert(*a)).collect();
                 emit(json!({"event":"log","msg":format!(
                     "auto-interp: labeling {} atoms via {}", atoms.len(), cfg.model)}));
-                let content = load_content(&dataset, &ds.row_ids, n_rows);
+                let content = autointerp::load_content(&dataset, &ds.row_ids, n_rows);
                 let vocab = llm::Vocab::from_domain(
                     &Domain::load_or_default(std::path::Path::new(".")).unwrap_or_default(),
                 );
-                let labels =
-                    label_atoms_concurrent(&cfg, &vocab, &out.code_all, m, &atoms, &content);
+                let labels = autointerp::label_atoms_concurrent(
+                    &cfg, &vocab, &out.code_all, m, &atoms, &content,
+                );
                 emit(json!({"event":"log","msg":format!("auto-interp: labeled {}", labels.len())}));
                 labels
             }
@@ -266,7 +265,7 @@ fn analyze(
         .map(|(a, c, f)| {
             let mut v = json!({
                 "atom": a, "target_corr": c, "freq": f, "label": labels.get(a),
-                "top_rows": top_k_rows(&out.code_all, m, *a, 12),
+                "top_rows": autointerp::top_k_rows(&out.code_all, m, *a, 12),
             });
             if emit_codes {
                 v["code"] = json!(atom_code(*a));
@@ -278,7 +277,7 @@ fn analyze(
         .iter()
         .map(|(a, s, f)| json!({
             "atom": a, "separation": s, "freq": f, "label": labels.get(a),
-            "top_rows": top_k_rows(&out.code_all, m, *a, 12),
+            "top_rows": autointerp::top_k_rows(&out.code_all, m, *a, 12),
         }))
         .collect();
 
@@ -485,78 +484,4 @@ fn atom_stats(
     target.truncate(12);
     sep.truncate(12);
     (target, sep)
-}
-
-/// Item text per row: `items.json` is keyed by `str(point_id)` and
-/// `row_ids[i]` is row `i`'s point id, so `content[i] = items[row_ids[i]].content`.
-fn load_content(dataset: &Path, row_ids: &[u64], n_rows: usize) -> Vec<String> {
-    let map: serde_json::Map<String, Value> = std::fs::read_to_string(dataset.join("items.json"))
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default();
-    (0..n_rows)
-        .map(|i| {
-            map.get(&row_ids[i].to_string())
-                .and_then(|v| v.get("content"))
-                .and_then(|c| c.as_str())
-                .unwrap_or("")
-                .to_string()
-        })
-        .collect()
-}
-
-/// The rows that most strongly activate `atom`, highest first (active only).
-fn top_k_rows(code: &[f32], m: usize, atom: usize, k: usize) -> Vec<usize> {
-    let n = code.len() / m;
-    let mut v: Vec<(f32, usize)> =
-        (0..n).map(|r| (code[r * m + atom], r)).filter(|(x, _)| *x > 1e-6).collect();
-    v.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
-    v.into_iter().take(k).map(|(_, r)| r).collect()
-}
-
-fn truncate(s: &str, n: usize) -> String {
-    if s.len() <= n {
-        return s.to_string();
-    }
-    let mut e = n;
-    while e > 0 && !s.is_char_boundary(e) {
-        e -= 1;
-    }
-    format!("{}…", &s[..e])
-}
-
-/// Label each atom from its top-activating items, a few requests at a time
-/// (the LLM calls are independent and network-bound). Atoms that error or have
-/// too few example items are simply left unlabeled.
-fn label_atoms_concurrent(
-    cfg: &llm::LlmConfig,
-    vocab: &llm::Vocab,
-    code: &[f32],
-    m: usize,
-    atoms: &[usize],
-    content: &[String],
-) -> HashMap<usize, String> {
-    let labels = std::sync::Mutex::new(HashMap::new());
-    for chunk in atoms.chunks(6) {
-        std::thread::scope(|s| {
-            for &atom in chunk {
-                let labels = &labels;
-                s.spawn(move || {
-                    let items: Vec<String> = top_k_rows(code, m, atom, 12)
-                        .iter()
-                        .map(|&r| truncate(&content[r], 500))
-                        .filter(|t| !t.is_empty())
-                        .collect();
-                    if items.len() >= 3 {
-                        if let Ok(lbl) = llm::label_atom(cfg, vocab, atom, &items) {
-                            if !lbl.is_empty() {
-                                labels.lock().unwrap().insert(atom, lbl);
-                            }
-                        }
-                    }
-                });
-            }
-        });
-    }
-    labels.into_inner().unwrap()
 }

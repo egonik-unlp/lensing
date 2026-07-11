@@ -33,7 +33,7 @@ use serde_json::{json, Value};
 
 use lensing_core::{ColumnKind, Dataset};
 use lensing_interp::{fit_stages, gather_targets, reference_stage, Stage, StageKind};
-use lensing_sae::sae;
+use lensing_sae::{autointerp, llm, sae};
 
 use crate::model::{self, Activation};
 use crate::scaler::Scaler;
@@ -193,13 +193,23 @@ pub fn run(args: Args, emit: &dyn Fn(Value)) -> Result<()> {
     };
     ensure!(!want.is_empty(), "no valid hidden layers to analyze (model has {n_hidden})");
 
-    // Atom auto-interp labeling (Bills et al. 2023) is a deferred upstream
-    // follow-up; atoms are surfaced unlabeled here. `label_atoms` is accepted for
-    // API stability so the request/CLI surface is stable when it lands.
-    if label_atoms {
+    // Atom auto-interp labeling (Bills et al. 2023): optionally label each
+    // layer's top atoms with an LLM from their top-activating items. Gated on
+    // --label-atoms AND OPENAI_API_KEY; the item text and domain vocab are
+    // loaded once here and reused across every analyzed layer.
+    let llm_cfg = if label_atoms { llm::LlmConfig::from_env() } else { None };
+    if label_atoms && llm_cfg.is_none() {
         emit(json!({"event":"log","msg":
-            "atom auto-labeling is not available in this build; atoms returned unlabeled"}));
+            "--label-atoms set but OPENAI_API_KEY missing; atoms returned unlabeled"}));
     }
+    let vocab = llm::Vocab::from_domain(
+        &lensing_core::domain::Domain::load_or_default(std::path::Path::new(".")).unwrap_or_default(),
+    );
+    let content: Vec<String> = if llm_cfg.is_some() {
+        autointerp::load_content(&dataset_dir, &ds.row_ids, n_rows)
+    } else {
+        Vec::new()
+    };
 
     // Embedding diff: parse the dataset SAE's target atoms once (standardized).
     // The costly step is training the per-layer SAEs; the diff itself is a cheap
@@ -271,15 +281,22 @@ pub fn run(args: Args, emit: &dyn Fn(Value)) -> Result<()> {
         by_target.sort_by(|&a, &b| corr[b].abs().partial_cmp(&corr[a].abs()).unwrap());
         let n_concepts = by_target.iter().filter(|&&i| corr[i].abs() >= CONCEPT_CORR).count();
         let shown: Vec<usize> = by_target.iter().take(12).copied().collect();
-        // Atoms are surfaced unlabeled (auto-interp labeling is a deferred
-        // upstream follow-up); the `label` field stays null.
-        let labels: HashMap<usize, String> = HashMap::new();
+        // Auto-interp: label this layer's surfaced atoms from their
+        // top-activating items (empty when --label-atoms/OPENAI_API_KEY absent).
+        let labels: HashMap<usize, String> = match &llm_cfg {
+            Some(cfg) => {
+                emit(json!({"event":"log","msg":format!(
+                    "layer {k}: labeling {} atoms via {}", shown.len(), cfg.model)}));
+                autointerp::label_atoms_concurrent(cfg, &vocab, &out.code_all, m, &shown, &content)
+            }
+            None => HashMap::new(),
+        };
         let atoms_by_target: Vec<Value> = shown
             .iter()
             .map(|&i| json!({
                 "atom": i, "target_corr": corr[i], "freq": freq[i],
                 "label": labels.get(&i),
-                "top_rows": top_k_rows(&out.code_all, m, i, 12),
+                "top_rows": autointerp::top_k_rows(&out.code_all, m, i, 12),
             }))
             .collect();
 
@@ -568,15 +585,6 @@ fn standardize_col(x: &[f32], stride: usize, j: usize, n_rows: usize) -> Vec<f64
 /// product.
 fn pearson_pre(a: &[f64], b: &[f64], n_rows: usize) -> f64 {
     a.iter().zip(b).map(|(x, y)| x * y).sum::<f64>() / n_rows.max(1) as f64
-}
-
-/// The rows that most strongly activate `atom`, highest first (active only).
-fn top_k_rows(code: &[f32], m: usize, atom: usize, k: usize) -> Vec<usize> {
-    let n = code.len() / m;
-    let mut v: Vec<(f32, usize)> =
-        (0..n).map(|r| (code[r * m + atom], r)).filter(|(x, _)| *x > 1e-6).collect();
-    v.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
-    v.into_iter().take(k).map(|(_, r)| r).collect()
 }
 
 /// Column mean/std over the train split (for standardizing an activation block).
