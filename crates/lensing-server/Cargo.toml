@@ -10,6 +10,7 @@ description = "Lensing hub/worker/inference server: API, UI, run orchestration, 
 lensing-core = { workspace = true }
 lensing-db = { package = "lensing-db", path = "../lensing-db", version = "0.1.0" }
 lensing-pipeline = { package = "lensing-pipeline", path = "../lensing-pipeline", version = "0.1.0" }
+lensing-compression = { workspace = true }
 anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

@@ -24,6 +24,9 @@ import DefinitionDetailView from './views/DefinitionDetailView'
 import DatasetsView from './views/DatasetsView'
 import DatasetDetailView from './views/DatasetDetailView'
 import NewDatasetView from './views/NewDatasetView'
+import RepresentationsView from './views/RepresentationsView'
+import RepresentationDetailView from './views/RepresentationDetailView'
+import NewRepresentationView from './views/NewRepresentationView'
 import ListingsView from './views/ListingsView'
 import NewListingView from './views/NewListingView'
 import ListingDetailView from './views/ListingDetailView'
@@ -39,6 +42,9 @@ const router = createBrowserRouter([
       { path: 'runs/:runId', element: <RunDetailView /> },
       { path: 'compare', element: <CompareView /> },
       { path: 'predictors/:name', element: <PredictorDetailView /> },
+      { path: 'representations', element: <RepresentationsView /> },
+      { path: 'representations/new', element: <NewRepresentationView /> },
+      { path: 'representations/:id', element: <RepresentationDetailView /> },
       { path: 'datasets', element: <DatasetsView /> },
       { path: 'datasets/new', element: <NewDatasetView /> },
       { path: 'datasets/:id', element: <DatasetDetailView /> },

@@ -140,6 +140,27 @@ export function ModelRef({ name, self = false }: { name: string; self?: boolean 
   return <Ref to={`/models/${name}`} glyph="ml" label={name} full={name} kind="model" self={self} />
 }
 
+export function RepresentationRef({
+  id,
+  name,
+  self = false,
+}: {
+  id: string
+  name?: string
+  self?: boolean
+}) {
+  return (
+    <Ref
+      to={`/representations/${id}`}
+      glyph="rp"
+      label={name ?? id}
+      full={id}
+      kind="representation"
+      self={self}
+    />
+  )
+}
+
 export function DefinitionRef({ name, self = false }: { name: string; self?: boolean }) {
   return (
     <Ref to={`/definitions/${name}`} glyph="def" label={name} full={name} kind="definition" self={self} />

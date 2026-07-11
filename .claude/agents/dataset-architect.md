@@ -84,6 +84,23 @@ justify `pca_dims` and the redundancy report to drop features that duplicate
 each other. A proposal that picks `pca_dims` without an EVR number is not
 done.
 
+## 4b. Design a latent representation (compression)
+
+Beyond a dataset's internal `pca_dims`, you can design a **representation**: a
+compressor (PCA / autoencoder / sparse-AE) fit over a source collection whose
+dense latent becomes a new collection datasets build on (`lensing-compression`,
+the UI's "Representations" section). Choose method + latent dim justified by a
+metric — cumulative **EVR** (PCA) or per-block **reconstruction R²** (AE) — the
+same discipline as `pca_dims`. Never propose a `latent` without the number.
+
+```sh
+curl -s localhost:8080/api/representations                       # list
+curl -s localhost:8080/api/representations -H content-type:application/json -d '{
+  "name": "...", "method": "autoencoder", "latent": 64,
+  "source_collection": "<corpus>", "sink_collection": "<corpus>_ae",
+  "epochs": 200, "hidden": [256, 64] }'                        # build (polls via /api/builds/<id>)
+```
+
 ## 5. Build parameters
 
 `POST /api/datasets` body (every field optional; defaults shown):

@@ -6,7 +6,10 @@ pub mod features;
 pub mod inference;
 pub mod numerics;
 pub mod openai;
-pub mod pca;
+// PCA now lives in `lensing-compression` (one Compressor among PCA + autoencoder).
+// Re-exported so every consumer (`build`, `inference`, the ONNX bundle) and the
+// `pca_components.f32` artifact format stay unchanged.
+pub use lensing_compression::pca;
 pub mod qdrant;
 pub mod quality;
 pub mod redundancy;

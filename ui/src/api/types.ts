@@ -177,6 +177,40 @@ export interface BuildRequest {
   vocab_top_n?: Record<string, number>
 }
 
+/* ---------------- latent representations ---------------- */
+
+export type CompressionMethod = 'pca' | 'autoencoder' | 'sparse_ae'
+
+/** A compressor's quality metric: PCA reports EVR, the AE per-block R². */
+export type RepresentationQuality =
+  | { kind: 'evr'; evr: number[]; cumulative_evr: number[]; captured: number }
+  | { kind: 'block_r2'; blocks: [string, number][] }
+  | null
+
+export interface RepresentationMeta {
+  id: string
+  name: string
+  method: CompressionMethod
+  latent_dim: number
+  source_collection: string
+  sink_collection: string
+  created_at: string
+  n_points: number
+  quality: RepresentationQuality
+}
+
+export interface BuildRepresentationRequest {
+  name: string
+  method: CompressionMethod
+  latent: number
+  sink_collection: string
+  source_collection?: string | null
+  epochs?: number | null
+  hidden?: number[] | null
+  sparse_weight?: number | null
+  distance?: string
+}
+
 /** Status of a heavy async job (analyze, export). */
 export type JobStatus =
   | { state: 'running'; stage: string }

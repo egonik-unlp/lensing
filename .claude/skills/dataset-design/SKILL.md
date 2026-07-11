@@ -105,6 +105,36 @@ Takes the same body as a build, returns `{"job_id": ...}` — poll
 is `done` (full result under `.result`) or `failed`. Use it to pick
 `pca_dims` and spot redundant features before building.
 
+### Design a latent representation (compression: PCA / autoencoder)
+
+`pca_dims` is one point on a bigger axis: **how the corpus is represented**
+before a dataset ever sees it. A *representation* is a compressor (PCA, an
+autoencoder, or a sparse autoencoder) fit over a source collection, producing a
+dense latent collection that datasets can then build on — the "Representations"
+section of the UI, backed by `lensing-compression`.
+
+```sh
+# List / inspect
+curl -s localhost:8080/api/representations
+curl -s localhost:8080/api/representations/<id>
+# Build one (async, polls like a dataset build via GET /api/builds/<id>)
+curl -s localhost:8080/api/representations -H content-type:application/json -d '{
+  "name": "Song AE", "method": "autoencoder", "latent": 64,
+  "source_collection": "<corpus>", "sink_collection": "<corpus>_song_ae",
+  "epochs": 200, "hidden": [256, 64] }'
+```
+
+Pick method + latent dim **justified by a metric**, never a round number:
+- **PCA** → cumulative **EVR** (same curve as `analyze`); report EVR captured at
+  the chosen `latent`.
+- **autoencoder / sparse-AE** → per-block **reconstruction R²** (each modality
+  weighted equally, so a wide text block doesn't drown a narrow acoustic one).
+
+A representation proposal that picks a `latent` without an EVR or block-R²
+number behind it is not done. Once built, a dataset can be built on the latent
+collection (it appears in the source-collection picker tagged "latent
+representation").
+
 ### Build
 
 ```sh
