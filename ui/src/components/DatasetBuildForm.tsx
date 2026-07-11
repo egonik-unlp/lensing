@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { api, pollJob } from '../api/client'
 import type {
   AnalyzeResult,
@@ -132,6 +133,9 @@ export function DatasetBuildForm({ onBuilt }: { onBuilt: (id: string) => void })
 
   // Source-collection picker (any Qdrant collection; shape is validated below).
   const [collections, setCollections] = useState<string[]>([])
+  // Latent collection name → representation id, so the picker can flag a
+  // collection that is itself a built representation (build a dataset on it).
+  const [latentColls, setLatentColls] = useState<Record<string, string>>({})
 
   // Shape validation of the selected collection. Auto-runs on every change;
   // hard errors disable Build (the server re-checks, this is just early UX).
@@ -153,6 +157,12 @@ export function DatasetBuildForm({ onBuilt }: { onBuilt: (id: string) => void })
         setCollections(r.collections)
         setReq((q) => (q.collection ? q : { ...q, collection: r.source }))
       },
+      () => {},
+    )
+    // Which source collections are latent representations, so a dataset can be
+    // built explicitly on one (its sink collection).
+    api.listRepresentations().then(
+      (reps) => setLatentColls(Object.fromEntries(reps.map((r) => [r.sink_collection, r.id]))),
       () => {},
     )
   }, [])
@@ -323,10 +333,15 @@ export function DatasetBuildForm({ onBuilt }: { onBuilt: (id: string) => void })
             {collections.map((c) => (
               <option key={c} value={c}>
                 {c}
+                {latentColls[c] ? ' — latent representation' : ''}
               </option>
             ))}
           </select>
-          <span className="hp-hint">any Qdrant collection; shape is checked below</span>
+          <span className="hp-hint">
+            any Qdrant collection; shape is checked below. Collections tagged “latent representation”
+            are the output of a{' '}
+            <Link to="/representations">representation</Link> — build a dataset directly on the latent.
+          </span>
         </div>
       )}
       <CollectionShapePanel validation={validation} validating={validating} error={validateError} />

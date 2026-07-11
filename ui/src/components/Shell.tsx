@@ -27,6 +27,12 @@ export default function Shell() {
           </NavLink>
           {/* The pipeline spine, in pipeline order: build → train → promote. */}
           <nav aria-label="Primary">
+            {/* Representations sit upstream of datasets: a dataset can be built
+                on a latent collection, so the spine starts with how the data is
+                represented, then build → train → promote. */}
+            <NavLink to="/representations" className="nav-link">
+              Representations
+            </NavLink>
             <NavLink to="/datasets" className="nav-link">
               Datasets
             </NavLink>

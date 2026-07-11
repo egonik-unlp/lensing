@@ -1,5 +1,10 @@
 //! PCA via covariance eigendecomposition, pure Rust (nalgebra, no LAPACK).
 //! Fit on train rows only; f64 internally, f32 in artifacts.
+//!
+//! This module was hoisted out of `lensing-pipeline` into `lensing-compression`
+//! so PCA is one implementation of the shared [`crate::Compressor`] abstraction
+//! alongside the autoencoder. `lensing-pipeline` re-exports it, so the artifact
+//! format (`mean` + row-major `components` f32) and every consumer stay unchanged.
 
 use anyhow::{ensure, Result};
 use nalgebra::{DMatrix, DVector, SymmetricEigen};
@@ -199,11 +204,141 @@ impl PcaModel {
         }
         out
     }
+
+    /// Reconstruct the original space from projected latents (row-major n × k
+    /// → n × d): `x̂ = z · components + mean`. Used by the [`crate::Compressor`]
+    /// impl; PCA reconstruction is exact up to the truncated components.
+    pub fn reconstruct_all(&self, latents: &[f32], k: usize) -> Vec<f32> {
+        let n = latents.len() / k;
+        let d = self.mean.len();
+        let mut out = Vec::with_capacity(n * d);
+        for i in 0..n {
+            let z = &latents[i * k..(i + 1) * k];
+            for j in 0..d {
+                let mut acc = self.mean[j];
+                for (c, &zc) in z.iter().enumerate() {
+                    acc += zc as f64 * self.components[(c, j)];
+                }
+                out.push(acc as f32);
+            }
+        }
+        out
+    }
+}
+
+// ----------------------------------------------------------------------------
+// PCA as a `Compressor`.
+// ----------------------------------------------------------------------------
+
+use std::path::Path;
+
+use crate::Compressor;
+
+/// PCA wrapped as a [`Compressor`]: the linear compressor. Configured with a
+/// target latent dim `k`; `fit` populates `model`.
+pub struct Pca {
+    k: usize,
+    d: usize,
+    model: Option<PcaModel>,
+    spectrum: Option<Spectrum>,
+}
+
+impl Pca {
+    pub fn new(k: usize) -> Self {
+        Pca { k, d: 0, model: None, spectrum: None }
+    }
+
+    /// The fitted model, once `fit` has run.
+    pub fn model(&self) -> Option<&PcaModel> {
+        self.model.as_ref()
+    }
+
+    fn fitted(&self) -> Result<&PcaModel> {
+        self.model.as_ref().ok_or_else(|| anyhow::anyhow!("PCA not fitted"))
+    }
+}
+
+impl Compressor for Pca {
+    fn fit(&mut self, x: &[f32], d: usize, rows: &[u32]) -> Result<()> {
+        self.d = d;
+        let (model, spectrum) = fit_with_spectrum(x, d, rows, self.k)?;
+        self.model = Some(model);
+        self.spectrum = Some(spectrum);
+        Ok(())
+    }
+
+    fn encode(&self, x: &[f32], d: usize) -> Result<Vec<f32>> {
+        Ok(self.fitted()?.project_all(x, d))
+    }
+
+    fn reconstruct(&self, z: &[f32]) -> Result<Vec<f32>> {
+        Ok(self.fitted()?.reconstruct_all(z, self.k))
+    }
+
+    fn latent_dim(&self) -> usize {
+        self.k
+    }
+
+    fn quality(&self) -> serde_json::Value {
+        match (&self.model, &self.spectrum) {
+            (Some(m), Some(s)) => serde_json::json!({
+                "kind": "evr",
+                "evr": m.explained_variance_ratio,
+                "cumulative_evr": s.cumulative_evr(),
+                "captured": s.cumulative_evr().get(self.k.saturating_sub(1)).copied().unwrap_or(0.0),
+            }),
+            _ => serde_json::Value::Null,
+        }
+    }
+
+    /// Persist in the existing artifact format: `pca.mean` (f32) + row-major
+    /// `pca_components.f32` + the EVR curve — so `featurize.json` consumers and
+    /// `PcaModel::from_parts` keep working unchanged.
+    fn save(&self, dir: &Path) -> Result<()> {
+        let m = self.fitted()?;
+        std::fs::create_dir_all(dir).ok();
+        let mean: Vec<f32> = m.mean.iter().map(|v| *v as f32).collect();
+        // components row-major k×d: iterate rows then cols.
+        let comp_row_major: Vec<f32> = (0..m.k())
+            .flat_map(|r| (0..m.mean.len()).map(move |c| (r, c)))
+            .map(|(r, c)| m.components[(r, c)] as f32)
+            .collect();
+        write_f32(&dir.join("pca_mean.f32"), &mean)?;
+        write_f32(&dir.join("pca_components.f32"), &comp_row_major)?;
+        let evr = serde_json::to_string(&m.explained_variance_ratio)?;
+        std::fs::write(dir.join("pca_evr.json"), evr)?;
+        Ok(())
+    }
+
+    fn export_encoder_onnx(&self, dir: &Path) -> Result<()> {
+        let m = self.fitted()?;
+        let d = m.mean.len();
+        let k = m.k();
+        let mean: Vec<f32> = m.mean.iter().map(|v| *v as f32).collect();
+        // components_t: row-major [d, k], element (i,j) = components[j,i].
+        let mut comp_t = Vec::with_capacity(d * k);
+        for i in 0..d {
+            for j in 0..k {
+                comp_t.push(m.components[(j, i)] as f32);
+            }
+        }
+        crate::onnx::export_pca_encoder(dir, &mean, comp_t, d, k)
+    }
+}
+
+fn write_f32(path: &Path, data: &[f32]) -> Result<()> {
+    let mut bytes = Vec::with_capacity(data.len() * 4);
+    for v in data {
+        bytes.extend_from_slice(&v.to_le_bytes());
+    }
+    std::fs::write(path, bytes)?;
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lensing_core::shuffle::SplitMix64;
 
     /// PCA of points along a known direction recovers that direction.
     #[test]
@@ -211,13 +346,13 @@ mod tests {
         let d = 4;
         let dir = [0.5f32, 0.5, 0.5, 0.5];
         let mut vectors = Vec::new();
-        let mut rng = crate::shuffle::SplitMix64(7);
+        let mut rng = SplitMix64(7);
         let n = 200;
         for _ in 0..n {
             let t = (rng.next_u64() % 1000) as f32 / 100.0 - 5.0;
             let noise = (rng.next_u64() % 100) as f32 / 1000.0;
-            for j in 0..d {
-                vectors.push(t * dir[j] + if j == 0 { noise } else { 0.0 });
+            for (j, &dj) in dir.iter().enumerate() {
+                vectors.push(t * dj + if j == 0 { noise } else { 0.0 });
             }
         }
         let rows: Vec<u32> = (0..n as u32).collect();
@@ -237,7 +372,7 @@ mod tests {
     fn spectrum_evr_matches_fit() {
         let d = 6;
         let mut vectors = Vec::new();
-        let mut rng = crate::shuffle::SplitMix64(11);
+        let mut rng = SplitMix64(11);
         let n = 300;
         for _ in 0..n {
             for _ in 0..d {

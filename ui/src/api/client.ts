@@ -1,6 +1,7 @@
 import type {
   BestModelGroup,
   BlendFile,
+  BuildRepresentationRequest,
   BuildRequest,
   BuildStatus,
   CollectionValidation,
@@ -21,6 +22,7 @@ import type {
   Predictor,
   PreflightResponse,
   QualityFilterConfig,
+  RepresentationMeta,
   RunMeta,
 } from './types'
 
@@ -76,6 +78,13 @@ export const api = {
   buildDataset: (req: BuildRequest) =>
     request<{ build_id: string }>('/api/datasets', post(req)).then((r) => r.build_id),
   getBuild: (id: string) => request<BuildStatus>(`/api/builds/${id}`),
+  listRepresentations: () =>
+    request<{ representations: RepresentationMeta[] }>('/api/representations').then((r) => r.representations),
+  getRepresentation: (id: string) => request<RepresentationMeta>(`/api/representations/${id}`),
+  buildRepresentation: (req: BuildRepresentationRequest) =>
+    request<{ build_id: string }>('/api/representations', post(req)).then((r) => r.build_id),
+  encodeRepresentation: (id: string, vector: number[]) =>
+    request<{ latent: number[] }>(`/api/representations/${id}/encode`, post({ vector })),
   getJob: (id: string) => request<JobStatus>(`/api/jobs/${id}`),
   renameDataset: (id: string, name: string) =>
     request<Manifest>(`/api/datasets/${id}/rename`, post({ name })),

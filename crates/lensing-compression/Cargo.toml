@@ -1,0 +1,21 @@
+[package]
+name = "lensing-compression"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Information compression / latent representations for Lensing: a Compressor abstraction over PCA and autoencoders (incl. sparse), latent generation over a vector store, and ONNX encoder export"
+
+[dependencies]
+lensing-core = { workspace = true }
+lensing-onnx = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+nalgebra = "0.35"
+burn = { version = "0.21", features = ["ndarray", "autodiff"] }
+reqwest = { version = "0.13", features = ["blocking", "json"] }
+
+[lib]
+name = "lensing_compression"
