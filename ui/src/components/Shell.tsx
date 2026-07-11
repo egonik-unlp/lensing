@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { useDomain } from '../lib/DomainContext'
 import { cap } from '../lib/format'
+import CompareTray from './CompareTray'
 import './shell.css'
 
 export default function Shell() {
@@ -59,6 +60,7 @@ export default function Shell() {
       <main className="content">
         <Outlet />
       </main>
+      <CompareTray />
     </>
   )
 }
