@@ -50,6 +50,19 @@ impl<B: Backend> Sae<B> {
         let [_d, m] = self.encoder.weight.dims();
         m
     }
+    /// Encoder weight (row-major `[d, m]`, so `w[i*m + j]` = input dim `i` →
+    /// atom `j`) and bias (`[m]`). Lets a client recompute a query's atom
+    /// activations offline: `relu(standardize(x)·W[:,j] + b[j])`.
+    pub fn encoder_params(&self) -> (Vec<f32>, Vec<f32>) {
+        let w = self.encoder.weight.val().into_data().to_vec::<f32>().unwrap();
+        let b = self
+            .encoder
+            .bias
+            .as_ref()
+            .map(|b| b.val().into_data().to_vec::<f32>().unwrap())
+            .unwrap_or_default();
+        (w, b)
+    }
 }
 
 pub struct SaeConfig {
