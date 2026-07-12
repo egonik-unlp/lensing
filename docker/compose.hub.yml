@@ -1,0 +1,74 @@
+# Split deployment — the SERVER/HUB machine.
+# Runs the data stores + the hub (UI + API + dataset builds + local training).
+# Worker and inference nodes on OTHER machines point their DATABASE_URL /
+# LENSING_HUB_URL here (see docker/compose.worker.yml, docker/compose.infer.yml).
+#
+# Run from the repo root:
+#   docker compose -f docker/compose.hub.yml --env-file .env up -d --build --wait
+#
+# Expose to the other machines: the hub port (8080) and the Postgres host port
+# so remote workers/infer can reach the queue + dataset API. Bind to a reachable
+# interface / open the firewall accordingly.
+name: ${COMPOSE_PROJECT_NAME:-lensing}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ${COMPOSE_PROJECT_NAME:-lensing}-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${LENSING_DB_USER:-pg}
+      POSTGRES_PASSWORD: ${LENSING_DB_PASSWORD:-pg}
+      POSTGRES_DB: ${LENSING_DB_NAME:-lensing}
+    ports:
+      # Reachable from other machines — remote roles connect here.
+      - "${LENSING_DB_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${LENSING_DB_USER:-pg} -d ${LENSING_DB_NAME:-lensing}"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: ${COMPOSE_PROJECT_NAME:-lensing}-qdrant
+    restart: unless-stopped
+    profiles: ["qdrant"]
+    ports:
+      - "${LENSING_QDRANT_PORT:-6333}:6333"
+      - "${LENSING_QDRANT_GRPC_PORT:-6334}:6334"
+    volumes:
+      - qdrant_storage:/qdrant/storage
+
+  hub:
+    image: ${LENSING_IMAGE:-lensing-runtime}:${LENSING_TAG:-latest}
+    build:
+      context: ..
+      target: runtime
+    container_name: ${COMPOSE_PROJECT_NAME:-lensing}-hub
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://${LENSING_DB_USER:-pg}:${LENSING_DB_PASSWORD:-pg}@postgres:5432/${LENSING_DB_NAME:-lensing}
+      LENSING_QDRANT_URL: ${LENSING_QDRANT_URL:-http://qdrant:6333}
+      LENSING_ROLE: hub
+      LENSING_HUB_PORT: 8080
+      LENSING_MIGRATE_ON_START: ${LENSING_MIGRATE_ON_START:-true}
+    ports:
+      - "${LENSING_HUB_PORT:-8080}:8080"
+    volumes:
+      - lensing_data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/api/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  pgdata:
+  qdrant_storage:
+  lensing_data:

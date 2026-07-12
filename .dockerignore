@@ -1,0 +1,29 @@
+# Keep the build context small and the image reproducible: everything below is
+# either regenerable build state or host-only state that must NOT bake into an
+# image. The Dockerfile rebuilds target/, ui/dist and predictors/.venv itself.
+target/
+data/
+**/.venv/
+**/node_modules/
+ui/dist/
+dist/
+
+# Julia lock state (rebuilt per host if the julia predictors are used)
+predictors/flux-mlp/Manifest.toml
+predictor/flux-cnn/Manifest.toml
+predictors/flux-cnn/Manifest.toml
+
+# Python caches
+**/__pycache__/
+**/*.pyc
+
+# Local secrets / per-instance infra config (compose reads .env at runtime, not
+# from the image)
+.env
+
+# Generated docs and VCS
+docs/figures/*.pdf
+docs/experiments.pdf
+docs/api.pdf
+.git/
+.zig-cache/
