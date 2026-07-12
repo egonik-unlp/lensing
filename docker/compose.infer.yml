@@ -1,0 +1,30 @@
+# Split deployment — an INFERENCE machine (no local data stores).
+# Materializes promoted models from the shared Postgres at startup and serves
+# ONLY the predict surface. Restart the container to pick up newly promoted
+# models. Uses the lean `infer` image (Rust/burn families); to serve
+# Python-family models set LENSING_INFER_IMAGE to a `runtime`-target image.
+#
+# In .env on this machine set the REMOTE Postgres (not localhost):
+#   DATABASE_URL=postgres://pg:pg@<hub-host>:5433/lensing
+# Qdrant is only needed for point_ids predicts; inline-items predicts are
+# self-contained. Set LENSING_QDRANT_URL if you use point_ids.
+#
+# Run from the repo root:
+#   docker compose -f docker/compose.infer.yml --env-file .env up -d --build
+name: ${COMPOSE_PROJECT_NAME:-lensing}
+
+services:
+  infer:
+    image: ${LENSING_INFER_IMAGE:-lensing-infer}:${LENSING_TAG:-latest}
+    build:
+      context: ..
+      target: infer
+    container_name: ${COMPOSE_PROJECT_NAME:-lensing}-infer
+    restart: unless-stopped
+    environment:
+      LENSING_ROLE: infer
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL to the hub's Postgres, e.g. postgres://pg:pg@hub-host:5433/lensing}
+      LENSING_INFER_PORT: 8090
+      LENSING_QDRANT_URL: ${LENSING_QDRANT_URL:-http://qdrant:6333}
+    ports:
+      - "${LENSING_INFER_PORT:-8090}:8090"

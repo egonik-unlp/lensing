@@ -68,6 +68,12 @@ Day-1 checklist for a new project (e.g. used-car prices, salaries):
    UI). `models.toml` ships with the original definitions — delete its
    entries for a fresh start (while the server is stopped).
 
+   *Containerized instead?* `cp docker/.env.example .env && python3
+   scripts/render-deploy-env.py --write` (seeds the per-instance container
+   names/ports from `domain.toml`), then `zig build docker-up` (or `docker
+   compose --profile hub up -d --build --wait`). For splitting hub / workers /
+   inference across machines, see **docs/DEPLOY.md §Deploy with Docker**.
+
 7. **First dataset** — `/dataset-design` (preflight the quality filters,
    then build).
 
@@ -86,7 +92,8 @@ Day-1 checklist for a new project (e.g. used-car prices, salaries):
 What you should NOT need to touch: the Rust crates (lensing-core/lensing-db/
 lensing-pipeline/lensing-server), the predictor plugins + `registry.toml` (generic
 regressors over the artifact format), the UI (renders from `GET
-/api/domain`), `docker-compose.yml`, `build.zig`. If your domain needs a
+/api/domain`), `docker-compose.yml`, the `Dockerfile` / `docker/` deploy files,
+`build.zig`. If your domain needs a
 quality rule the built-in set lacks, add a rule evaluator in
 `crates/lensing-pipeline/src/quality.rs` (keys are stable identifiers; bind +
 label via domain.toml).

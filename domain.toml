@@ -136,6 +136,19 @@ definition_naming_example = ""
 # scrape-from-the-web ingestion story set this to false.
 ingestion = true
 
+# Deployment (Docker). Consumed by scripts/render-deploy-env.py to seed the
+# deploy knobs in .env; the Rust server IGNORES this section. compose_project
+# prefixes container/network/volume names so multiple instances coexist on one
+# host (D1) — leave unset to derive it from [project].name. The *_port values
+# are HOST-side mappings; container-internal ports are fixed (hub 8080, infer
+# 8090, postgres 5432). Bump them per instance to avoid collisions on a shared
+# host, exactly like the port-partitioning of qdrant_url above.
+[deploy]
+compose_project = ""
+hub_port = 8080
+infer_port = 8090
+db_port = 5433
+
 [quality.rule_labels]
 "nonpositive-price" = "target ≤ 0"
 "price-outlier" = "target outlier"

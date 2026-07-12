@@ -46,6 +46,10 @@ cargo run --release -p lensing-server           # http://localhost:8080
 Dev loop for the UI: a running server plus `zig build dev` (or `npm run dev`
 in `ui/`; Vite proxies `/api` to :8080).
 
+Containerized deploy: `cp docker/.env.example .env && zig build docker-up`
+runs the whole instance in Docker (one image, three roles — hub / worker /
+inference — that also split across machines). See **docs/DEPLOY.md**.
+
 The Julia predictors need their packages installed once: `zig build
 julia-setup` (or `julia --project=predictors/flux-mlp -e 'using Pkg;
 Pkg.instantiate()'`, same for `flux-cnn`). The Python predictors with real
@@ -72,6 +76,9 @@ cache, so steps are cheap to re-run. `zig build -l` prints this list.
 | `zig build check` | everything CI would run: `test` + `lint` + `py-check` |
 | `zig build julia-setup` | one-time `Pkg.instantiate()` for the flux-mlp + flux-cnn predictors |
 | `zig build py-setup` | one-time `predictors/.venv` with ridge + torch-cnn deps (CPU torch) |
+| `zig build docker-build` | build the `lensing-runtime` + `lensing-infer` images (`docker compose build`) |
+| `zig build docker-up` | containerized single-host instance (`-Ddocker-profile=hub\|worker\|infer`) |
+| `zig build deploy-env` | seed `.env` deploy identity/ports from `domain.toml` `[deploy]` |
 
 Options (apply to `serve` / `dataset`):
 
