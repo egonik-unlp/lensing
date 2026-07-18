@@ -140,6 +140,36 @@ pub struct SplitInfo {
     pub n_test: usize,
 }
 
+/// Descriptor for a SEQUENCE dataset directory (next-item / ranking task),
+/// written as `sequence-manifest.json`. Parallel to [`Manifest`] — it does NOT
+/// share the flat-matrix / scalar-target invariants; consumers load it via
+/// [`crate::artifact::SequenceDataset`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SequenceManifest {
+    pub dataset_id: String,
+    pub created_at: String,
+    /// Always `"sequence"` — discriminates from pointwise datasets.
+    pub kind: String,
+    pub n_sessions: usize,
+    /// Item-vocabulary size (item indices in `sessions.u32` are `< n_items`).
+    pub n_items: usize,
+    pub latent_dim: usize,
+    /// Collection the per-item latents were taken from.
+    pub latent_source: String,
+    pub split: SequenceSplit,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SequenceSplit {
+    /// `"leave_last_out"` | `"chronological_by_session_start"`.
+    pub strategy: String,
+    /// ISO cut timestamp for chronological splits; absent for leave-last-out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cut: Option<String>,
+    pub n_train_sessions: usize,
+    pub n_test_sessions: usize,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FeatureConfig {
     pub pca_dims: usize,

@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 /// `meta.json` in a run directory. Owned by lensing-server.
@@ -88,6 +90,30 @@ pub struct Metrics {
     /// Multiclass macro-averaged F1.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub macro_f1: Option<f64>,
+    // ---- ranking (next-item retrieval; task = ranking) ----
+    /// Recall@k: fraction of test cases whose true next item appears in the
+    /// top-k retrieved candidates. `k` is fixed by the run config; higher-better.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recall_at_k: Option<f64>,
+    /// Mean reciprocal rank of the true next item over the ranked candidate
+    /// list (0 if outside the evaluated top-N); higher-better.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mrr: Option<f64>,
+    /// Hit-rate@k: fraction of cases with at least one relevant item in the
+    /// top-k (== recall@k for a single held-out next item; distinct for
+    /// multi-target sequences); higher-better.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hit_rate: Option<f64>,
+    // ---- graded-relevance ranking (keyed by relevance-field name) ----
+    /// Graded-relevance recall@k, keyed by the item field it credits (a
+    /// top-k candidate sharing the truth's value on that field counts as a
+    /// partial hit). Keys come from `[sequence].relevance_fields`; the
+    /// framework hardcodes no field name. Absent for non-graded runs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub graded_recall_at_k: Option<BTreeMap<String, f64>>,
+    /// Graded-relevance MRR, keyed by relevance-field name (see above).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub graded_mrr: Option<BTreeMap<String, f64>>,
 }
 
 /// One element of `predictions.json` written by a predictor.
@@ -103,6 +129,10 @@ pub struct Prediction {
     /// absent for regression.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub proba: Option<Vec<f64>>,
+    /// Ranking (next-item) predictors: the top-k retrieved item ids,
+    /// best-first for this case. Absent for pointwise predictors.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub top_k_ids: Option<Vec<u64>>,
 }
 
 /// One element of a predict subcommand's output file. There is no ground truth
@@ -117,6 +147,10 @@ pub struct InferencePrediction {
     /// for regression.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub proba: Option<Vec<f64>>,
+    /// Ranking (next-item) predictors: the top-k retrieved item ids,
+    /// best-first for this case. Absent for pointwise predictors.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub top_k_ids: Option<Vec<u64>>,
 }
 
 /// One JSON line on a predictor's stdout.
@@ -300,9 +334,54 @@ pub fn compute_multiclass_metrics(actual: &[usize], proba: &[Vec<f64>], k: usize
     }
 }
 
+/// Ranking (next-item) metrics from per-case ranked candidate id lists
+/// (best-first) and the true next-item id for each case. `k` is the cutoff.
+/// `recall_at_k` = fraction of cases whose true item is within the top-k;
+/// `mrr` = mean reciprocal rank of the true item (0 when absent from the list);
+/// `hit_rate` = fraction of cases with the true item anywhere in the list.
+/// All three are higher-better. Graded-relevance metrics are computed by the
+/// predictor (it alone knows each item's relevance-field values).
+pub fn compute_ranking_metrics(ranked: &[Vec<u64>], truth: &[u64], k: usize) -> Metrics {
+    let n = ranked.len();
+    assert!(n > 0 && n == truth.len() && k >= 1, "bad ranking inputs");
+    let (mut recall, mut mrr, mut hit) = (0.0, 0.0, 0.0);
+    for (cands, &t) in ranked.iter().zip(truth) {
+        if let Some(pos) = cands.iter().position(|&c| c == t) {
+            hit += 1.0;
+            mrr += 1.0 / (pos as f64 + 1.0);
+            if pos < k {
+                recall += 1.0;
+            }
+        }
+    }
+    Metrics {
+        n_test: n,
+        recall_at_k: Some(recall / n as f64),
+        mrr: Some(mrr / n as f64),
+        hit_rate: Some(hit / n as f64),
+        ..Default::default()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ranking_metrics_hand_checked() {
+        // case 0: truth 7 at rank 1 (pos 0) → recall@2 hit, rr 1.0
+        // case 1: truth 3 at rank 3 (pos 2) → outside k=2 (no recall), rr 1/3, hit
+        // case 2: truth 9 absent → no recall, rr 0, no hit
+        let ranked = vec![vec![7, 1, 2], vec![5, 8, 3], vec![1, 2, 4]];
+        let truth = vec![7u64, 3, 9];
+        let m = compute_ranking_metrics(&ranked, &truth, 2);
+        assert!((m.recall_at_k.unwrap() - 1.0 / 3.0).abs() < 1e-9);
+        assert!((m.mrr.unwrap() - (1.0 + 1.0 / 3.0) / 3.0).abs() < 1e-9);
+        assert!((m.hit_rate.unwrap() - 2.0 / 3.0).abs() < 1e-9);
+        let s = serde_json::to_string(&m).unwrap();
+        assert!(s.contains("recall_at_k") && s.contains("mrr") && s.contains("hit_rate"));
+        assert!(!s.contains("auc") && !s.contains("mae"));
+    }
 
     /// meta.json written before contract v2 (no contract_version /
     /// has_checkpoint fields) must keep deserializing.
