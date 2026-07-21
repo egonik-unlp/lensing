@@ -13,7 +13,7 @@
     "example:node": "node examples/node.mjs"
   },
   "keywords": ["lensing", "onnx", "inference", "ml"],
-  "license": "MIT",
+  "license": "AGPL-3.0-or-later",
   "peerDependencies": {
     "onnxruntime-node": "*",
     "onnxruntime-web": "*"
