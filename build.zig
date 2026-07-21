@@ -18,6 +18,7 @@
 //!   -Dcollection=<name>              Qdrant collection for `serve` / `dataset`
 //!                                    (default: domain.toml corpus.collection)
 //!   -Ddatabase-url=postgres://...    metadata database for `serve` / `migrate-data`
+//!   -Ddocker-profile=hub             compose profile for `docker-up` (hub|worker|infer|qdrant)
 //!
 //! Step graph (A → B means A runs B first):
 //!   (default)     → backend, ui
@@ -29,7 +30,10 @@
 //!   migrate-data  → backend, db-up, then lensing-server migrate-data (idempotent
 //!                   file→postgres backfill + consistency report)
 //!   check         → test, lint, py-check
-//!   dev, julia-setup, py-setup, test, lint, py-check are independent leaves.
+//!   docker-build  → docker compose build (multi-stage: builder stages compile, runtime images stay slim)
+//!   docker-up     → deploy-env, then docker compose --profile <docker-profile> up -d --build --wait
+//!   deploy-env    → seed .env deploy identity/ports from domain.toml [deploy]
+//!   dev, julia-setup, py-setup, test, lint, py-check, docker-build, deploy-env are independent leaves.
 
 const std = @import("std");
 
@@ -316,6 +320,44 @@ pub fn build(b: *std.Build) void {
 
     const py_setup = b.step("py-setup", "Create predictors/.venv and install the Python predictor deps (one-time)");
     py_setup.dependOn(&pip_install.step);
+
+    // ---------------- docker: containerized deploy (docs/DEPLOY.md) ----------------
+    // These wrap `docker compose`; the images build via the multi-stage
+    // Dockerfile (Zig/cargo/node live only in the builder stages, never in the
+    // runtime image). See docker/.env.example for the knobs.
+    const docker_profile = b.option(
+        []const u8,
+        "docker-profile",
+        "Compose profile for `docker-up` (hub | worker | infer | qdrant; default hub)",
+    ) orelse "hub";
+
+    // deploy-env: seed .env deploy identity/ports from domain.toml [deploy].
+    const deploy_env_cmd = b.addSystemCommand(&.{ "python3", "scripts/render-deploy-env.py", "--write" });
+    deploy_env_cmd.setCwd(b.path("."));
+    deploy_env_cmd.stdio = .inherit;
+    deploy_env_cmd.has_side_effects = true;
+    const deploy_env = b.step("deploy-env", "Seed .env deploy identity/ports from domain.toml [deploy]");
+    deploy_env.dependOn(&deploy_env_cmd.step);
+
+    // docker-build: build the runtime + infer images.
+    const docker_build_cmd = b.addSystemCommand(&.{ "docker", "compose", "--profile", "hub", "--profile", "infer", "build" });
+    docker_build_cmd.setCwd(b.path("."));
+    docker_build_cmd.stdio = .inherit;
+    docker_build_cmd.has_side_effects = true;
+    const docker_build = b.step("docker-build", "Build the lensing-runtime + lensing-infer images (docker compose build)");
+    docker_build.dependOn(&docker_build_cmd.step);
+
+    // docker-up: bring up the selected profile (single-host). For split
+    // multi-PC deploys use docker/compose.{hub,worker,infer}.yml directly.
+    const docker_up_cmd = b.addSystemCommand(&.{ "docker", "compose", "--profile" });
+    docker_up_cmd.addArg(docker_profile);
+    docker_up_cmd.addArgs(&.{ "up", "-d", "--build", "--wait" });
+    docker_up_cmd.setCwd(b.path("."));
+    docker_up_cmd.stdio = .inherit;
+    docker_up_cmd.has_side_effects = true;
+    docker_up_cmd.step.dependOn(&deploy_env_cmd.step); // .env seeded first
+    const docker_up = b.step("docker-up", "Start a containerized instance (single-host; -Ddocker-profile=hub|worker|infer)");
+    docker_up.dependOn(&docker_up_cmd.step);
 }
 
 /// Resolve an infra knob the way `docker compose` does: an exported process-env

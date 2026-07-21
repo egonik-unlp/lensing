@@ -10,6 +10,7 @@ import './styles/tokens.css'
 import './styles/base.css'
 
 import { DomainProvider } from './lib/DomainContext'
+import { CompareProvider } from './lib/CompareContext'
 import Shell from './components/Shell'
 import RunsView from './views/RunsView'
 import NewRunView from './views/NewRunView'
@@ -29,6 +30,7 @@ import NewRepresentationView from './views/NewRepresentationView'
 import ListingsView from './views/ListingsView'
 import NewListingView from './views/NewListingView'
 import ListingDetailView from './views/ListingDetailView'
+import InterpretabilityView from './views/InterpretabilityView'
 
 const router = createBrowserRouter([
   {
@@ -54,6 +56,7 @@ const router = createBrowserRouter([
       { path: 'listings/new', element: <NewListingView /> },
       { path: 'listings/:id', element: <ListingDetailView /> },
       { path: 'listings/:id/edit', element: <NewListingView /> },
+      { path: 'interpretability', element: <InterpretabilityView /> },
     ],
   },
 ])
@@ -61,7 +64,9 @@ const router = createBrowserRouter([
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <DomainProvider>
-      <RouterProvider router={router} />
+      <CompareProvider>
+        <RouterProvider router={router} />
+      </CompareProvider>
     </DomainProvider>
   </StrictMode>,
 )

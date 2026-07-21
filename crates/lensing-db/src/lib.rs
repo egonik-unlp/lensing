@@ -25,6 +25,8 @@ use anyhow::{Context, Result};
 
 /// Idempotent DDL (CREATE … IF NOT EXISTS), applied on every connect.
 const SCHEMA: &str = include_str!("../migrations/0001_init.sql");
+/// Additive idempotent migration (interp analyses), applied after [`SCHEMA`].
+const SCHEMA_INTERP: &str = include_str!("../migrations/0002_interp_analyses.sql");
 
 pub const DEFAULT_DATABASE_URL: &str = "postgres://pg:pg@localhost:5433/lensing";
 
@@ -64,5 +66,6 @@ pub async fn connect(url: &str) -> Result<Db> {
         .await
         .context("database connection timed out")??;
     client.batch_execute(SCHEMA).await.context("apply database schema")?;
+    client.batch_execute(SCHEMA_INTERP).await.context("apply interp-analyses migration")?;
     Ok(db)
 }

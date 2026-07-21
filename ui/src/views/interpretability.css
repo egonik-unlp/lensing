@@ -1,0 +1,701 @@
+/* Interpretability section: a tool rail + the active tool's panel. */
+
+.interp {
+  display: grid;
+  grid-template-columns: 14rem minmax(0, 1fr);
+  gap: var(--sp-5);
+  align-items: start;
+}
+
+@media (max-width: 56rem) {
+  .interp {
+    grid-template-columns: 1fr;
+  }
+}
+
+.interp-tools {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  position: sticky;
+  top: var(--sp-4);
+}
+
+.interp-tool {
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  background: var(--surface, #fff);
+}
+
+.interp-tool.is-active {
+  border-color: var(--accent-strong, #2563eb);
+  color: var(--accent-strong, #2563eb);
+  font-weight: 600;
+}
+
+.interp-tool.is-soon {
+  color: var(--ink-secondary, #6b7280);
+  border-style: dashed;
+}
+
+.interp-tools-note {
+  font-size: 0.78rem;
+  color: var(--ink-secondary, #6b7280);
+  margin: var(--sp-2) 0 0;
+  line-height: 1.4;
+}
+
+.interp-main {
+  min-width: 0;
+}
+
+.interp-lede {
+  max-width: 60rem;
+  line-height: 1.55;
+  color: var(--ink-secondary, #374151);
+  margin: 0 0 var(--sp-4);
+}
+
+.interp-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+
+.interp-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  color: var(--ink-secondary, #6b7280);
+}
+
+.interp-controls select {
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--hairline-strong, #d1d5db);
+  border-radius: var(--radius);
+  background: var(--bg, #fff);
+  color: var(--ink, #111);
+  font: inherit;
+  min-width: 18rem;
+  max-width: 28rem;
+}
+
+.interp-controls select:focus-visible {
+  outline: 2px solid var(--accent-strong, #2563eb);
+  outline-offset: 2px;
+}
+
+.interp-progress {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.85rem;
+  color: var(--ink-secondary, #6b7280);
+  padding: var(--sp-2) 0;
+}
+
+.interp-metric-toggle {
+  margin-bottom: var(--sp-2);
+}
+
+.interp-caption {
+  font-size: 0.8rem;
+  color: var(--ink-secondary, #6b7280);
+  font-family: var(--font-mono, monospace);
+  margin: var(--sp-2) 0 var(--sp-3);
+}
+
+.interp-table {
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  width: 100%;
+  max-width: 48rem;
+}
+
+.interp-table th,
+.interp-table td {
+  text-align: right;
+  padding: 0.3rem 0.7rem;
+  border-bottom: 1px solid var(--hairline, #eee);
+}
+
+.interp-table th:first-child,
+.interp-table td:first-child {
+  text-align: left;
+  font-family: var(--font-mono, monospace);
+}
+
+.interp-table tr.is-output td {
+  font-weight: 600;
+  border-top: 1px solid var(--hairline-strong, #d1d5db);
+}
+
+/* Hollow markers on the chart denote the model's own output (reference). */
+
+/* Model picker: checkboxes so one or several models can be probed/compared. */
+.interp-models {
+  border: 1px solid var(--hairline, #eee);
+  border-radius: var(--radius);
+  padding: var(--sp-3);
+  margin-bottom: var(--sp-4);
+  max-width: 48rem;
+}
+
+.interp-models legend {
+  font-size: 0.8rem;
+  color: var(--ink-secondary, #6b7280);
+  padding: 0 0.4rem;
+}
+
+.interp-model-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 0.2rem 1rem;
+}
+
+.interp-model-opt {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  padding: 0.25rem 0.3rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.interp-model-opt:hover {
+  background: var(--surface, #f8f8f8);
+}
+
+.interp-model-name {
+  font-family: var(--font-mono, monospace);
+}
+
+.interp-model-arch {
+  color: var(--ink-secondary, #6b7280);
+  font-size: 0.78rem;
+  margin-left: auto;
+}
+
+/* Overlay-comparison legend below the multi-series chart. */
+.probe-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.1rem;
+  margin-top: var(--sp-2);
+  font-size: 0.82rem;
+  font-family: var(--font-mono, monospace);
+}
+
+.probe-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.probe-legend-swatch {
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 2px;
+}
+
+.interp-fgroups {
+  margin-top: var(--sp-5);
+}
+
+.interp-fgroups h4 {
+  margin: 0 0 var(--sp-1);
+  font-size: 0.95rem;
+}
+
+/* Tool-rail entries are buttons (tool switcher); keep the .interp-tool look. */
+button.interp-tool {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+button.interp-tool:focus-visible {
+  outline: 2px solid var(--accent-strong, #2563eb);
+  outline-offset: 2px;
+}
+
+/* Side-by-side atom tables (target-aligned | segment-separating). */
+.sae-atom-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-3);
+}
+
+@media (max-width: 44rem) {
+  .sae-atom-cols {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Auto-interp: the "label atoms with GPT" toggle + the label cells. */
+.interp-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--ink-secondary, #6b7280);
+  cursor: pointer;
+}
+
+td.sae-label {
+  text-align: left;
+  font-size: 0.8rem;
+  max-width: 16rem;
+  white-space: normal;
+  line-height: 1.3;
+}
+
+
+/* ---- per-model SAE (P3) + saved analyses + topology (contributed) ---- */
+
+/* Removing the 14rem left rail (below) already gives the comparison the room it
+   was missing — no need to brute-force the section wider, which only made the
+   list sprawl. The default content column stands. */
+
+/* Tool switcher: a horizontal tab strip across the top, not a left rail that
+   permanently eats 14rem of the comparison's width. */
+.interp-tools {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.interp-tool:hover {
+  color: var(--ink, inherit);
+}
+
+/* Side-by-side atom tables (target-aligned | segment-separating). */
+.sae-atom-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-3);
+}
+
+/* Per-model SAE: the dropped-signal section's heading + its layer selector,
+   laid out on one row (the diff is computed for every layer, pick which to read). */
+.interp-diff-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.interp-diff-head h4 {
+  margin: 0;
+}
+
+.interp-diff-head label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--ink-secondary, #6b7280);
+}
+
+/* ---------------- Saved analyses ---------------- */
+
+/* A text list, not a numeric grid: left-align the columns (the shared
+   .interp-table right-aligns for tabular numbers) and let the table size to its
+   content instead of stretching edge-to-edge with floating cells. */
+.saved-table {
+  width: auto;
+  max-width: 100%;
+}
+
+.saved-table th,
+.saved-table td {
+  text-align: left;
+}
+
+.saved-table td.saved-actions {
+  text-align: right;
+}
+
+.saved-table th.saved-th-sort {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.saved-table th.saved-th-sort:hover {
+  color: var(--ink, inherit);
+}
+
+.saved-table tbody tr.is-selected {
+  background: var(--select-tint, rgba(80, 120, 200, 0.12));
+}
+
+.saved-table tbody tr.is-committed {
+  background: var(--select-tint, rgba(80, 120, 200, 0.12));
+}
+
+.saved-table tbody tr:hover {
+  background: var(--surface, rgba(127, 127, 127, 0.06));
+}
+
+.saved-model {
+  font-family: var(--font-mono, monospace);
+}
+
+.saved-dataset {
+  color: var(--ink-secondary, #6b7280);
+  font-size: 0.8em;
+}
+
+.saved-when {
+  white-space: nowrap;
+  color: var(--ink-secondary, #6b7280);
+  font-size: 0.8rem;
+}
+
+.saved-actions {
+  text-align: right;
+}
+
+/* Word-not-hue status/source pills (kept subtle — no side-tab accents). */
+.saved-badge {
+  display: inline-block;
+  padding: 0.05rem 0.45rem;
+  border-radius: var(--radius, 4px);
+  font-size: 0.72rem;
+  font-family: var(--font-mono, monospace);
+  border: 1px solid var(--hairline-strong, #d1d5db);
+  color: var(--ink-secondary, #6b7280);
+}
+
+.saved-badge-auto {
+  border-color: var(--accent-border, #b8862f);
+  color: var(--accent-text, #b8862f);
+}
+
+.saved-status-done {
+  border-color: var(--good, #16a34a);
+  color: var(--good, #16a34a);
+}
+
+.saved-status-running {
+  border-color: var(--accent-border, #b8862f);
+  color: var(--accent-text, #b8862f);
+}
+
+.saved-status-failed {
+  border-color: var(--bad, #dc2626);
+  color: var(--bad, #dc2626);
+}
+
+.saved-result {
+  margin-top: var(--sp-4, 1rem);
+  border-top: 1px solid var(--hairline-strong, #d1d5db);
+  padding-top: var(--sp-4, 1rem);
+}
+
+.saved-compare-cols {
+  margin-top: var(--sp-3, 0.75rem);
+}
+
+.saved-compare-col {
+  min-width: 0;
+  border: 1px solid var(--hairline, #eee);
+  border-radius: var(--radius, 4px);
+  padding: var(--sp-3, 0.75rem);
+  background: var(--surface, transparent);
+}
+
+.saved-col-head {
+  margin: 0 0 var(--sp-2, 0.5rem);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.85rem;
+}
+
+/* Sticky "there's a result below" cue — floats at the viewport bottom while the
+   list scrolls, then scrolls away as you reach the result. */
+.saved-sticky-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3, 0.75rem);
+  margin-top: var(--sp-3, 0.75rem);
+  padding: 0.55rem 0.85rem;
+  background: var(--surface, #1a1a1a);
+  border: 1px solid var(--hairline-strong, #d1d5db);
+  border-radius: var(--radius, 4px);
+  box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.28);
+}
+
+.saved-sticky-count {
+  font-size: 0.82rem;
+  color: var(--ink-secondary, #6b7280);
+  font-variant-numeric: tabular-nums;
+}
+
+.saved-sticky-go {
+  margin-left: auto;
+}
+
+.saved-sticky-go:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.saved-back {
+  display: inline-block;
+  margin-bottom: var(--sp-2, 0.5rem);
+  font-size: 0.8rem;
+}
+
+.saved-label-done {
+  margin: 0 0 var(--sp-2, 0.5rem);
+  color: var(--good, #16a34a);
+}
+
+.saved-chevron {
+  display: inline-block;
+  animation: saved-nudge 1.3s ease-in-out infinite;
+}
+
+@keyframes saved-nudge {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .saved-chevron {
+    animation: none;
+  }
+}
+
+/* GPT-labelling action bar in the single-analysis view. */
+.saved-label-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-3, 0.75rem);
+  margin-bottom: var(--sp-3, 0.75rem);
+}
+
+.saved-label-bar .interp-tools-note {
+  margin: 0;
+  flex: 1 1 16rem;
+}
+
+/* MLP topology diagrams (single view + compare architecture strip). */
+.mlp-topo svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.mlp-topo-base {
+  stroke: var(--hairline-strong, #d1d5db);
+  stroke-width: 1;
+}
+
+.mlp-topo-w {
+  fill: var(--ink-secondary, #6b7280);
+  font-family: var(--font-mono, monospace);
+  font-size: 9px;
+}
+
+.mlp-topo-single {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--sp-2, 0.5rem);
+  margin: var(--sp-2, 0.5rem) 0 var(--sp-3, 0.75rem);
+}
+
+.mlp-topo-strip {
+  margin-top: var(--sp-3, 0.75rem);
+}
+
+.mlp-topo-strip h4 {
+  margin: 0 0 0.15rem;
+}
+
+.mlp-topo-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4, 1rem);
+  margin-top: var(--sp-2, 0.5rem);
+}
+
+.mlp-topo-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.mlp-topo-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8rem;
+}
+
+.mlp-topo-swatch {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 2px;
+  flex: none;
+}
+
+.mlp-topo-act {
+  font-size: 0.72rem;
+  color: var(--ink-secondary, #6b7280);
+  font-family: var(--font-mono, monospace);
+}
+
+/* ---------------- Per-model SAE report: answer-first ---------------- */
+
+.msae {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4, 1rem);
+}
+
+.msae-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2, 0.5rem);
+}
+
+/* The digest is the answer, before the data — a quiet callout, not a hero card. */
+.msae-digest {
+  margin: 0;
+  padding: var(--sp-3, 0.75rem) var(--sp-4, 1rem);
+  background: var(--surface, rgba(127, 127, 127, 0.06));
+  border: 1px solid var(--hairline, #eee);
+  border-radius: var(--radius, 4px);
+  font-size: 0.9rem;
+  line-height: 1.7;
+  color: var(--ink-secondary, #6b7280);
+}
+
+.msae-digest strong {
+  color: var(--ink, inherit);
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.msae h4 {
+  margin: 0 0 var(--sp-2, 0.5rem);
+  font-size: 0.9rem;
+}
+
+.msae-depth {
+  max-width: 46rem;
+}
+
+/* The former per-layer table-wall, now a tidy list of expanders. */
+.msae-layers {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--hairline, #eee);
+  border-radius: var(--radius, 4px);
+  overflow: hidden;
+  max-width: 46rem;
+}
+
+.msae-layer {
+  border-bottom: 1px solid var(--hairline, #eee);
+}
+
+.msae-layer:last-child {
+  border-bottom: none;
+}
+
+.msae-layer > summary {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3, 0.75rem);
+  padding: 0.5rem 0.8rem;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.msae-layer > summary::-webkit-details-marker {
+  display: none;
+}
+
+.msae-layer > summary::before {
+  content: '▸';
+  color: var(--ink-secondary, #6b7280);
+  font-size: 0.7rem;
+  transition: transform 120ms ease;
+}
+
+.msae-layer[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.msae-layer > summary:hover {
+  background: var(--surface, rgba(127, 127, 127, 0.06));
+}
+
+.msae-layer-name {
+  font-weight: 600;
+}
+
+.msae-layer-meta {
+  color: var(--ink-secondary, #6b7280);
+  font-size: 0.82rem;
+  font-family: var(--font-mono, monospace);
+}
+
+.msae-layer > *:not(summary) {
+  margin-left: 0.8rem;
+  margin-right: 0.8rem;
+}
+
+.msae-layer > table {
+  margin-bottom: 0.7rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .msae-layer > summary::before {
+    transition: none;
+  }
+}
+
+/* Compare digest — the answer for A-vs-B, full width above the chart. */
+.msae-compare-digest {
+  max-width: none;
+  width: 100%;
+  font-size: 0.9rem;
+  margin-bottom: var(--sp-4, 1rem);
+}
+
+.msae-compare-digest th:nth-child(2),
+.msae-compare-digest td:nth-child(2) {
+  text-align: left;
+}
+
+.msae-compare-digest th,
+.msae-compare-digest td {
+  padding: 0.4rem 0.85rem;
+}

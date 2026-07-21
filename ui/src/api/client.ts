@@ -1,5 +1,7 @@
 import type {
   BestModelGroup,
+  InterpModel,
+  InterpAnalysis,
   BlendFile,
   BuildRepresentationRequest,
   BuildRequest,
@@ -73,6 +75,48 @@ export const api = {
   listDatasets: () =>
     request<{ datasets: Manifest[] }>('/api/datasets').then((r) => r.datasets),
   getDataset: (id: string) => request<Manifest>(`/api/datasets/${id}`),
+  // Interpretability: models the layer probe can analyze, and starting probe
+  // runs (async — poll the returned job_id with pollJob).
+  listInterpModels: () =>
+    request<{ models: InterpModel[] }>('/api/interp/models').then((r) => r.models),
+  startLayerProbe: (req: { model: string; dataset: string; lambda?: number }) =>
+    request<{ job_id: string }>('/api/interp/layer-probe', post(req)).then((r) => r.job_id),
+  compareLayerProbes: (req: { models: string[]; dataset?: string; lambda?: number }) =>
+    request<{ job_id: string }>('/api/interp/layer-probe/compare', post(req)).then((r) => r.job_id),
+  startEmbeddingProbe: (req: { dataset: string; split_by?: string; no_mlp?: boolean }) =>
+    request<{ job_id: string }>('/api/interp/embedding-probe', post(req)).then((r) => r.job_id),
+  startSae: (req: {
+    dataset: string
+    max_dims?: number
+    n_atoms?: number
+    l1?: number
+    epochs?: number
+    segment?: string
+    label_atoms?: boolean
+  }) => request<{ job_id: string }>('/api/interp/sae', post(req)).then((r) => r.job_id),
+  startModelSae: (req: {
+    model: string
+    dataset?: string
+    layers?: string
+    n_atoms?: number
+    l1?: number
+    epochs?: number
+    label_atoms?: boolean
+    compare_embedding?: boolean
+  }) => request<{ job_id: string }>('/api/interp/model-sae', post(req)).then((r) => r.job_id),
+  // Persisted analyses: list (metadata only), fetch one (with its full result),
+  // and delete. These read back saved SAE / probe runs with no recomputation.
+  listInterpAnalyses: (filters?: { tool?: string; model?: string; dataset?: string }) => {
+    const qs = new URLSearchParams(
+      Object.entries(filters ?? {}).filter(([, v]) => !!v) as [string, string][],
+    ).toString()
+    return request<{ analyses: InterpAnalysis[] }>(
+      `/api/interp/analyses${qs ? `?${qs}` : ''}`,
+    ).then((r) => r.analyses)
+  },
+  getInterpAnalysis: (id: string) => request<InterpAnalysis>(`/api/interp/analyses/${id}`),
+  deleteInterpAnalysis: (id: string) =>
+    request<{ ok: boolean }>(`/api/interp/analyses/${id}`, { method: 'DELETE' }),
   getItems: (id: string) => request<Items>(`/api/datasets/${id}/items`),
   getDatasetSplit: (id: string) => request<DatasetSplit>(`/api/datasets/${id}/split`),
   buildDataset: (req: BuildRequest) =>

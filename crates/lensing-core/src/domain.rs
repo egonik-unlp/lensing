@@ -58,6 +58,20 @@ pub struct Domain {
     #[serde(default)]
     pub quality: QualityBindings,
     pub metrics: MetricsSpec,
+    /// Interpretability-subsystem parameters (layer/embedding/SAE probes).
+    #[serde(default)]
+    pub interp: Interp,
+}
+
+/// Interpretability parameters, consumed by the `/api/interp/*` tools and the
+/// predictor probe subcommands. Entirely optional — every field has a neutral
+/// default derived from the domain's own fields.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Interp {
+    /// Categorical field the embedding / SAE probes slice rows by (the segment
+    /// axis). Empty ⇒ the first `categorical`-role field.
+    #[serde(default)]
+    pub segment_field: String,
 }
 
 fn default_schema_version() -> u32 {
@@ -519,6 +533,19 @@ impl Domain {
 
     pub fn categorical_fields(&self) -> impl Iterator<Item = &FieldDesc> {
         self.fields.iter().filter(|f| f.role == FieldRole::Categorical)
+    }
+
+    /// The categorical field the interpretability probes slice by: the explicit
+    /// `[interp].segment_field` binding when set and present, else the first
+    /// `categorical`-role field, else `None` (probes run pooled-only).
+    pub fn interp_segment_field(&self) -> Option<&str> {
+        let explicit = self.interp.segment_field.trim();
+        if !explicit.is_empty() {
+            if self.fields.iter().any(|f| f.name == explicit && f.role == FieldRole::Categorical) {
+                return Some(explicit);
+            }
+        }
+        self.categorical_fields().next().map(|f| f.name.as_str())
     }
 
     pub fn coordinates_field(&self) -> Option<&FieldDesc> {

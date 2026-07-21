@@ -1,8 +1,12 @@
 //! MLP target-value predictor on the language-neutral dataset artifact.
 //! burn 0.21, ndarray CPU backend, hand-written training loop.
 
+mod embedding_probe;
 mod model;
+mod model_sae;
+mod nn_probe;
 mod onnx_export;
+mod probe;
 mod scaler;
 mod viz;
 
@@ -52,6 +56,89 @@ enum Command {
         model: PathBuf,
         #[arg(long)]
         output: PathBuf,
+    },
+    /// Layer-wise linear probes (Alain & Bengio 2016): fit a cheap ridge probe
+    /// on each stage's activations (input + every hidden layer) and write how
+    /// decodable the target is by depth to `output` (JSON). The interpretability
+    /// `/api/interp/layer-probe` engine.
+    LayerProbe {
+        #[arg(long)]
+        model: PathBuf,
+        #[arg(long)]
+        dataset: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        /// Ridge penalty; 0 (default) picks it by a small internal hold-out CV.
+        #[arg(long, default_value_t = 0.0)]
+        lambda: f64,
+    },
+    /// Embedding probe (P1, Alain & Bengio in spirit): on a dataset artifact
+    /// (no model needed), fit linear + MLP probes on the raw embeddings vs
+    /// PCA-128, sliced into segments by a categorical one-hot group, against a
+    /// per-segment-median floor — deciding whether the hardest segment's error
+    /// is information-ABSENT or merely UNUSED. Writes the report to `output`
+    /// (JSON). The `/api/interp/embedding-probe` engine.
+    EmbeddingProbe {
+        #[arg(long)]
+        dataset: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        /// One-hot categorical group to slice rows by (must exist in the
+        /// dataset). Empty (default) uses the domain's `[interp].segment_field`
+        /// (else the first categorical field).
+        #[arg(long, default_value = "")]
+        split_by: String,
+        /// Skip the (slower) nonlinear MLP ceiling probe.
+        #[arg(long)]
+        no_mlp: bool,
+    },
+    /// Per-model sparse autoencoder: train an SAE on this promoted model's own
+    /// hidden activations (per layer) and report capacity, per-segment
+    /// representation, concept-vs-decodability depth, and (with --dataset-sae)
+    /// signal the model drops relative to the embedding. The nonlinear sibling
+    /// of `layer-probe`; MLP family only. Writes JSON to `output`.
+    ModelSae {
+        #[arg(long)]
+        model: PathBuf,
+        #[arg(long)]
+        dataset: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        /// Comma-separated 1-based hidden layers to analyze; empty ⇒ all.
+        #[arg(long, default_value = "")]
+        layers: String,
+        /// SAE atom count; 0 ⇒ 2× the layer width.
+        #[arg(long, default_value_t = 0)]
+        n_atoms: usize,
+        /// L1 sparsity penalty. Matches the dataset-SAE default so CLI and the
+        /// `/api/interp/model-sae` endpoint behave identically by default.
+        #[arg(long, default_value_t = 0.0015)]
+        l1: f64,
+        #[arg(long, default_value_t = 50)]
+        epochs: usize,
+        #[arg(long, default_value_t = 1e-3)]
+        lr: f64,
+        #[arg(long, default_value_t = 256)]
+        batch: usize,
+        #[arg(long, default_value_t = 1337)]
+        seed: u64,
+        /// Ridge penalty for the probes; 0 ⇒ internal CV.
+        #[arg(long, default_value_t = 0.0)]
+        lambda: f64,
+        /// Skip a one-hot group whose slice has fewer than this many rows.
+        #[arg(long, default_value_t = 30)]
+        min_segment: usize,
+        /// A prior `lensing-sae analyze --emit-codes` result JSON, to diff for
+        /// dropped signal (its target atoms must carry `code` vectors).
+        #[arg(long)]
+        dataset_sae: Option<PathBuf>,
+        /// Label the surfaced atoms with an LLM (auto-interp); no-op without
+        /// OPENAI_API_KEY.
+        #[arg(long)]
+        label_atoms: bool,
+        /// Cache dir for trained SAEs (content-addressed by model+layer+config).
+        #[arg(long)]
+        cache_dir: Option<PathBuf>,
     },
 }
 
@@ -111,6 +198,54 @@ fn main() -> Result<()> {
         Command::Train { dataset, output, hyperparams } => train(dataset, output, hyperparams),
         Command::Predict { model, input, output } => predict(model, input, output),
         Command::Export { model, output } => export(model, output),
+        Command::LayerProbe { model, dataset, output, lambda } => {
+            probe::run(&model, &dataset, &output, lambda, &emit)
+        }
+        Command::EmbeddingProbe { dataset, output, split_by, no_mlp } => {
+            embedding_probe::run(&dataset, &output, !no_mlp, &split_by, &emit)
+        }
+        Command::ModelSae {
+            model,
+            dataset,
+            output,
+            layers,
+            n_atoms,
+            l1,
+            epochs,
+            lr,
+            batch,
+            seed,
+            lambda,
+            min_segment,
+            dataset_sae,
+            label_atoms,
+            cache_dir,
+        } => {
+            let layers = layers
+                .split(',')
+                .filter_map(|s| s.trim().parse::<usize>().ok())
+                .collect();
+            model_sae::run(
+                model_sae::Args {
+                    model_dir: model,
+                    dataset_dir: dataset,
+                    output,
+                    layers,
+                    n_atoms,
+                    l1,
+                    epochs,
+                    lr,
+                    batch,
+                    seed,
+                    lambda,
+                    min_segment,
+                    dataset_sae,
+                    label_atoms,
+                    cache_dir,
+                },
+                &emit,
+            )
+        }
     }
 }
 

@@ -1,25 +1,36 @@
-# Infrastructure for a lensing instance.
+# Single-host deployment for a lensing instance — data stores + the three
+# server roles. For split-across-machines deployments see docker/compose.*.yml
+# and docs/DEPLOY.md.
 #
-#   docker compose up -d postgres --wait     metadata database (zig build db-up)
-#   docker compose --profile qdrant up -d    + a local Qdrant for greenfield
-#                                            bootstraps (the existing corpus
-#                                            lives in an external Qdrant; the
-#                                            default -Dqdrant-url is unchanged)
+# Quick starts (copy docker/.env.example to .env first):
+#   docker compose up -d postgres --wait          # just the metadata DB (== zig build db-up)
+#   docker compose --profile qdrant up -d          # + a local Qdrant corpus
+#   docker compose --profile hub up -d --wait      # DB + hub (UI + API + builds)
+#   docker compose --profile hub --profile worker up -d --scale worker=3
+#   docker compose --profile infer up -d           # a predict-only node
 #
-# Postgres holds the server's metadata/parameter state (model definitions,
-# run metas + metrics, promoted-model records, dataset index, hp presets).
-# Binary artifacts (features.f32, model weights, …) stay under data/.
-# Host port 5433 avoids colliding with a system Postgres on 5432.
+# COMPOSE_PROJECT_NAME (from .env, seeded from domain.toml by
+# `python3 scripts/render-deploy-env.py`) prefixes container/network/volume
+# names so multiple instances coexist on one host without colliding (D1).
+name: ${COMPOSE_PROJECT_NAME:-lensing}
+
+x-lensing-env: &lensing-env
+  # Postgres is reached over the compose network by service name, on the fixed
+  # container port 5432 (NOT the remapped host port).
+  DATABASE_URL: postgres://${LENSING_DB_USER:-pg}:${LENSING_DB_PASSWORD:-pg}@postgres:5432/${LENSING_DB_NAME:-lensing}
+  LENSING_QDRANT_URL: ${LENSING_QDRANT_URL:-http://qdrant:6333}
+
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: lensing-postgres
+    container_name: ${COMPOSE_PROJECT_NAME:-lensing}-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${LENSING_DB_USER:-pg}
       POSTGRES_PASSWORD: ${LENSING_DB_PASSWORD:-pg}
       POSTGRES_DB: ${LENSING_DB_NAME:-lensing}
     ports:
+      # Host port is parametrizable (port-partitioning); container port is fixed.
       - "${LENSING_DB_PORT:-5433}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -31,15 +42,77 @@ services:
 
   qdrant:
     image: qdrant/qdrant:latest
-    container_name: lensing-qdrant
+    container_name: ${COMPOSE_PROJECT_NAME:-lensing}-qdrant
     restart: unless-stopped
     profiles: ["qdrant"]
     ports:
-      - "6333:6333"
-      - "6334:6334"
+      - "${LENSING_QDRANT_PORT:-6333}:6333"
+      - "${LENSING_QDRANT_GRPC_PORT:-6334}:6334"
     volumes:
       - qdrant_storage:/qdrant/storage
+
+  hub:
+    profiles: ["hub"]
+    image: ${LENSING_IMAGE:-lensing-runtime}:${LENSING_TAG:-latest}
+    build:
+      context: .
+      target: runtime
+    container_name: ${COMPOSE_PROJECT_NAME:-lensing}-hub
+    restart: unless-stopped
+    environment:
+      <<: *lensing-env
+      LENSING_ROLE: hub
+      LENSING_HUB_PORT: 8080
+      LENSING_MIGRATE_ON_START: ${LENSING_MIGRATE_ON_START:-true}
+    ports:
+      - "${LENSING_HUB_PORT:-8080}:8080"
+    volumes:
+      - lensing_data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/api/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  worker:
+    profiles: ["worker"]
+    image: ${LENSING_IMAGE:-lensing-runtime}:${LENSING_TAG:-latest}
+    build:
+      context: .
+      target: runtime
+    # No container_name: scale horizontally with `--scale worker=N`
+    # (claims are atomic via FOR UPDATE SKIP LOCKED).
+    restart: unless-stopped
+    environment:
+      <<: *lensing-env
+      LENSING_ROLE: worker
+      LENSING_HUB_URL: ${LENSING_HUB_URL:-http://hub:8080}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  infer:
+    profiles: ["infer"]
+    image: ${LENSING_INFER_IMAGE:-lensing-infer}:${LENSING_TAG:-latest}
+    build:
+      context: .
+      target: infer
+    container_name: ${COMPOSE_PROJECT_NAME:-lensing}-infer
+    restart: unless-stopped
+    environment:
+      <<: *lensing-env
+      LENSING_ROLE: infer
+      LENSING_INFER_PORT: 8090
+    ports:
+      - "${LENSING_INFER_PORT:-8090}:8090"
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 volumes:
   pgdata:
   qdrant_storage:
+  lensing_data:

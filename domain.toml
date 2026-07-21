@@ -116,6 +116,13 @@ default_on = true
 # rules to your fields; unbound rules simply never flag anything.
 [quality]
 
+# Interpretability-subsystem parameters (the /api/interp/* probe tools). All
+# optional; empty values fall back to the domain's own fields.
+[interp]
+# Categorical field the embedding / SAE probes slice rows by. "" = the first
+# categorical field declared above.
+segment_field = ""
+
 # Agentic-layer parameters, consumed by agents-src/render.py (NOT by the
 # Rust code) to render the skills/agents under .claude/, .agents/, .gemini/.
 # After editing anything in this file, run: zig build render-agents
@@ -128,6 +135,19 @@ definition_naming_example = ""
 # Render the ingestion agent (listing-generator)? Domains without a
 # scrape-from-the-web ingestion story set this to false.
 ingestion = true
+
+# Deployment (Docker). Consumed by scripts/render-deploy-env.py to seed the
+# deploy knobs in .env; the Rust server IGNORES this section. compose_project
+# prefixes container/network/volume names so multiple instances coexist on one
+# host (D1) — leave unset to derive it from [project].name. The *_port values
+# are HOST-side mappings; container-internal ports are fixed (hub 8080, infer
+# 8090, postgres 5432). Bump them per instance to avoid collisions on a shared
+# host, exactly like the port-partitioning of qdrant_url above.
+[deploy]
+compose_project = ""
+hub_port = 8080
+infer_port = 8090
+db_port = 5433
 
 [quality.rule_labels]
 "nonpositive-price" = "target ≤ 0"

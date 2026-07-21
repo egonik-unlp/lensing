@@ -12,6 +12,7 @@ command = "target/release/predictor-burn-mlp"
 args = ["train", "--dataset", "{dataset}", "--output", "{run_dir}", "--hyperparams", "{hyperparams}"]
 predict_args = ["predict", "--model", "{model}", "--input", "{input}", "--output", "{output}"]
 export_args = ["export", "--model", "{model}", "--output", "{output}"]
+probe_args = ["layer-probe", "--model", "{model}", "--dataset", "{dataset}", "--output", "{output}"]
 supports_stop = true
 visualization = true
 

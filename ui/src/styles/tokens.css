@@ -112,6 +112,7 @@
   /* Z scale */
   --z-dropdown: 10;
   --z-sticky: 20;
+  --z-tray: 25;
   --z-dialog-backdrop: 30;
   --z-dialog: 40;
   --z-toast: 50;

@@ -1,0 +1,27 @@
+# Split deployment — a TRAINING-WORKER machine (no local data stores).
+# Points at the hub + Postgres running on the server/hub machine. Scale by
+# starting more worker containers here or on more machines; the queue claim is
+# atomic (FOR UPDATE SKIP LOCKED), so any number race safely.
+#
+# In .env on this machine, set the REMOTE endpoints (not localhost):
+#   LENSING_HUB_URL=http://<hub-host>:8080
+#   DATABASE_URL=postgres://pg:pg@<hub-host>:5433/lensing
+#
+# Run from the repo root:
+#   docker compose -f docker/compose.worker.yml --env-file .env up -d --build --scale worker=3
+name: ${COMPOSE_PROJECT_NAME:-lensing}
+
+services:
+  worker:
+    image: ${LENSING_IMAGE:-lensing-runtime}:${LENSING_TAG:-latest}
+    build:
+      context: ..
+      target: runtime
+    restart: unless-stopped
+    environment:
+      LENSING_ROLE: worker
+      # No shared filesystem: datasets come over the hub's HTTP archive API,
+      # artifacts/models travel through Postgres.
+      LENSING_HUB_URL: ${LENSING_HUB_URL:?set LENSING_HUB_URL to the hub, e.g. http://hub-host:8080}
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL to the hub's Postgres, e.g. postgres://pg:pg@hub-host:5433/lensing}
+      LENSING_POLL_SECS: ${LENSING_POLL_SECS:-10}
