@@ -2,6 +2,8 @@
 name = "lensing-interp"
 version = "0.1.0"
 edition = "2021"
+license.workspace = true
+repository.workspace = true
 
 # Interpretability engine: family-agnostic linear (ridge) probes over a
 # network's per-stage activations (Alain & Bengio 2016). Pure math — no `burn`,

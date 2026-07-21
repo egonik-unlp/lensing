@@ -2,6 +2,8 @@
 name = "lensing-sae"
 version = "0.1.0"
 edition = "2021"
+license.workspace = true
+repository.workspace = true
 
 # P2 — sparse-autoencoder / dictionary learning on the embeddings. A burn-trained
 # SAE (fast matmuls) whose sparse code is then probed with the burn-free lensing-interp
