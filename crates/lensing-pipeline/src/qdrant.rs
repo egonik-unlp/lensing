@@ -777,7 +777,9 @@ mod tests {
 
     #[test]
     fn coords_bounds_check() {
-        let bounds = lensing_core::manifest::legacy_coordinate_bounds();
+        // Explicit bounds (a domain's own box) — this exercises coords_of's
+        // bounds/rejection logic, independent of the neutralized default.
+        let bounds = [[-56.0, -21.0], [-74.0, -53.0]];
         let mut p = Payload::default();
         p.set("coordinates", json!({"lat": -34.92, "lon": -57.95}));
         assert_eq!(p.coords_of("coordinates", &bounds), Some((-34.92, -57.95)));
@@ -787,5 +789,10 @@ mod tests {
         assert_eq!(p.coords_of("coordinates", &bounds), None);
         p.set("coordinates", json!({"lat": null, "lon": -57.9}));
         assert_eq!(p.coords_of("coordinates", &bounds), None);
+
+        // The neutralized default admits any valid geocode (no country box).
+        let world = lensing_core::manifest::legacy_coordinate_bounds();
+        p.set("coordinates", json!({"lat": 37.4, "lon": 13.5}));
+        assert_eq!(p.coords_of("coordinates", &world), Some((37.4, 13.5)));
     }
 }

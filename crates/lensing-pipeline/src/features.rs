@@ -578,7 +578,6 @@ mod tests {
     /// Feature config enabling exactly the legacy default + raw numerics.
     fn raw_numerics_cfg(impute: bool) -> FeatureConfig {
         FeatureConfig {
-            neighborhood_top_n: 0,
             raw_numerics: true,
             impute_numerics: impute,
             ..Default::default()
@@ -665,7 +664,6 @@ mod tests {
     fn coordinates_encoding() {
         let domain = Domain::example();
         let cfg = FeatureConfig {
-            neighborhood_top_n: 0,
             coordinates: true,
             ..Default::default()
         };

@@ -47,10 +47,30 @@ export interface TargetFormat {
   locale: string
 }
 
+/** The learning task, mirroring lensing_core::domain::Task. Drives which
+ *  metrics and result charts the UI renders. Absent ⇒ regression (back-compat
+ *  for domains served before the field existed). */
+export type Task = 'regression' | 'binary' | 'multiclass' | 'time_series'
+
 export interface DomainTarget {
   field: string
   transform: 'log1p' | 'none'
   format: TargetFormat
+  /** Absent ⇒ 'regression'. */
+  task?: Task
+  /** Ordered class labels for a multiclass target (index = class id). */
+  classes?: string[] | null
+}
+
+/** The domain's task, defaulting to regression when the server omits it. */
+export function domainTask(domain: Domain): Task {
+  return domain.target.task ?? 'regression'
+}
+
+/** Whether the task predicts a discrete class (binary or multiclass). */
+export function isClassification(domain: Domain): boolean {
+  const t = domainTask(domain)
+  return t === 'binary' || t === 'multiclass'
 }
 
 /** `"all"` keeps every value; `{top_n}` keeps the N most frequent. */
@@ -102,6 +122,9 @@ export interface DomainMetrics {
   columns: string[]
   percent: string[]
   value_unit: string
+  /** Per-metric ranking direction override (name → lower-is-better). */
+  directions?: Record<string, boolean>
+  best_models_size?: number | null
 }
 
 export interface Domain {
@@ -175,11 +198,13 @@ export function timestampFieldName(domain: Domain): string | null {
   return domain.fields.find((f) => f.role === 'timestamp')?.name ?? null
 }
 
-/** A record's target value (e.g. a stored listing's captured ground truth),
- *  null when absent or nonpositive. */
+/** A record's target value (e.g. a stored entry's captured ground truth), null
+ *  when absent or non-numeric. Any finite value is valid — including 0 and
+ *  negatives (a class id of 0, a signed regression target); the old
+ *  positive-only guard was a price assumption. */
 export function targetValue(domain: Domain, record: Record<string, unknown>): number | null {
   const v = record[domain.target.field]
-  return typeof v === 'number' && v > 0 ? v : null
+  return typeof v === 'number' && Number.isFinite(v) ? v : null
 }
 
 /** A record's currency code, read via the domain's currency field. */

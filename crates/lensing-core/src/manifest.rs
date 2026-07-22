@@ -106,6 +106,10 @@ pub struct TargetInfo {
     /// regression/binary.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub classes: Option<Vec<String>>,
+    /// Forecast horizon (rows ahead) for a `time_series` target; absent
+    /// otherwise. Frozen so a predictor reads it without domain.toml.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub horizon: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -154,27 +158,14 @@ pub struct FeatureConfig {
     pub vocab_top_n: std::collections::BTreeMap<String, usize>,
     /// Coordinate plausibility bounds frozen into the dataset/contract:
     /// `[[lat_min, lat_max], [lon_min, lon_max]]`. Absent on pre-domain
-    /// artifacts → [`legacy_coordinate_bounds`] (the original corpus bounds).
+    /// artifacts → [`legacy_coordinate_bounds`] (unrestricted world bounds).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub coordinate_bounds: Option<[[f64; 2]; 2]>,
-    // ---- Legacy named flags (pre-domain compat) ----
-    // The original example domain's field toggles, kept so pre-domain
-    // manifests/contracts/clients deserialize unchanged. `fields` above is
-    // authoritative whenever non-empty; `Domain::normalize_config` mirrors
-    // the effective enables back into these for old readers.
-    #[serde(default = "default_flag_true")]
-    pub bedrooms: bool,
-    #[serde(default = "default_flag_true")]
-    pub property_type: bool,
-    /// 0 disables neighborhood one-hots; otherwise top-N + "other" bucket.
-    #[serde(default = "default_top_n_40")]
-    pub neighborhood_top_n: usize,
-    #[serde(default)]
-    pub city: bool,
-    #[serde(default)]
-    pub province: bool,
-    #[serde(default)]
-    pub cluster: bool,
+    // NOTE: the original example domain's named field flags (bedrooms,
+    // property_type, neighborhood_top_n, city, province, cluster) used to live
+    // here for pre-domain back-compat. They have been retired now that the
+    // generic `fields` map above is authoritative for every build; an old
+    // manifest carrying those keys still deserializes (they're simply ignored).
     // ---- Mechanism toggles (domain-generic) ----
     /// The domain's reconcile-flagged numeric fields, joined from the
     /// companion collection by point id at build time: log1p columns for
@@ -202,19 +193,14 @@ pub struct FeatureConfig {
     pub impute_numerics: bool,
 }
 
-fn default_flag_true() -> bool {
-    true
-}
-fn default_top_n_40() -> usize {
-    40
-}
-
-/// Coordinate bounds of artifacts frozen before the domain configuration
-/// existed (the original example corpus). Pre-domain contracts encoded
-/// out-of-bounds geocodes as missing against exactly these ranges, so the
-/// inference path must keep reproducing them.
+/// Fallback coordinate bounds for artifacts frozen before per-domain
+/// `coordinate_bounds` existed: the full valid lat/lon range, so no geocode is
+/// treated as out-of-bounds. (This used to be the original corpus's
+/// country-specific box — retired to keep the framework domain-neutral; a
+/// configured domain always freezes its own bounds via `normalize_config`, so
+/// this only affects pre-domain artifacts.)
 pub fn legacy_coordinate_bounds() -> [[f64; 2]; 2] {
-    [[-56.0, -21.0], [-74.0, -53.0]]
+    [[-90.0, 90.0], [-180.0, 180.0]]
 }
 
 impl Default for FeatureConfig {
@@ -224,12 +210,6 @@ impl Default for FeatureConfig {
             fields: Default::default(),
             vocab_top_n: Default::default(),
             coordinate_bounds: None,
-            bedrooms: true,
-            property_type: true,
-            neighborhood_top_n: 40,
-            city: false,
-            province: false,
-            cluster: false,
             raw_numerics: false,
             area_content_backfill: false,
             coordinates: false,

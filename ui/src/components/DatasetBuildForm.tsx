@@ -259,7 +259,7 @@ export function DatasetBuildForm({ onBuilt }: { onBuilt: (id: string) => void })
       req.test_ratio >= 0.05 &&
       req.test_ratio <= 0.5 &&
       Object.values(vocabN).every((n) => n >= 0) &&
-      (!req.quality.price_range || req.quality.price_min < req.quality.price_max),
+      (!req.quality.target_range || req.quality.target_min < req.quality.target_max),
     [req, vocabN],
   )
 
@@ -790,7 +790,7 @@ function QualityPanel({
   const numField = (
     id: string,
     label: string,
-    key: 'price_outlier_mad_z' | 'price_min' | 'price_max' | 'bedrooms_max' | 'short_content_min_chars',
+    key: 'target_outlier_mad_z' | 'target_min' | 'target_max' | 'capped_numeric_max' | 'short_content_min_chars',
     hint: string,
   ) => (
     <div className="hp-field quality-threshold">
@@ -817,8 +817,8 @@ function QualityPanel({
       <label className="toggle">
         <input
           type="checkbox"
-          checked={quality.nonpositive_price}
-          onChange={(e) => set('nonpositive_price', e.target.checked)}
+          checked={quality.nonpositive_target}
+          onChange={(e) => set('nonpositive_target', e.target.checked)}
         />
         drop {targetNoun} ≤ 0
         <span className="hp-hint">rows without a {targetNoun} poison the target</span>
@@ -826,8 +826,8 @@ function QualityPanel({
       <label className="toggle">
         <input
           type="checkbox"
-          checked={quality.price_outlier}
-          onChange={(e) => set('price_outlier', e.target.checked)}
+          checked={quality.target_outlier}
+          onChange={(e) => set('target_outlier', e.target.checked)}
         />
         drop {targetNoun} outliers
         <span className="hp-hint">
@@ -835,37 +835,37 @@ function QualityPanel({
           {outlierGroupLabel ? `, per ${outlierGroupLabel}` : ''}
         </span>
       </label>
-      {quality.price_outlier &&
-        numField('qf-madz', 'outlier threshold (MAD z)', 'price_outlier_mad_z', '3.5 is conservative; lower drops more')}
+      {quality.target_outlier &&
+        numField('qf-madz', 'outlier threshold (MAD z)', 'target_outlier_mad_z', '3.5 is conservative; lower drops more')}
       <label className="toggle">
         <input
           type="checkbox"
-          checked={quality.price_range}
-          onChange={(e) => set('price_range', e.target.checked)}
+          checked={quality.target_range}
+          onChange={(e) => set('target_range', e.target.checked)}
         />
         drop {targetNoun} out of range
         <span className="hp-hint">hard caps; catches noise the statistics miss</span>
       </label>
-      {quality.price_range && (
+      {quality.target_range && (
         <div className="quality-range">
-          {numField('qf-pmin', `min ${targetNoun}`, 'price_min', 'below this is noise')}
-          {numField('qf-pmax', `max ${targetNoun}`, 'price_max', 'above this is noise or mistyped')}
+          {numField('qf-pmin', `min ${targetNoun}`, 'target_min', 'below this is noise')}
+          {numField('qf-pmax', `max ${targetNoun}`, 'target_max', 'above this is noise or mistyped')}
         </div>
       )}
       {cappedDesc && (
         <label className="toggle">
           <input
             type="checkbox"
-            checked={quality.bedrooms_outlier}
-            onChange={(e) => set('bedrooms_outlier', e.target.checked)}
+            checked={quality.capped_numeric_outlier}
+            onChange={(e) => set('capped_numeric_outlier', e.target.checked)}
           />
           drop {cappedLabel} outliers
           <span className="hp-hint">negative or above the cap; 0 means unspecified and is kept</span>
         </label>
       )}
       {cappedDesc &&
-        quality.bedrooms_outlier &&
-        numField('qf-bmax', `max ${cappedLabel}`, 'bedrooms_max', 'above this is likely a typo')}
+        quality.capped_numeric_outlier &&
+        numField('qf-bmax', `max ${cappedLabel}`, 'capped_numeric_max', 'above this is likely a typo')}
       <label className="toggle">
         <input
           type="checkbox"

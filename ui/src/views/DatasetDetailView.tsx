@@ -12,7 +12,8 @@ import StatusBadge from '../components/StatusBadge'
 import ViewHeader from '../components/ViewHeader'
 import { useAsync } from '../hooks/useAsync'
 import { loadItems, loadSplit } from '../lib/itemsCache'
-import { fmtDateTime, fmtTarget, fmtTargetTick, fmtPct, fmtR2, shortDatasetId } from '../lib/format'
+import { fmtDateTime, fmtTarget, fmtTargetTick, fmtPct, shortDatasetId } from '../lib/format'
+import { formatMetric, metricColumns, metricValue } from '../lib/metrics'
 import { ruleLabel } from '../lib/rules'
 import { useDomain } from '../lib/DomainContext'
 import {
@@ -414,8 +415,8 @@ function Lineage({ datasetId }: { datasetId: string }) {
               <th>Predictor</th>
               <th>Definition</th>
               <th>Status</th>
-              <th className="num-col">MAE</th>
-              <th className="num-col">R²</th>
+              <th className="num-col">{metricColumns(domain)[0] ?? ''}</th>
+              <th className="num-col">{metricColumns(domain)[1] ?? ''}</th>
               <th>Started</th>
             </tr>
           </thead>
@@ -432,8 +433,16 @@ function Lineage({ datasetId }: { datasetId: string }) {
                 <td>
                   <StatusBadge status={r.status} />
                 </td>
-                <td className="num-col num">{r.metrics ? fmtTarget(r.metrics.mae, domain) : '—'}</td>
-                <td className="num-col num">{r.metrics ? fmtR2(r.metrics.r2) : '—'}</td>
+                <td className="num-col num">
+                  {r.metrics && metricColumns(domain)[0]
+                    ? formatMetric(domain, metricColumns(domain)[0], metricValue(r.metrics, metricColumns(domain)[0]))
+                    : '—'}
+                </td>
+                <td className="num-col num">
+                  {r.metrics && metricColumns(domain)[1]
+                    ? formatMetric(domain, metricColumns(domain)[1], metricValue(r.metrics, metricColumns(domain)[1]))
+                    : '—'}
+                </td>
                 <td className="num">{fmtDateTime(r.started_at)}</td>
               </tr>
             ))}

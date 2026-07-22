@@ -519,7 +519,7 @@ export function blendSpecFromFile(file: {
     exclude_blocks?: string[]
     frozen: boolean
     included: boolean
-    solo_metrics?: { mae: number } | null
+    solo_metrics?: { mae?: number } | null
   }[]
 }): BlendSpec {
   const included = file.members.filter((m) => m.included)

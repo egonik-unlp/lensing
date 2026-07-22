@@ -13,7 +13,7 @@
 #   contracts are self-describing).
 # - Field `name`s are payload JSON keys AND the items.json keys predictors
 #   read. Renaming a field is a corpus-schema statement, not cosmetics.
-# - Quality rule keys ("price-range", "bedrooms-outlier", …) are stable
+# - Quality rule keys ("target-range", "capped-numeric-outlier", …) are stable
 #   internal identifiers; a new domain rebinds them to its fields and
 #   relabels them, it does not rename them.
 
@@ -150,11 +150,11 @@ infer_port = 8090
 db_port = 5433
 
 [quality.rule_labels]
-"nonpositive-price" = "target ≤ 0"
-"price-outlier" = "target outlier"
+"nonpositive-target" = "target ≤ 0"
+"target-outlier" = "target outlier"
 "missing-fields" = "missing fields"
-"price-range" = "target out of range"
-"bedrooms-outlier" = "capped-numeric outlier"
+"target-range" = "target out of range"
+"capped-numeric-outlier" = "capped-numeric outlier"
 "duplicate-content" = "duplicate content"
 "short-content" = "thin content"
 "foreign-currency" = "foreign currency"

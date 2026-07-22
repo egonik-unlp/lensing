@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import { useDomain } from '../lib/DomainContext'
 import { categoricalFields } from '../lib/domain'
-import { cap, fmtTargetCell, shortDatasetId, shortRunId } from '../lib/format'
+import { cap, shortDatasetId, shortRunId } from '../lib/format'
+import { formatMetric, metricValue } from '../lib/metrics'
 import './palette.css'
 
 /* The command palette: the hundredth-visit way around. ⌘K / Ctrl+K from
@@ -88,7 +89,15 @@ export default function CommandPalette({ open, onClose }: { open: boolean; onClo
             key: `run-${r.run_id}`,
             group: 'Runs',
             label: shortRunId(r.run_id),
-            sub: `${r.predictor}${r.metrics ? ` · MAE ${fmtTargetCell(r.metrics.mae, domain)}` : ''} · ${r.status}`,
+            sub: `${r.predictor}${
+              r.metrics
+                ? ` · ${domain.metrics.primary} ${formatMetric(
+                    domain,
+                    domain.metrics.primary,
+                    metricValue(r.metrics, domain.metrics.primary),
+                  )}`
+                : ''
+            } · ${r.status}`,
             keywords: `${r.run_id} ${r.dataset_id}`,
             to: `/runs/${r.run_id}`,
           })

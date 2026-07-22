@@ -2,10 +2,10 @@
 //! featurization. Every rule is always *evaluated* (so previews can show
 //! counts); the config decides which rules *exclude* rows.
 //!
-//! Rule KEYS are stable identifiers shared by manifests, the API and the UI
-//! ("price-range", "bedrooms-outlier", …). The domain binds them to ITS
-//! fields and labels them for display — a new domain rebinds, it does not
-//! rename.
+//! Rule KEYS are stable, domain-neutral identifiers shared by manifests, the
+//! API and the UI ("target-range", "capped-numeric-outlier", …). The domain
+//! binds them to ITS fields and labels them for display — a new domain
+//! rebinds, it does not rename.
 
 use std::collections::{HashMap, HashSet};
 
@@ -20,11 +20,11 @@ use crate::qdrant::RawPoint;
 const MIN_GROUP: usize = 30;
 
 pub const RULES: &[&str] = &[
-    "nonpositive-price",
-    "price-outlier",
+    "nonpositive-target",
+    "target-outlier",
     "missing-fields",
-    "price-range",
-    "bedrooms-outlier",
+    "target-range",
+    "capped-numeric-outlier",
     "duplicate-content",
     "short-content",
     "foreign-currency",
@@ -73,9 +73,9 @@ pub fn evaluate(
         },
     );
 
-    // nonpositive-price: target ≤ 0 or missing.
+    // nonpositive-target: target ≤ 0 or missing.
     flagged.insert(
-        "nonpositive-price",
+        "nonpositive-target",
         points
             .iter()
             .enumerate()
@@ -96,7 +96,7 @@ pub fn evaluate(
             .collect(),
     );
 
-    // price-outlier: MAD z-score on log1p(target), per outlier group with a
+    // target-outlier: MAD z-score on log1p(target), per outlier group with a
     // global fallback for thin groups. Rows with target ≤ 0 are the
     // nonpositive rule's business and are skipped here.
     let group_field = domain.outlier_group();
@@ -121,9 +121,9 @@ pub fn evaluate(
         .map(|(g, v)| (g, mad_stats(v)))
         .collect();
 
-    let threshold = cfg.price_outlier_mad_z;
+    let threshold = cfg.target_outlier_mad_z;
     flagged.insert(
-        "price-outlier",
+        "target-outlier",
         valid
             .iter()
             .filter(|(_, group, lp)| {
@@ -134,32 +134,32 @@ pub fn evaluate(
             .collect(),
     );
 
-    // price-range: manual hard caps on the target. Rows with target ≤ 0 stay
+    // target-range: manual hard caps on the target. Rows with target ≤ 0 stay
     // the nonpositive rule's business.
     flagged.insert(
-        "price-range",
+        "target-range",
         points
             .iter()
             .enumerate()
             .filter(|(_, p)| {
                 let t = target_of(p);
-                t > 0.0 && (t < cfg.price_min || t > cfg.price_max)
+                t > 0.0 && (t < cfg.target_min || t > cfg.target_max)
             })
             .map(|(i, _)| i)
             .collect(),
     );
 
-    // bedrooms-outlier: the domain's capped numeric, negative or above the
-    // cap (data-entry noise). Zero is NOT flagged: it means "unspecified".
+    // capped-numeric-outlier: the domain's capped numeric, negative or above
+    // the cap (data-entry noise). Zero is NOT flagged: it means "unspecified".
     flagged.insert(
-        "bedrooms-outlier",
+        "capped-numeric-outlier",
         match domain.quality.capped_numeric.as_deref() {
             Some(field) => points
                 .iter()
                 .enumerate()
                 .filter(|(_, p)| {
                     let b = p.payload.num_of(field).unwrap_or(0.0);
-                    !(b >= 0.0) || b > cfg.bedrooms_max
+                    !(b >= 0.0) || b > cfg.capped_numeric_max
                 })
                 .map(|(i, _)| i)
                 .collect(),
@@ -345,17 +345,17 @@ mod tests {
         points.push(pt(102, "", "centro", 120_000.0)); // missing field
 
         let cfg = QualityFilterConfig {
-            nonpositive_price: true,
-            price_outlier: true,
-            price_outlier_mad_z: 3.5,
+            nonpositive_target: true,
+            target_outlier: true,
+            target_outlier_mad_z: 3.5,
             missing_fields: false,
             ..Default::default()
         };
         let analysis = evaluate(&points, &cfg, &currency_off(), &domain);
 
-        assert_eq!(analysis.flagged["nonpositive-price"], vec![51]);
-        assert!(analysis.flagged["price-outlier"].contains(&50));
-        assert!(!analysis.flagged["price-outlier"].contains(&10));
+        assert_eq!(analysis.flagged["nonpositive-target"], vec![51]);
+        assert!(analysis.flagged["target-outlier"].contains(&50));
+        assert!(!analysis.flagged["target-outlier"].contains(&10));
         assert_eq!(analysis.flagged["missing-fields"], vec![52]);
 
         // missing-fields is flag-only here: counted but not excluded.
@@ -383,21 +383,21 @@ mod tests {
         let long_b = "b".repeat(100);
         let points = vec![
             pt_full(0, 100_000.0, 2.0, &long_a),  // clean
-            pt_full(1, 500.0, 2.0, &long_b),      // below price_min
-            pt_full(2, 90_000_000.0, 2.0, &long_b), // above price_max; dup of 1
-            pt_full(3, 120_000.0, -1.0, &long_a), // negative bedrooms; dup of 0
-            pt_full(4, 130_000.0, 20.0, "short"), // bedrooms over cap; short content
+            pt_full(1, 500.0, 2.0, &long_b),      // below target_min
+            pt_full(2, 90_000_000.0, 2.0, &long_b), // above target_max; dup of 1
+            pt_full(3, 120_000.0, -1.0, &long_a), // negative capped numeric; dup of 0
+            pt_full(4, 130_000.0, 20.0, "short"), // capped numeric over cap; short content
             pt_full(5, 0.0, 2.0, ""),             // nonpositive; empty content is short, not dup
             pt_full(6, 140_000.0, 3.0, ""),       // empty content: short, NOT duplicate of 5
         ];
 
         let cfg = QualityFilterConfig {
-            nonpositive_price: false,
-            price_range: true,
-            price_min: 1_000.0,
-            price_max: 50_000_000.0,
-            bedrooms_outlier: true,
-            bedrooms_max: 15.0,
+            nonpositive_target: false,
+            target_range: true,
+            target_min: 1_000.0,
+            target_max: 50_000_000.0,
+            capped_numeric_outlier: true,
+            capped_numeric_max: 15.0,
             duplicate_content: true,
             short_content: true,
             short_content_min_chars: 80,
@@ -405,15 +405,15 @@ mod tests {
         };
         let analysis = evaluate(&points, &cfg, &currency_off(), &domain);
 
-        assert_eq!(analysis.flagged["price-range"], vec![1, 2]);
-        assert_eq!(analysis.flagged["bedrooms-outlier"], vec![3, 4]);
+        assert_eq!(analysis.flagged["target-range"], vec![1, 2]);
+        assert_eq!(analysis.flagged["capped-numeric-outlier"], vec![3, 4]);
         // Keep-first: rows 0 and 1 survive, their later copies are flagged.
         assert_eq!(analysis.flagged["duplicate-content"], vec![2, 3]);
         // Empty content is short-content's business, never a duplicate.
         assert_eq!(analysis.flagged["short-content"], vec![4, 5, 6]);
 
-        // price ≤ 0 stays the nonpositive rule's business (here disabled).
-        assert!(!analysis.flagged["price-range"].contains(&5));
+        // target ≤ 0 stays the nonpositive rule's business (here disabled).
+        assert!(!analysis.flagged["target-range"].contains(&5));
         let excluded = analysis.excluded(&cfg);
         assert!(excluded.contains(&1) && excluded.contains(&4));
         assert!(!excluded.contains(&0));
@@ -431,7 +431,7 @@ mod tests {
         points[1].payload.set("currency", json!("ARS"));
         // points[2] has no currency: reported as missing elsewhere, never flagged.
 
-        let cfg = QualityFilterConfig { nonpositive_price: false, ..Default::default() };
+        let cfg = QualityFilterConfig { nonpositive_target: false, ..Default::default() };
 
         // Filter mode: ARS row flagged AND excluded.
         let currency = CurrencyConfig { mode: CurrencyMode::Filter, ..Default::default() };

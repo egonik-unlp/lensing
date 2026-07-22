@@ -1,31 +1,14 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
-import type { Metrics, ModelDefinition, Predictor, RunMeta } from '../api/types'
+import type { ModelDefinition, Predictor, RunMeta } from '../api/types'
 import { heatCell } from '../lib/heat'
 import { useAsync } from '../hooks/useAsync'
-import { fmtTargetCell, fmtPct, fmtR2, shortRunId } from '../lib/format'
+import { shortRunId } from '../lib/format'
+import { formatMetric, metricColumns, metricLowerIsBetter, metricValue } from '../lib/metrics'
 import { useDomain } from '../lib/DomainContext'
-import type { Domain } from '../lib/domain'
 import RampLegend from './charts/RampLegend'
 import './sweepheatmap.css'
-
-interface MetricDef {
-  key: keyof Metrics
-  label: string
-  lowerWins: boolean
-  /** MAE/RMSE are in target units, so they take the domain; unit-agnostic
-   *  metrics (R², %) ignore the second argument. */
-  fmt: (v: number, domain: Domain) => string
-}
-
-const METRICS: MetricDef[] = [
-  { key: 'mae', label: 'MAE', lowerWins: true, fmt: fmtTargetCell },
-  { key: 'rmse', label: 'RMSE', lowerWins: true, fmt: fmtTargetCell },
-  { key: 'r2', label: 'R²', lowerWins: false, fmt: fmtR2 },
-  { key: 'mape', label: 'MAPE', lowerWins: true, fmt: (v) => fmtPct(v, 0) },
-  { key: 'medape', label: 'medAPE', lowerWins: true, fmt: (v) => fmtPct(v) },
-]
 
 /** Hyperparam value as a short axis label: numbers verbatim, arrays compact. */
 function fmtHp(v: unknown): string {
@@ -59,12 +42,13 @@ export default function SweepHeatmap({
 }) {
   const domain = useDomain()
   const runs = useAsync(() => api.listRuns(), [])
-  const [metricKey, setMetricKey] = useState<keyof Metrics>('mae')
+  const metricCols = metricColumns(domain)
+  const [metricName, setMetricName] = useState<string>(domain.metrics.primary)
   const [xPick, setXPick] = useState<string | null>(null)
   const [yPick, setYPick] = useState<string | null>(null)
   const [hover, setHover] = useState<{ cell: Cell; left: number; top: number } | null>(null)
 
-  const metric = METRICS.find((m) => m.key === metricKey)!
+  const lowerWins = metricLowerIsBetter(domain, metricName)
 
   // Finished runs launched from this definition, with metrics. Stopped runs
   // carry full test metrics too — comparable like succeeded (same rule as
@@ -129,12 +113,13 @@ export default function SweepHeatmap({
     let lo = Infinity
     let hi = -Infinity
     for (const [k, group] of byPair) {
+      const miss = lowerWins ? Infinity : -Infinity
       const best = group.reduce((a, b) => {
-        const va = a.metrics![metric.key]
-        const vb = b.metrics![metric.key]
-        return (metric.lowerWins ? vb < va : vb > va) ? b : a
+        const va = metricValue(a.metrics, metricName) ?? miss
+        const vb = metricValue(b.metrics, metricName) ?? miss
+        return (lowerWins ? vb < va : vb > va) ? b : a
       })
-      const value = best.metrics![metric.key]
+      const value = metricValue(best.metrics, metricName) ?? NaN
       if (isFinite(value)) {
         lo = Math.min(lo, value)
         hi = Math.max(hi, value)
@@ -146,11 +131,11 @@ export default function SweepHeatmap({
     const tOf = (v: number) => {
       if (!isFinite(v)) return 0
       if (span <= 0) return 0.5
-      return metric.lowerWins ? (hi - v) / span : (v - lo) / span
+      return lowerWins ? (hi - v) / span : (v - lo) / span
     }
-    const bestValue = metric.lowerWins ? lo : hi
+    const bestValue = lowerWins ? lo : hi
     return { xVals, yVals, cells, tOf, lo, hi, bestValue }
-  }, [eligible, xParam, yParam, metric])
+  }, [eligible, xParam, yParam, metricName, lowerWins])
 
   const paramLabel = (name: string) =>
     predictor?.params.find((p) => p.name === name)?.label ?? name
@@ -179,31 +164,31 @@ export default function SweepHeatmap({
   // No sweep to show: stay out of the way entirely.
   if (eligible.length < 2 || !grid || varying.length === 0) return null
 
-  const worstLabel = metric.fmt(metric.lowerWins ? grid.hi : grid.lo, domain)
-  const bestLabel = metric.fmt(grid.bestValue, domain)
+  const worstLabel = formatMetric(domain, metricName, lowerWins ? grid.hi : grid.lo)
+  const bestLabel = formatMetric(domain, metricName, grid.bestValue)
 
   return (
     <div className="panel" aria-label="Hyperparameter sweep">
       <h2>Hyperparameter sweep</h2>
       <p className="muted contract-line">
         <span className="num">{eligible.length}</span> finished runs · colored by{' '}
-        <span className="num">{metric.label}</span> · darkest is best
+        <span className="num">{metricName}</span> · darkest is best
       </p>
 
       <div className="sweep-controls">
         <div className="scale-toggle" role="group" aria-label="Sweep metric">
           <span className="muted">metric</span>
-          {METRICS.map((m) => (
+          {metricCols.map((name) => (
             <button
-              key={m.key}
-              className={`scale-btn${metricKey === m.key ? ' is-active' : ''}`}
-              aria-pressed={metricKey === m.key}
+              key={name}
+              className={`scale-btn${metricName === name ? ' is-active' : ''}`}
+              aria-pressed={metricName === name}
               onClick={() => {
-                setMetricKey(m.key)
+                setMetricName(name)
                 setHover(null)
               }}
             >
-              {m.label}
+              {name}
             </button>
           ))}
         </div>
@@ -274,7 +259,7 @@ export default function SweepHeatmap({
                     to={`/runs/${cell.run.run_id}`}
                     className={`sweep-cell${isBest ? ' is-best' : ''}`}
                     style={{ background: bg, color: text }}
-                    aria-label={`${pairLabel}: ${metric.label} ${metric.fmt(cell.value, domain)}, ${
+                    aria-label={`${pairLabel}: ${metricName} ${formatMetric(domain, metricName, cell.value)}, ${
                       cell.n > 1 ? `best of ${cell.n} runs, ` : ''
                     }open run ${shortRunId(cell.run.run_id)}`}
                     onMouseEnter={(e) => {
@@ -288,7 +273,7 @@ export default function SweepHeatmap({
                     onFocus={() => setHover(null)}
                   >
                     {isBest && <span aria-hidden="true">✓ </span>}
-                    {metric.fmt(cell.value, domain)}
+                    {formatMetric(domain, metricName, cell.value)}
                   </Link>
                 )
               })}
@@ -299,7 +284,7 @@ export default function SweepHeatmap({
           <div className="chart-tooltip" style={{ left: hover.left, top: hover.top }}>
             {`${paramLabel(xParam)} ${fmtHp(JSON.parse(hover.cell.x))}${
               yParam ? ` × ${paramLabel(yParam)} ${fmtHp(JSON.parse(hover.cell.y))}` : ''
-            }\n${metric.label} ${metric.fmt(hover.cell.value, domain)} · ${shortRunId(hover.cell.run.run_id)}${
+            }\n${metricName} ${formatMetric(domain, metricName, hover.cell.value)} · ${shortRunId(hover.cell.run.run_id)}${
               hover.cell.n > 1 ? ` (n=${hover.cell.n})` : ''
             }`}
           </div>
@@ -309,7 +294,7 @@ export default function SweepHeatmap({
       <RampLegend
         minLabel={worstLabel}
         maxLabel={`${bestLabel} ✓`}
-        label={metric.label}
+        label={metricName}
       />
     </div>
   )

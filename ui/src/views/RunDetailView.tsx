@@ -4,6 +4,7 @@ import { api } from '../api/client'
 import type { Items, Metrics, Prediction, Predictor, RunMeta } from '../api/types'
 import ArchViz from '../components/ArchViz'
 import BlendPanel from '../components/BlendPanel'
+import ConfusionMatrix from '../components/charts/ConfusionMatrix'
 import ErrorHistogram from '../components/charts/ErrorHistogram'
 import LossChart from '../components/charts/LossChart'
 import LossDerivativeChart from '../components/charts/LossDerivativeChart'
@@ -23,11 +24,11 @@ import {
   fmtDuration,
   fmtTarget,
   fmtTargetDelta,
-  fmtPct,
-  fmtR2,
   fmtSignedPct,
   shortRunId,
 } from '../lib/format'
+import { formatMetric, isPercentMetric, metricColumns, metricValue } from '../lib/metrics'
+import { domainTask, isClassification } from '../lib/domain'
 import './rundetail.css'
 import { useDocTitle, useDomain } from '../lib/DomainContext'
 
@@ -462,6 +463,15 @@ function FinishedRun({ run, events }: { run: RunMeta; events: ReturnType<typeof 
   const preds = useAsync(() => api.getPredictions(run.run_id), [run.run_id])
   const predictors = useAsync(() => api.listPredictors(), [])
   const m = run.metrics ?? ({} as Metrics)
+  const metricCols = metricColumns(domain)
+  const classification = isClassification(domain)
+  const classLabels = useMemo(() => {
+    if (domain.target.classes && domain.target.classes.length) return domain.target.classes
+    if (domainTask(domain) === 'binary') return ['0', '1']
+    const ids = new Set<number>()
+    for (const p of preds.data ?? []) ids.add(Math.round(p.actual))
+    return [...ids].sort((a, b) => a - b).map(String)
+  }, [domain, preds.data])
   const tableRef = useRef<HTMLDivElement>(null)
   const [sort, setSort] = useState<{ key: PredSort; dir: 1 | -1 }>({ key: 'abs_err', dir: -1 })
   const [selectedRow, setSelectedRow] = useState<number | null>(null)
@@ -514,11 +524,11 @@ function FinishedRun({ run, events }: { run: RunMeta; events: ReturnType<typeof 
       <MetricStrip
         ariaLabel="Test-set metrics; each opens the predictions behind it"
         metrics={[
-          { label: 'MAE', value: fmtTarget(m.mae, domain), hint: 'mean absolute error', onClick: () => jumpToTable('abs_err') },
-          { label: 'RMSE', value: fmtTarget(m.rmse, domain), hint: 'outlier-sensitive', onClick: () => jumpToTable('abs_err') },
-          { label: 'R²', value: fmtR2(m.r2), hint: 'target-space fit', onClick: () => jumpToTable('abs_err') },
-          { label: 'MAPE', value: fmtPct(m.mape, 0), hint: 'mean % error', onClick: () => jumpToTable('pct_err') },
-          { label: 'medAPE', value: fmtPct(m.medape), hint: 'median % error', onClick: () => jumpToTable('pct_err') },
+          ...metricCols.map((col) => ({
+            label: col,
+            value: formatMetric(domain, col, metricValue(m, col)),
+            onClick: () => jumpToTable(isPercentMetric(domain, col) ? 'pct_err' : 'abs_err'),
+          })),
           { label: 'test items', value: m.n_test.toLocaleString() },
         ]}
       />
@@ -539,9 +549,11 @@ function FinishedRun({ run, events }: { run: RunMeta; events: ReturnType<typeof 
           </label>
           {filteredMetrics && (
             <p className="filtered-strip num" role="status">
-              filtered: MAE {fmtTarget(filteredMetrics.mae, domain)} · RMSE {fmtTarget(filteredMetrics.rmse, domain)} · R²{' '}
-              {fmtR2(filteredMetrics.r2)} · MAPE {fmtPct(filteredMetrics.mape, 0)} · medAPE{' '}
-              {fmtPct(filteredMetrics.medape)} · n {filteredMetrics.n_test.toLocaleString()}
+              filtered:{' '}
+              {metricCols
+                .map((col) => `${col} ${formatMetric(domain, col, metricValue(filteredMetrics, col))}`)
+                .join(' · ')}{' '}
+              · n {filteredMetrics.n_test.toLocaleString()}
               <span className="muted"> (official metrics above are unchanged)</span>
             </p>
           )}
@@ -552,8 +564,19 @@ function FinishedRun({ run, events }: { run: RunMeta; events: ReturnType<typeof 
 
       <div className="charts-grid">
         <div>
-          <h2 className="panel-title">Predicted vs actual</h2>
-          <ScatterChart predictions={preds.data ?? []} onSelect={selectFromScatter} selectedRowId={selectedRow} />
+          {classification ? (
+            <>
+              {/* Class labels, not a continuous target: a confusion matrix, not
+                  a log-scale scatter. */}
+              <h2 className="panel-title">Confusion matrix</h2>
+              <ConfusionMatrix predictions={preds.data ?? []} classes={classLabels} />
+            </>
+          ) : (
+            <>
+              <h2 className="panel-title">Predicted vs actual</h2>
+              <ScatterChart predictions={preds.data ?? []} onSelect={selectFromScatter} selectedRowId={selectedRow} />
+            </>
+          )}
         </div>
         <div className="charts-col">
           <div>
@@ -566,10 +589,14 @@ function FinishedRun({ run, events }: { run: RunMeta; events: ReturnType<typeof 
               </>
             )}
           </div>
-          <div>
-            <h2 className="panel-title">Error distribution</h2>
-            <ErrorHistogram series={[{ label: run.predictor, predictions: preds.data ?? [], style: 'fill' }]} />
-          </div>
+          {/* Percent-error histogram is target-space; only meaningful for a
+              continuous target (regression / forecast), not class labels. */}
+          {!classification && (
+            <div>
+              <h2 className="panel-title">Error distribution</h2>
+              <ErrorHistogram series={[{ label: run.predictor, predictions: preds.data ?? [], style: 'fill' }]} />
+            </div>
+          )}
         </div>
       </div>
 

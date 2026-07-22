@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 /// `meta.json` in a run directory. Owned by lensing-server.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,6 +89,79 @@ pub struct Metrics {
     /// Multiclass macro-averaged F1.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub macro_f1: Option<f64>,
+    /// Any additional, instance-defined metrics a predictor emits (e.g.
+    /// `alarm_pr_auc`, `AP`, `P@pos`, forecast `sMAPE`/`MASE`). Captured
+    /// verbatim from the surplus keys of `metrics.json` so a domain can name
+    /// metrics the framework has no typed field for — the pluripotential path.
+    /// Empty for a plain regression/classification run, so old JSON round-trips
+    /// byte-for-byte.
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+/// Canonical metric-name key: lowercased, with `_`/`-`/space stripped and the
+/// superscript `²` folded to `2`, so `"ROC-AUC"`, `"roc_auc"`, `"R²"` and
+/// `"r2"` all collapse to a single comparable token. Used by metric lookup and
+/// ranking so names are matched by identity, not by exact spelling.
+pub fn normalize_metric_name(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    for ch in name.chars() {
+        for c in ch.to_lowercase() {
+            match c {
+                '_' | '-' | ' ' => {}
+                '²' => out.push('2'),
+                other => out.push(other),
+            }
+        }
+    }
+    out
+}
+
+/// Default ranking direction for a metric when the domain gives no explicit
+/// `[metrics].directions` override: error/loss-style metrics rank
+/// lower-is-better, score-style metrics higher-is-better. Works for
+/// instance-defined names too (a custom `*_loss`/`*_error` is lower-better).
+pub fn metric_lower_is_better_default(name: &str) -> bool {
+    let n = normalize_metric_name(name);
+    const LOWER: [&str; 8] = ["mae", "rmse", "rmsle", "mape", "medape", "logloss", "brier", "mse"];
+    LOWER.contains(&n.as_str()) || n.contains("loss") || n.contains("error")
+}
+
+impl Metrics {
+    /// Look up a metric by name, case- and separator-insensitively. The typed
+    /// fields answer the built-in names; anything else resolves from the
+    /// predictor-supplied [`Metrics::extra`] map (first by exact key, then by
+    /// normalized key). `None` when the metric is absent on this run.
+    pub fn get(&self, name: &str) -> Option<f64> {
+        let norm = normalize_metric_name(name);
+        let typed = match norm.as_str() {
+            "mae" => self.mae,
+            "rmse" => self.rmse,
+            "mape" => self.mape,
+            "medape" => self.medape,
+            "r2" => self.r2,
+            "accuracy" | "acc" => self.accuracy,
+            "logloss" => self.logloss,
+            "auc" | "rocauc" | "macroauc" => self.auc,
+            "brier" => self.brier,
+            "macrof1" | "f1" => self.macro_f1,
+            _ => None,
+        };
+        // A built-in name whose typed field is absent on this run (e.g. a
+        // domain that names "ROC-AUC" but computes it server-side into `extra`
+        // on a regression-space run) still falls back to the extra map.
+        typed.or_else(|| {
+            self.extra
+                .get(name)
+                .and_then(serde_json::Value::as_f64)
+                .or_else(|| {
+                    self.extra
+                        .iter()
+                        .find(|(k, _)| normalize_metric_name(k) == norm)
+                        .and_then(|(_, v)| v.as_f64())
+                })
+        })
+    }
 }
 
 /// One element of `predictions.json` written by a predictor.
@@ -174,6 +248,32 @@ pub fn compute_metrics(pairs: &[(f64, f64)]) -> Metrics {
         medape: Some(medape),
         ..Default::default()
     }
+}
+
+/// Forecast (`time_series`) metrics from (actual, predicted) pairs: the
+/// regression target-space metrics plus symmetric MAPE (`smape`), which stays
+/// bounded when actuals sit at or near zero (ordinary MAPE blows up there).
+/// `smape` rides in [`Metrics::extra`] so a forecast domain can rank by it
+/// without a new typed field. MASE is intentionally not computed here — it is
+/// scaled by the in-sample naive-forecast error, which the post-hoc
+/// blend/sweep recompute path has no access to, so predictors emit it.
+pub fn compute_forecast_metrics(pairs: &[(f64, f64)]) -> Metrics {
+    let mut m = compute_metrics(pairs);
+    let n = pairs.len();
+    let smape = pairs
+        .iter()
+        .map(|&(a, p)| {
+            let denom = a.abs() + p.abs();
+            if denom > 0.0 {
+                2.0 * (p - a).abs() / denom
+            } else {
+                0.0
+            }
+        })
+        .sum::<f64>()
+        / n as f64;
+    m.extra.insert("smape".to_string(), serde_json::json!(smape));
+    m
 }
 
 /// Rank-based ROC-AUC (Mann–Whitney U) from (label∈{0,1}, score) pairs, with
@@ -361,6 +461,17 @@ mod tests {
         let ties = [(0.0, 0.5), (1.0, 0.5)];
         assert!((roc_auc(&ties) - 0.5).abs() < 1e-9);
         assert!((roc_auc(&[(1.0, 0.3), (1.0, 0.9)]) - 0.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn forecast_metrics_add_smape() {
+        let m = compute_forecast_metrics(&[(10.0, 12.0), (0.0, 0.0), (100.0, 90.0)]);
+        assert!(m.mae.is_some() && m.rmse.is_some());
+        // sMAPE resolves through the open registry and is bounded in [0, 2].
+        let smape = m.get("smape").expect("smape present in extra");
+        assert!(smape >= 0.0 && smape <= 2.0);
+        // the zero/zero row contributes 0 rather than a NaN blowup
+        assert!(smape.is_finite());
     }
 
     #[test]

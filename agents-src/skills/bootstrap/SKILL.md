@@ -13,14 +13,21 @@ allowed-tools:
   - Bash(zig build *)
   - Bash(docker compose *)
   - Bash(cargo test *)
+  - Bash(cargo run *)
   - Bash(sleep *)
 ---
 
 Initialize this Lensing template around the user's dataset. This skill
 automates BOOTSTRAP.md — read it first; it is the authoritative checklist.
-Everything flows from **`domain.toml`** (the single source of domain truth)
-and the corpus assumption: a Qdrant collection of embedded documents with
-JSON metadata payloads.
+Everything flows from **`domain.toml`** (the single source of domain truth).
+The framework trains from a **Qdrant collection of embedded documents with
+JSON metadata payloads** — but the user need not arrive with one. If their
+data lives in a **database (Postgres/MySQL/SQLite), a CSV/JSONL file, or an
+HTTP API**, Phase 0 uses the `lensing-intake` pipeline to embed the fields
+that benefit from it into that corpus (and, optionally, mirror the
+authoritative rows into a Postgres working database). This is pluripotential:
+the target may be a **regression, binary, multiclass, or time-series** problem,
+and the interview sets `[target].task` accordingly.
 
 Work phase by phase, conversationally — every phase ends with the user
 confirming before you write anything. Resume at whatever phase the argument
@@ -55,7 +62,17 @@ Then the Lensing code itself:
 - One-time predictor toolchains as needed: `zig build py-setup` (Python
   venv), `zig build julia-setup` (Flux predictors).
 
-## Phase 0 — Probe the corpus
+## Phase 0 — Probe the data source (and build the corpus if needed)
+
+First ask **where the data lives**. Two paths:
+
+- **(A) Already a Qdrant corpus** — a collection of embedded vectors with JSON
+  payloads. Go straight to *0A · probe Qdrant*.
+- **(B) A raw source** — a database (Postgres/MySQL/SQLite), a CSV/JSONL file,
+  or an HTTP API. Do *0B · ingest → corpus* first (it produces the Qdrant
+  collection), then probe it as in 0A.
+
+### 0A · Probe the Qdrant corpus
 
 Qdrant first (default `{{qdrant_url}}`; ask if theirs differs):
 
@@ -81,10 +98,64 @@ plausibly be targets, list them neutrally as candidates without ranking.
 Also: where the metadata
 nests (`metadata_root`), which key holds the embedded text
 (`content_field`), the embedding dim (scroll once with
-`"with_vector": true, "limit": 1`), and a candidate corpus filter. If they
-have no corpus yet, explain the requirement (vectors + JSON payloads) and
-offer `docker compose --profile qdrant up -d` plus their own embedding
-pipeline — this skill does not embed documents.
+`"with_vector": true, "limit": 1`), and a candidate corpus filter.
+
+### 0B · Ingest a raw source into the corpus (`lensing-intake`)
+
+When the data is in a DB / file / API, DON'T ask the user to hand-embed it —
+drive the `lensing-intake` pipeline (`crates/lensing-intake`). Steps:
+
+1. **Probe the source schema.** For a DB, run their `SELECT` (or inspect the
+   table) to see columns + a few rows; for a CSV/JSONL, read the header and a
+   sample. Show the same role-inference table as 0A.
+2. **Decide what to embed.** The free-text / high-cardinality columns become
+   the embedded **document** (the vector); the structured columns (numeric,
+   categorical, timestamp, geo) ride along as the payload **metadata** that
+   becomes features. Concatenate the text columns into the `content_field`.
+3. **Write `pipeline.toml`** — one `[embedding]`, one `[source]`, and sinks in
+   authoritative-first order (Postgres working DB before Qdrant). Example
+   (Postgres source → Postgres working rows + Qdrant corpus):
+
+   ```toml
+   [embedding]
+   provider = "ollama"            # or "openai" (needs OPENAI_API_KEY)
+   model = "nomic-embed-text"
+   dims = 768
+   distance = "cosine"
+
+   [source]
+   kind = "postgres"              # postgres | sql-mysql | sql-sqlite | file | http
+   url = "postgres://user:pw@host:5432/theirdb"
+   query = "SELECT id, title, description, price, category, created_at FROM items"
+   identifier = "id"              # the stable per-row id column
+
+   # Authoritative working rows (encouraged — aids portability; a fresh
+   # Postgres DB is fine). Omit if you only want the vector corpus.
+   [[sink]]
+   kind = "postgres"               # the instance's own lensing Postgres
+   url = "postgres://pg:pg@localhost:5433/lensing"  # DATABASE_URL / .env
+   table = "corpus_items"
+
+   [[sink]]
+   kind = "qdrant"
+   url = "{{qdrant_url}}"          # api_key = "..." for a remote/cloud Qdrant
+   ```
+
+4. **Run it** (start Qdrant/Postgres first if local: `zig build db-up`,
+   `docker compose --profile qdrant up -d`):
+
+   ```sh
+   cargo run --release -p lensing-intake -- --config pipeline.toml
+   ```
+
+   It embeds each row and upserts to the sinks (Postgres jsonb + Qdrant
+   vectors), keyed by `identifier`. The resulting collection is the corpus —
+   `[corpus].collection` in `domain.toml` points at it. Then probe it as in 0A.
+   Keep `pipeline.toml` in the repo: it is how the corpus is rebuilt/refreshed.
+
+If they have no source at all yet, explain the requirement (rows with some
+embeddable text + structured fields) and the two ways in: bring a Qdrant
+corpus, or point `lensing-intake` at a DB/CSV/API.
 
 ## Phase 1 — Interview → domain.toml
 
@@ -105,9 +176,26 @@ should the models predict?") with no pre-selected suggestion:
    for `style = "money"` + a currency symbol **only** when the target is
    literally a monetary amount. Never assume the target is positive, money, or
    heavy-tailed because the framework's worked example happens to be a price.
-2. **Nouns + title**: entity noun ("listing"/"vehicle"/"posting"), target
+2. **Task type** → `[target].task` — this is what makes the metrics and UI
+   pluripotential, so pick it from the target's nature:
+   - a continuous number → `regression` (the default)
+   - a continuous number forecast on time-ordered rows → `time_series`: also
+     set `[target].time_field` (the timestamp-role field) and, if forecasting
+     ahead, `horizon`; the train/test split becomes chronological (past→train,
+     future→test) with a horizon embargo, not random
+   - two classes → `binary` (labels {0,1}; `transform` must be `none`)
+   - K>2 classes → `multiclass`: set `classes = [...]` in class-id order;
+     `transform` must be `none`
+   The task drives which metrics compute and which charts render (a confusion
+   matrix for classification; target-space scatter/error for regression &
+   forecast). Choose `[metrics]` names that fit it — AUC/logloss/accuracy for
+   classification, MAE/RMSE/R² for regression, sMAPE or a custom PR-AUC for a
+   forecast. **Metric names are open**: any name a predictor emits is rankable;
+   add a `[metrics].directions` entry only when a name is not obviously
+   error-style (lower-better) or score-style (higher-better).
+3. **Nouns + title**: entity noun ("listing"/"vehicle"/"posting"), target
    noun, project name/title.
-3. **Fields = the dataset-pane levers.** Walk the inference table together.
+4. **Fields = the dataset-pane levers.** Walk the inference table together.
    Each `[[fields]]` entry becomes a build-form toggle (`default_on`), and
    the `[quality]` bindings become the preflight/filter levers in the
    dataset pane: `outlier_group` (which categorical groups the
@@ -115,12 +203,13 @@ should the models predict?") with no pre-selected suggestion:
    sanity cap), `critical` fields (the missing-fields rule), plus per-rule
    labels in the user's vocabulary. Field ORDER is column order — put
    numerics first in the order they should appear.
-4. **Coordinates** (only with a geo field): plausible lat/lon bounds —
+5. **Coordinates** (only with a geo field): plausible lat/lon bounds —
    out-of-bounds geocodes count as missing.
-5. **Currency**: multi-currency corpus → `[currency]` (pair, rate endpoint
+6. **Currency**: multi-currency corpus → `[currency]` (pair, rate endpoint
    template, reconcile collection); single-currency → delete the section.
-6. **Metrics**: primary + columns + % metrics + value unit.
-7. **[agents]**: API port, naming convention, `ingestion` on/off (decided
+7. **Metrics**: primary + columns + % metrics + value unit (names per the
+   task, per step 2).
+8. **[agents]**: API port, naming convention, `ingestion` on/off (decided
    properly in Phase 3).
 
 Then: write `domain.toml`, validate via `cargo test -p lensing-core` (the
@@ -179,6 +268,27 @@ reads right, build the first dataset (the **dataset-design** skill owns the
 details), then open `/datasets/<id>` and confirm the pane shows their
 fields, their rule labels, their target histogram.
 
+## Phase 4b — Design a representation (optional)
+
+Datasets build on the corpus vectors as-is (PCA'd at build time). When the
+embeddings are high-dimensional or multimodal, offer a **learned
+representation** — a compressed latent collection the dataset build can point
+at instead — via `lensing-compression` (exposed as `/api/representations`):
+
+```sh
+curl -s {{api_host}}/api/representations -H content-type:application/json \
+  -d '{"method": "pca", "latent": 32}'          # method: pca | autoencoder | sparse_ae
+curl -s {{api_host}}/api/representations          # list; poll build status
+```
+
+`pca` is the safe first cut (fast, linear, reloadable for inference);
+`autoencoder` / `sparse_ae` capture nonlinear structure and, with a block
+layout, keep a wide text block from drowning a narrow numeric one. The build
+writes an L2-normalized latent collection preserving ids + payloads; a dataset
+can then be built off that collection. Offer this, don't force it — the raw
+corpus is a fine default. This is the "design a transformation/compression"
+lever the framework provides out of the box.
+
 ## Phase 5 — Starter models for the first evaluation
 
 Propose a small starter slate **for the user to confirm** — not a fixed
@@ -221,6 +331,18 @@ real campaign (the **experiment-runner** agent executes the approved design).
 - Never write under `data/` by hand; never hand-edit the rendered
   `.claude/.agents/.gemini` outputs (edit `agents-src/` + `domain.toml`,
   then `zig build render-agents`).
+- **Training always goes through the experiment helpers.** Beyond the first
+  starter runs, models are trained by handing off to the **experiment-designer**
+  agent (which proposes the next scan) and the **experiment-runner** agent
+  (which launches the runs via `POST /api/runs`, applies the decision rule,
+  saves the winner, and writes the campaign report). Running these is what
+  fires the downstream agents — **best-model-selector** (re-curates the
+  best-models group), **report-curator** (folds the campaign into the PDF), and
+  **information-capture-analyst** (SAE interpretability) — and keeps the
+  empirical record (`{{facts_file}}`) coherent. Do not hand-launch ad-hoc
+  training outside this path.
 - The Rust crates, predictors, `registry.toml` and the UI should NOT need
-  changes — if the domain seems to require it (a missing quality-rule kind,
-  a new field role), say so explicitly rather than improvising code.
+  changes to point at a new domain — the framework is problem-type-agnostic
+  (regression / classification / time-series). If the domain seems to require a
+  code change (a missing quality-rule kind, a new field role, a task the
+  framework doesn't model), say so explicitly rather than improvising.

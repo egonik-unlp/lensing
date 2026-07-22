@@ -12,7 +12,8 @@ import Sparkline from '../components/Sparkline'
 import { useAsync } from '../hooks/useAsync'
 import { useRunEvents } from '../hooks/useRunEvents'
 import { useDomain } from '../lib/DomainContext'
-import { fmtDateTime, fmtDuration, fmtTarget, fmtTargetCell, fmtPct, fmtR2, fmtStamp, shortRunId, tinyRunId } from '../lib/format'
+import { fmtDateTime, fmtDuration, fmtStamp, shortRunId, tinyRunId } from '../lib/format'
+import { formatMetric, metricColumns, metricValue } from '../lib/metrics'
 import './runs.css'
 
 /* Browsers cap concurrent HTTP/1.1 connections per origin (~6); each live
@@ -22,34 +23,26 @@ import './runs.css'
 const MAX_LIVE_CELLS = 4
 const POLL_MS = 5000
 
-type SortKey =
-  | 'started_at'
-  | 'predictor'
-  | 'dataset_id'
-  | 'status'
-  | 'mae'
-  | 'rmse'
-  | 'r2'
-  | 'mape'
-  | 'medape'
+// A sort key is one of the fixed columns; anything else is a metric column
+// name from domain.metrics.columns, resolved via metricValue.
+type SortKey = string
+const FIXED_KEYS = new Set(['started_at', 'predictor', 'dataset_id', 'status'])
 
 interface Sort {
   key: SortKey
   dir: 1 | -1
 }
 
-const metric = (r: RunMeta, k: 'mae' | 'rmse' | 'r2' | 'mape' | 'medape') =>
-  r.metrics ? r.metrics[k] : null
-
 function compare(a: RunMeta, b: RunMeta, { key, dir }: Sort): number {
   let av: string | number | null
   let bv: string | number | null
-  if (key === 'started_at' || key === 'predictor' || key === 'dataset_id' || key === 'status') {
-    av = a[key]
-    bv = b[key]
+  if (FIXED_KEYS.has(key)) {
+    const k = key as 'started_at' | 'predictor' | 'dataset_id' | 'status'
+    av = a[k]
+    bv = b[k]
   } else {
-    av = metric(a, key)
-    bv = metric(b, key)
+    av = metricValue(a.metrics, key)
+    bv = metricValue(b.metrics, key)
   }
   if (av === null && bv === null) return 0
   if (av === null) return 1 // metric-less runs sink regardless of direction
@@ -59,26 +52,25 @@ function compare(a: RunMeta, b: RunMeta, { key, dir }: Sort): number {
   return 0
 }
 
-/* Representative column widths for the loading state (select, run, predictor,
-   dataset, status, 5 metrics, time, started, actions). */
-const SKELETON_COLS = [
-  '1.5ch',
-  '10ch',
-  '8ch',
-  '14ch',
-  '8ch',
-  '6ch',
-  '6ch',
-  '5ch',
-  '5ch',
-  '6ch',
-  '5ch',
-  '13ch',
-  '3ch',
-]
+/* Column widths for the loading skeleton: select, run, predictor, dataset,
+   status, one per metric column, time, started, actions. */
+function skeletonCols(nMetrics: number): string[] {
+  return [
+    '1.5ch',
+    '10ch',
+    '8ch',
+    '14ch',
+    '8ch',
+    ...Array<string>(nMetrics).fill('6ch'),
+    '5ch',
+    '13ch',
+    '3ch',
+  ]
+}
 
 export default function RunsView() {
   const domain = useDomain()
+  const metricCols = metricColumns(domain)
   useEffect(() => {
     document.title = `Runs · ${domain.project.title}`
   }, [domain.project.title])
@@ -192,13 +184,17 @@ export default function RunsView() {
             </th>
             <th>{sortBtn('dataset_id', 'Dataset')}</th>
             <th>{sortBtn('status', 'Status')}</th>
-            <th className="num-col col-group-start" aria-sort={sort.key === 'mae' ? (sort.dir === 1 ? 'ascending' : 'descending') : undefined}>
-              {sortBtn('mae', 'MAE')}
-            </th>
-            <th className="num-col">{sortBtn('rmse', 'RMSE')}</th>
-            <th className="num-col">{sortBtn('r2', 'R²')}</th>
-            <th className="num-col">{sortBtn('mape', 'MAPE')}</th>
-            <th className="num-col">{sortBtn('medape', 'medAPE')}</th>
+            {metricCols.map((col, i) => (
+              <th
+                key={col}
+                className={i === 0 ? 'num-col col-group-start' : 'num-col'}
+                aria-sort={
+                  sort.key === col ? (sort.dir === 1 ? 'ascending' : 'descending') : undefined
+                }
+              >
+                {sortBtn(col, col)}
+              </th>
+            ))}
             <th className="num-col col-group-start">Time</th>
             <th>{sortBtn('started_at', 'Started')}</th>
             <th>
@@ -212,7 +208,7 @@ export default function RunsView() {
                 // First load previews the table shape: one skeleton per
                 // column. Reloads update in place and never come back here.
                 <tr key={i}>
-                  {SKELETON_COLS.map((w, j) => (
+                  {skeletonCols(metricCols.length).map((w, j) => (
                     <td key={j}>
                       <div className="skeleton skeleton-xs" style={{ width: w }} />
                     </td>
@@ -279,6 +275,7 @@ function RunRow({
 }) {
   const navigate = useNavigate()
   const domain = useDomain()
+  const metricCols = metricColumns(domain)
   const m = run.metrics
   return (
     <tr
@@ -319,15 +316,11 @@ function RunRow({
           <StatusBadge status={run.status} />
         )}
       </td>
-      <td className="num-col num col-group-start" title={m ? fmtTarget(m.mae, domain) : undefined}>
-        {m ? fmtTargetCell(m.mae, domain) : '—'}
-      </td>
-      <td className="num-col num" title={m ? fmtTarget(m.rmse, domain) : undefined}>
-        {m ? fmtTargetCell(m.rmse, domain) : '—'}
-      </td>
-      <td className="num-col num">{m ? fmtR2(m.r2) : '—'}</td>
-      <td className="num-col num">{m ? fmtPct(m.mape, 0) : '—'}</td>
-      <td className="num-col num">{m ? fmtPct(m.medape) : '—'}</td>
+      {metricCols.map((col, i) => (
+        <td key={col} className={i === 0 ? 'num-col num col-group-start' : 'num-col num'}>
+          {formatMetric(domain, col, metricValue(m, col))}
+        </td>
+      ))}
       <td className="num-col num col-group-start">{fmtDuration(run.started_at, run.finished_at)}</td>
       <td className="num" title={fmtDateTime(run.started_at)}>
         {fmtStamp(run.started_at)}

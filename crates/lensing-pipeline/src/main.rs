@@ -52,24 +52,24 @@ enum Command {
         /// default: domain.toml `currency.reconcile_collection`).
         #[arg(long)]
         numerics_collection: Option<String>,
-        /// Disable the nonpositive-price quality filter.
-        #[arg(long)]
-        no_filter_nonpositive_price: bool,
-        /// Enable the robust price-outlier quality filter.
-        #[arg(long)]
-        filter_price_outliers: bool,
-        /// MAD z-score threshold for the price-outlier filter.
-        #[arg(long, default_value_t = 3.5)]
-        price_outlier_mad_z: f64,
-        /// Enable the price-range quality filter.
-        #[arg(long)]
-        filter_price_range: bool,
-        /// Price-range filter floor (in the target's unit).
-        #[arg(long, default_value_t = 1000.0)]
-        price_min: f64,
-        /// Price-range filter ceiling (in the target's unit).
-        #[arg(long, default_value_t = 50_000_000.0)]
-        price_max: f64,
+        /// Disable the nonpositive-target quality filter.
+        #[arg(long, alias = "no-filter-nonpositive-price")]
+        no_filter_nonpositive_target: bool,
+        /// Enable the robust target-outlier quality filter.
+        #[arg(long, alias = "filter-price-outliers")]
+        filter_target_outliers: bool,
+        /// MAD z-score threshold for the target-outlier filter.
+        #[arg(long, alias = "price-outlier-mad-z", default_value_t = 3.5)]
+        target_outlier_mad_z: f64,
+        /// Enable the target-range quality filter.
+        #[arg(long, alias = "filter-price-range")]
+        filter_target_range: bool,
+        /// target-range filter floor (in the target's unit). Default: no floor.
+        #[arg(long, alias = "price-min", default_value_t = f64::MIN)]
+        target_min: f64,
+        /// target-range filter ceiling (in the target's unit). Default: no ceiling.
+        #[arg(long, alias = "price-max", default_value_t = f64::MAX)]
+        target_max: f64,
         /// Enable the missing-critical-fields quality filter.
         #[arg(long)]
         filter_missing_fields: bool,
@@ -105,12 +105,12 @@ fn main() -> Result<()> {
             raw_numerics,
             area_content_backfill,
             numerics_collection,
-            no_filter_nonpositive_price,
-            filter_price_outliers,
-            price_outlier_mad_z,
-            filter_price_range,
-            price_min,
-            price_max,
+            no_filter_nonpositive_target,
+            filter_target_outliers,
+            target_outlier_mad_z,
+            filter_target_range,
+            target_min,
+            target_max,
             filter_missing_fields,
             currency_mode,
             currency_reconcile,
@@ -175,15 +175,16 @@ fn main() -> Result<()> {
                 log_target: !no_log_target,
                 features,
                 quality: lensing_core::QualityFilterConfig {
-                    nonpositive_price: !no_filter_nonpositive_price,
-                    price_outlier: filter_price_outliers,
-                    price_outlier_mad_z,
-                    price_range: filter_price_range,
-                    price_min,
-                    price_max,
+                    nonpositive_target: !no_filter_nonpositive_target,
+                    target_outlier: filter_target_outliers,
+                    target_outlier_mad_z,
+                    target_range: filter_target_range,
+                    target_min,
+                    target_max,
                     missing_fields: filter_missing_fields,
-                    // The extended rules (price-range, bedrooms, duplicates,
-                    // short content) are API-driven; the CLI keeps defaults.
+                    // The extended rules (target-range, capped-numeric,
+                    // duplicates, short content) are API-driven; CLI keeps
+                    // defaults.
                     ..Default::default()
                 },
                 currency: lensing_core::CurrencyConfig {

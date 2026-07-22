@@ -102,6 +102,13 @@ export default function NewListingView() {
   const { id } = useParams<{ id: string }>()
   const editId = id !== undefined ? Number(id) : null
   const noun = domain.project.entity_noun
+  // Show the photo-URLs / source-URL extras only when the domain declares a
+  // matching display-role field. A domain with no such concept (most
+  // non-listing instances) never sees these real-estate-shaped inputs.
+  const hasDisplay = (name: string) =>
+    domain.fields.some((f) => f.role === 'display' && f.name === name)
+  const showImages = hasDisplay('images')
+  const showSourceUrl = hasDisplay('sourceUrl')
   useEffect(() => {
     document.title = `${editId !== null ? `Edit ${noun} ${editId}` : `New ${noun}`} · ${domain.project.title}`
   }, [editId, noun, domain.project.title])
@@ -328,31 +335,35 @@ export default function NewListingView() {
                 </div>
               </>
             )}
-            <div className="hp-field">
-              <label htmlFor="listing-sourceUrl">Source URL</label>
-              <input
-                id="listing-sourceUrl"
-                type="url"
-                className="mono-input"
-                value={draft.sourceUrl}
-                onChange={setExtra('sourceUrl')}
-                placeholder="https://example.com/…"
-                disabled={submitting}
-              />
-            </div>
-            <div className="hp-field listing-images-field">
-              <label htmlFor="listing-images">Photo URLs — one per line</label>
-              <textarea
-                id="listing-images"
-                className="mono-input listing-content-input"
-                rows={3}
-                value={draft.images}
-                onChange={setExtra('images')}
-                placeholder={'https://…/frente.jpg\nhttps://…/living.jpg'}
-                disabled={submitting}
-              />
-              <span className="hp-hint">shown in the UI, never sent to the models</span>
-            </div>
+            {showSourceUrl && (
+              <div className="hp-field">
+                <label htmlFor="listing-sourceUrl">Source URL</label>
+                <input
+                  id="listing-sourceUrl"
+                  type="url"
+                  className="mono-input"
+                  value={draft.sourceUrl}
+                  onChange={setExtra('sourceUrl')}
+                  placeholder="https://example.com/…"
+                  disabled={submitting}
+                />
+              </div>
+            )}
+            {showImages && (
+              <div className="hp-field listing-images-field">
+                <label htmlFor="listing-images">Photo URLs — one per line</label>
+                <textarea
+                  id="listing-images"
+                  className="mono-input listing-content-input"
+                  rows={3}
+                  value={draft.images}
+                  onChange={setExtra('images')}
+                  placeholder={'https://…/frente.jpg\nhttps://…/living.jpg'}
+                  disabled={submitting}
+                />
+                <span className="hp-hint">shown in the UI, never sent to the models</span>
+              </div>
+            )}
           </div>
         </div>
 
