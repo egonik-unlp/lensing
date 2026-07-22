@@ -338,7 +338,6 @@ mod tests {
         let projected = model.project_all(&vectors, d);
         let cfg = FeatureConfig {
             pca_dims: k,
-            neighborhood_top_n: 0,
             ..Default::default()
         };
         let domain = lensing_core::domain::Domain::example();
@@ -365,6 +364,7 @@ mod tests {
                 transform: TargetTransform::Log1p,
                 task: Default::default(),
                 classes: None,
+                horizon: None,
             },
             feature_config: cfg,
             input_fields: InputFields {

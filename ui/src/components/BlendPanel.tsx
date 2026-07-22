@@ -2,7 +2,8 @@ import { useMemo } from 'react'
 import type { BlendFile, Metrics } from '../api/types'
 import { blendSpecFromFile, deriveArch, type ArchFeatures } from '../lib/arch'
 import { useAsync } from '../hooks/useAsync'
-import { fmtTarget, fmtPct, fmtR2 } from '../lib/format'
+import { fmtPct } from '../lib/format'
+import { formatMetric, metricColumns, metricLowerIsBetter, metricValue } from '../lib/metrics'
 import { useDomain } from '../lib/DomainContext'
 import { BlendArch } from './ArchViz'
 import { DefinitionRef, ModelRef, PredictorRef } from './EntityRef'
@@ -42,15 +43,29 @@ export default function BlendPanel({
   if (!spec) return null
 
   const file = blend.data ?? null
-  const bestSoloMae = file
-    ? Math.min(
-        ...file.members
-          .filter((m) => m.included && m.solo_metrics)
-          .map((m) => m.solo_metrics!.mae),
-      )
-    : Infinity
+  const metricCols = metricColumns(domain)
+  const primary = domain.metrics.primary
+  const lowerWins = metricLowerIsBetter(domain, primary)
+  // Best member's primary metric, solo, in the metric's own direction.
+  const soloPrimaries = file
+    ? file.members
+        .filter((m) => m.included && m.solo_metrics)
+        .map((m) => metricValue(m.solo_metrics!, primary))
+        .filter((v): v is number => v !== null)
+    : []
+  const bestSolo = soloPrimaries.length
+    ? lowerWins
+      ? Math.min(...soloPrimaries)
+      : Math.max(...soloPrimaries)
+    : null
+  const blendPrimary = metricValue(blendMetrics, primary)
+  // Positive edge ⇒ the blend beats its best member on the primary metric.
   const edge =
-    blendMetrics && Number.isFinite(bestSoloMae) ? bestSoloMae - blendMetrics.mae : null
+    bestSolo !== null && blendPrimary !== null
+      ? lowerWins
+        ? bestSolo - blendPrimary
+        : blendPrimary - bestSolo
+      : null
 
   return (
     <div className="blend-panel">
@@ -64,9 +79,11 @@ export default function BlendPanel({
                 <th>Predictor</th>
                 <th className="num-col">Weight</th>
                 <th className="num-col">Cols</th>
-                <th className="num-col col-group-start">MAE solo</th>
-                <th className="num-col">medAPE</th>
-                <th className="num-col">R²</th>
+                {metricCols.map((name, i) => (
+                  <th key={name} className={i === 0 ? 'num-col col-group-start' : 'num-col'}>
+                    {name} solo
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -98,9 +115,11 @@ export default function BlendPanel({
                       </span>
                     </td>
                     <td className="num-col num">{rec?.n_cols ?? '—'}</td>
-                    <td className="num-col num col-group-start">{sm ? fmtTarget(sm.mae, domain) : '—'}</td>
-                    <td className="num-col num">{sm ? fmtPct(sm.medape) : '—'}</td>
-                    <td className="num-col num">{sm ? fmtR2(sm.r2) : '—'}</td>
+                    {metricCols.map((col, ci) => (
+                      <td key={col} className={ci === 0 ? 'num-col num col-group-start' : 'num-col num'}>
+                        {sm ? formatMetric(domain, col, metricValue(sm, col)) : '—'}
+                      </td>
+                    ))}
                   </tr>
                 )
               })}
@@ -113,9 +132,11 @@ export default function BlendPanel({
                   </td>
                   <td className="num-col num">{spec.rule === 'median' ? '' : '100%'}</td>
                   <td className="num-col num" />
-                  <td className="num-col num col-group-start">{fmtTarget(blendMetrics.mae, domain)}</td>
-                  <td className="num-col num">{fmtPct(blendMetrics.medape)}</td>
-                  <td className="num-col num">{fmtR2(blendMetrics.r2)}</td>
+                  {metricCols.map((col, ci) => (
+                    <td key={col} className={ci === 0 ? 'num-col num col-group-start' : 'num-col num'}>
+                      {formatMetric(domain, col, metricValue(blendMetrics, col))}
+                    </td>
+                  ))}
                 </tr>
               )}
             </tbody>
@@ -123,8 +144,8 @@ export default function BlendPanel({
           {edge !== null && (
             <p className="blend-verdict num" role="status">
               {edge >= 0
-                ? `the blend beats its best member by ${fmtTarget(edge, domain)} MAE`
-                : `its best member beats the blend by ${fmtTarget(-edge, domain)} MAE`}
+                ? `the blend beats its best member by ${formatMetric(domain, primary, Math.abs(edge))} ${primary}`
+                : `its best member beats the blend by ${formatMetric(domain, primary, Math.abs(edge))} ${primary}`}
             </p>
           )}
         </>

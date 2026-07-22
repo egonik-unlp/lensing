@@ -209,26 +209,15 @@ pub struct BuildRequest {
     pub seed: u64,
     #[serde(default = "default_true")]
     pub log_target: bool,
-    /// Generic per-field enables, keyed by domain field name (or toggle-group
-    /// name). When non-empty, authoritative; the legacy named flags below are
-    /// then ignored (kept for pre-domain clients).
+    /// Per-field enables, keyed by domain field name (or toggle-group name).
+    /// The authoritative enable map for the build. (Old clients also sent the
+    /// original domain's named field flags — bedrooms/property_type/… — as
+    /// top-level keys; those are now ignored, `fields` is the single source.)
     #[serde(default)]
     pub fields: std::collections::BTreeMap<String, bool>,
     /// Per-categorical vocabulary-size overrides (field name → top-N).
     #[serde(default)]
     pub vocab_top_n: std::collections::BTreeMap<String, usize>,
-    #[serde(default = "default_true")]
-    pub bedrooms: bool,
-    #[serde(default = "default_true")]
-    pub property_type: bool,
-    #[serde(default = "default_top_n")]
-    pub neighborhood_top_n: usize,
-    #[serde(default)]
-    pub city: bool,
-    #[serde(default)]
-    pub province: bool,
-    #[serde(default)]
-    pub cluster: bool,
     /// Quality filters (rule toggles + thresholds); defaults exclude only
     /// nonpositive target values.
     #[serde(default)]
@@ -285,11 +274,11 @@ fn default_pca_dims() -> usize { 32 }
 fn default_test_ratio() -> f64 { 0.2 }
 fn default_seed() -> u64 { 42 }
 fn default_true() -> bool { true }
-fn default_top_n() -> usize { 40 }
 
 impl BuildRequest {
-    /// Feature config from the request (generic maps + legacy flags); the
-    /// build resolves it against the domain via `normalize_config`.
+    /// Feature config from the request (the generic `fields`/`vocab_top_n`
+    /// maps + mechanism toggles); the build resolves it against the domain via
+    /// `normalize_config`.
     fn feature_config(&self, state: &AppState) -> Result<lensing_core::FeatureConfig, ApiError> {
         // Unknown field names are caller typos, not silently-ignored toggles.
         for name in self.fields.keys().chain(self.vocab_top_n.keys()) {
@@ -304,12 +293,6 @@ impl BuildRequest {
             fields: self.fields.clone(),
             vocab_top_n: self.vocab_top_n.clone(),
             coordinate_bounds: None, // frozen in by normalize_config
-            bedrooms: self.bedrooms,
-            property_type: self.property_type,
-            neighborhood_top_n: self.neighborhood_top_n,
-            city: self.city,
-            province: self.province,
-            cluster: self.cluster,
             raw_numerics: self.raw_numerics,
             area_content_backfill: self.area_content_backfill,
             coordinates: self.coordinates,
@@ -1030,10 +1013,13 @@ fn blend_metrics(
         })
         .collect();
     // Binary blends P(class==1); score by classification metrics, not MAE.
-    if task == lensing_core::domain::Task::Binary {
-        lensing_core::compute_binary_metrics(&pairs)
-    } else {
-        lensing_core::compute_metrics(&pairs)
+    // Time-series blends a continuous forecast; add sMAPE. Others (regression,
+    // multiclass argmax) fall back to target-space regression metrics.
+    use lensing_core::domain::Task;
+    match task {
+        Task::Binary => lensing_core::compute_binary_metrics(&pairs),
+        Task::TimeSeries => lensing_core::compute_forecast_metrics(&pairs),
+        _ => lensing_core::compute_metrics(&pairs),
     }
 }
 

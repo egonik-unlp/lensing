@@ -2,15 +2,31 @@
 
 export type RunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'interrupted' | 'stopped'
 
+/** Run metrics. `n_test` is universal; the rest depend on the task. The
+ *  regression fields populate for regression/time-series runs, the
+ *  classification fields for binary/multiclass runs, and any instance-defined
+ *  metric a predictor emits (e.g. `alarm_pr_auc`, `AP`, forecast `smape`)
+ *  arrives as an extra key — hence the index signature. Read metrics by name
+ *  with `metricValue` rather than indexing directly, so `"ROC-AUC"`/`"R²"`
+ *  resolve. All optional so a run carries only its task's metrics. */
 export interface Metrics {
-  mae: number
-  rmse: number
-  r2: number
-  /** fraction: 0.25 = 25% */
-  mape: number
-  /** fraction */
-  medape: number
   n_test: number
+  // regression / time-series (target space)
+  mae?: number
+  rmse?: number
+  r2?: number
+  /** fraction: 0.25 = 25% */
+  mape?: number
+  /** fraction */
+  medape?: number
+  // classification (binary + multiclass)
+  accuracy?: number
+  logloss?: number
+  auc?: number
+  brier?: number
+  macro_f1?: number
+  // instance-defined metrics (flattened server-side `extra`) + forecast sMAPE
+  [key: string]: number | undefined
 }
 
 export interface RunMeta {
@@ -251,30 +267,32 @@ export interface ExportResult {
 /* ---------------- quality filters ---------------- */
 
 export interface QualityFilterConfig {
-  nonpositive_price: boolean
-  price_outlier: boolean
-  price_outlier_mad_z: number
+  nonpositive_target: boolean
+  target_outlier: boolean
+  target_outlier_mad_z: number
   missing_fields: boolean
-  price_range: boolean
-  price_min: number
-  price_max: number
-  bedrooms_outlier: boolean
-  bedrooms_max: number
+  target_range: boolean
+  target_min: number
+  target_max: number
+  capped_numeric_outlier: boolean
+  capped_numeric_max: number
   duplicate_content: boolean
   short_content: boolean
   short_content_min_chars: number
 }
 
 export const DEFAULT_QUALITY: QualityFilterConfig = {
-  nonpositive_price: true,
-  price_outlier: false,
-  price_outlier_mad_z: 3.5,
+  nonpositive_target: true,
+  target_outlier: false,
+  target_outlier_mad_z: 3.5,
   missing_fields: false,
-  price_range: false,
-  price_min: 1000,
-  price_max: 50_000_000,
-  bedrooms_outlier: false,
-  bedrooms_max: 15,
+  target_range: false,
+  // Neutral placeholders — the user sets real caps per domain when enabling
+  // the target-range rule (defaults are not tuned to any one target's scale).
+  target_min: 0,
+  target_max: 1_000_000,
+  capped_numeric_outlier: false,
+  capped_numeric_max: 100,
   duplicate_content: false,
   short_content: false,
   short_content_min_chars: 80,

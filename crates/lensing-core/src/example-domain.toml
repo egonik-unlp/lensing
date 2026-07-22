@@ -12,7 +12,7 @@
 #   contracts are self-describing).
 # - Field `name`s are payload JSON keys AND the items.json keys predictors
 #   read. Renaming a field is a corpus-schema statement, not cosmetics.
-# - Quality rule keys ("price-range", "bedrooms-outlier", …) are stable
+# - Quality rule keys ("target-range", "capped-numeric-outlier", …) are stable
 #   internal identifiers; a new domain rebinds them to its fields and
 #   relabels them, it does not rename them.
 
@@ -229,11 +229,11 @@ definition_naming_example = "burn-mlp-p128-pyramid"
 ingestion = true
 
 [quality.rule_labels]
-"nonpositive-price" = "price ≤ 0"
-"price-outlier" = "price outlier"
+"nonpositive-target" = "price ≤ 0"
+"target-outlier" = "price outlier"
 "missing-fields" = "missing fields"
-"price-range" = "price out of range"
-"bedrooms-outlier" = "bedrooms outlier"
+"target-range" = "price out of range"
+"capped-numeric-outlier" = "bedrooms outlier"
 "duplicate-content" = "duplicate listing"
 "short-content" = "thin description"
 "foreign-currency" = "foreign currency"

@@ -4,44 +4,53 @@ use serde::{Deserialize, Serialize};
 /// can be toggled; enabled rules exclude flagged rows from the artifact.
 /// The applied config is recorded in the manifest (provenance: a filtered
 /// dataset is what its models trained on).
+///
+/// Field names are domain-neutral; the pre-generalization real-estate names
+/// (`nonpositive_price`, `price_outlier`, `price_range`, `price_min/max`,
+/// `bedrooms_outlier`, `bedrooms_max`) are kept as `#[serde(alias …)]` so a
+/// config written against the old schema still parses.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QualityFilterConfig {
     /// target ≤ 0 or missing. Cheap and safe; on by default.
-    #[serde(default = "default_true")]
-    pub nonpositive_price: bool,
-    /// Robust target outliers: MAD z-score on log1p(target), grouped per
-    /// propertyType (global fallback for thin groups).
-    #[serde(default)]
-    pub price_outlier: bool,
-    /// |MAD z| above this flags a row for `price_outlier`.
-    #[serde(default = "default_mad_z")]
-    pub price_outlier_mad_z: f64,
-    /// Empty critical categoricals (propertyType, neighborhood). Off by
-    /// default: training tolerates them via the __other__ bucket.
+    #[serde(default = "default_true", alias = "nonpositive_price")]
+    pub nonpositive_target: bool,
+    /// Robust target outliers: MAD z-score on log1p(target), grouped by the
+    /// domain's outlier group (global fallback for thin groups).
+    #[serde(default, alias = "price_outlier")]
+    pub target_outlier: bool,
+    /// |MAD z| above this flags a row for `target-outlier`.
+    #[serde(default = "default_mad_z", alias = "price_outlier_mad_z")]
+    pub target_outlier_mad_z: f64,
+    /// Empty critical categoricals. Off by default: training tolerates them
+    /// via the __other__ bucket.
     #[serde(default)]
     pub missing_fields: bool,
     /// Manual hard target caps; complements the statistical MAD rule with
-    /// domain knowledge (a $30 or $900M "sale" is noise, not an outlier).
-    #[serde(default)]
-    pub price_range: bool,
-    /// Prices below this flag a row for `price_range`.
-    #[serde(default = "default_price_min")]
-    pub price_min: f64,
-    /// Prices above this flag a row for `price_range`.
-    #[serde(default = "default_price_max")]
-    pub price_max: f64,
-    /// Bedrooms negative or above the cap: data-entry noise on a real
-    /// feature. Zero is "unspecified" in this corpus and is never flagged.
-    #[serde(default)]
-    pub bedrooms_outlier: bool,
-    /// Bedrooms above this flag a row for `bedrooms-outlier`.
-    #[serde(default = "default_bedrooms_max")]
-    pub bedrooms_max: f64,
-    /// Exact duplicate listing text (first occurrence kept). Relisted
-    /// properties double-count in the PCA fit and leak across the split.
+    /// domain knowledge (an absurdly small or large value is noise, not an
+    /// outlier). Bounds default to open — a domain sets real caps.
+    #[serde(default, alias = "price_range")]
+    pub target_range: bool,
+    /// Targets below this flag a row for `target-range`. Defaults to open
+    /// (no lower cap) — domain-neutral; a domain sets its own floor.
+    #[serde(default = "default_target_min", alias = "price_min")]
+    pub target_min: f64,
+    /// Targets above this flag a row for `target-range`. Defaults to open
+    /// (no upper cap).
+    #[serde(default = "default_target_max", alias = "price_max")]
+    pub target_max: f64,
+    /// The domain's capped numeric field negative or above the cap:
+    /// data-entry noise. Zero means "unspecified" and is never flagged.
+    #[serde(default, alias = "bedrooms_outlier")]
+    pub capped_numeric_outlier: bool,
+    /// Values above this flag a row for `capped-numeric-outlier`. Defaults to
+    /// open (no cap).
+    #[serde(default = "default_target_max", alias = "bedrooms_max")]
+    pub capped_numeric_max: f64,
+    /// Exact duplicate document text (first occurrence kept). Duplicates
+    /// double-count in the PCA fit and leak across the split.
     #[serde(default)]
     pub duplicate_content: bool,
-    /// Listing text shorter than the floor: thin embedding signal.
+    /// Document text shorter than the floor: thin embedding signal.
     #[serde(default)]
     pub short_content: bool,
     /// Character floor for `short-content`.
@@ -55,14 +64,14 @@ fn default_true() -> bool {
 fn default_mad_z() -> f64 {
     3.5
 }
-fn default_price_min() -> f64 {
-    1_000.0
+/// Open lower bound: nothing is below it, so an unconfigured `target-range`
+/// rule flags nothing. Finite (not −∞) so it round-trips through JSON.
+fn default_target_min() -> f64 {
+    f64::MIN
 }
-fn default_price_max() -> f64 {
-    50_000_000.0
-}
-fn default_bedrooms_max() -> f64 {
-    15.0
+/// Open upper bound: nothing is above it. Finite so it round-trips through JSON.
+fn default_target_max() -> f64 {
+    f64::MAX
 }
 fn default_min_chars() -> usize {
     80
@@ -71,15 +80,15 @@ fn default_min_chars() -> usize {
 impl Default for QualityFilterConfig {
     fn default() -> Self {
         Self {
-            nonpositive_price: true,
-            price_outlier: false,
-            price_outlier_mad_z: default_mad_z(),
+            nonpositive_target: true,
+            target_outlier: false,
+            target_outlier_mad_z: default_mad_z(),
             missing_fields: false,
-            price_range: false,
-            price_min: default_price_min(),
-            price_max: default_price_max(),
-            bedrooms_outlier: false,
-            bedrooms_max: default_bedrooms_max(),
+            target_range: false,
+            target_min: default_target_min(),
+            target_max: default_target_max(),
+            capped_numeric_outlier: false,
+            capped_numeric_max: default_target_max(),
             duplicate_content: false,
             short_content: false,
             short_content_min_chars: default_min_chars(),
@@ -90,11 +99,11 @@ impl Default for QualityFilterConfig {
 impl QualityFilterConfig {
     pub fn rule_enabled(&self, rule: &str) -> bool {
         match rule {
-            "nonpositive-price" => self.nonpositive_price,
-            "price-outlier" => self.price_outlier,
+            "nonpositive-target" => self.nonpositive_target,
+            "target-outlier" => self.target_outlier,
             "missing-fields" => self.missing_fields,
-            "price-range" => self.price_range,
-            "bedrooms-outlier" => self.bedrooms_outlier,
+            "target-range" => self.target_range,
+            "capped-numeric-outlier" => self.capped_numeric_outlier,
             "duplicate-content" => self.duplicate_content,
             "short-content" => self.short_content,
             _ => false,

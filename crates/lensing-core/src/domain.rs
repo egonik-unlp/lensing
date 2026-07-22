@@ -6,7 +6,7 @@
 //! Design rules:
 //! - The contract/manifest types stay self-describing and never reference
 //!   the domain — frozen models keep predicting if `domain.toml` changes.
-//! - Quality rule KEYS ("price-range", "bedrooms-outlier", …) are stable
+//! - Quality rule KEYS ("target-range", "capped-numeric-outlier", …) are stable
 //!   internal identifiers shared by manifests, the API and the UI; the
 //!   domain binds them to ITS fields and provides display labels. A new
 //!   domain reuses the keys with different bindings/labels.
@@ -146,6 +146,19 @@ pub enum Task {
     Binary,
     /// K>2 classes (softmax); predictions carry the K-vector.
     Multiclass,
+    /// Continuous target on time-ordered rows: the train/test split is
+    /// chronological (train = past, test = future) instead of random, so a
+    /// model is only ever evaluated on rows later than everything it trained
+    /// on. Target space and metrics are otherwise regression-like.
+    TimeSeries,
+}
+
+impl Task {
+    /// Classification tasks carry class *labels*, not continuous values, so a
+    /// target transform (e.g. log1p) is meaningless on them.
+    pub fn is_classification(self) -> bool {
+        matches!(self, Task::Binary | Task::Multiclass)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -161,6 +174,16 @@ pub struct TargetSpec {
     /// derived from the target field's distinct values at build time.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub classes: Option<Vec<String>>,
+    /// For `time_series`: the field the chronological split orders by. Absent ⇒
+    /// the domain's single `timestamp`-role field. Ignored for other tasks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub time_field: Option<String>,
+    /// For `time_series`: forecast horizon (rows ahead), stored on the manifest
+    /// for predictors and used as an embargo gap between train and test so the
+    /// model cannot peek at rows within one horizon of the split. Ignored for
+    /// other tasks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub horizon: Option<u32>,
 }
 
 /// How the UI renders target-space values.
@@ -335,7 +358,7 @@ pub struct QualityBindings {
     /// critical categorical.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub outlier_group: Option<String>,
-    /// Numeric field checked by the cap rule (key "bedrooms-outlier").
+    /// Numeric field checked by the cap rule (key "capped-numeric-outlier").
     /// Absent disables that rule for the domain.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub capped_numeric: Option<String>,
@@ -371,56 +394,35 @@ impl MetricsSpec {
         self.best_models_size.unwrap_or(Self::DEFAULT_BEST_MODELS_SIZE)
     }
 
-    /// Read a named metric off a [`crate::Metrics`] blob (case-insensitive).
-    /// `None` when the metric is unknown or absent on this run — callers then
-    /// skip the run for ranking.
+    /// Read a named metric off a [`crate::Metrics`] blob (case- and
+    /// separator-insensitive). Resolves built-in metrics from their typed
+    /// fields and instance-defined metrics from the run's `extra` map, so a
+    /// domain can rank by any metric its predictors emit. `None` when the
+    /// metric is absent on this run — callers then skip it for ranking.
     pub fn extract(&self, name: &str, m: &crate::Metrics) -> Option<f64> {
-        match name.to_lowercase().as_str() {
-            "mae" => m.mae,
-            "rmse" => m.rmse,
-            "mape" => m.mape,
-            "medape" => m.medape,
-            "r²" | "r2" => m.r2,
-            "accuracy" | "acc" => m.accuracy,
-            "logloss" | "log_loss" => m.logloss,
-            "auc" | "roc_auc" | "macro_auc" => m.auc,
-            "brier" => m.brier,
-            "macro_f1" | "f1" => m.macro_f1,
-            _ => None,
-        }
+        m.get(name)
     }
 
-    /// `Some(lower_is_better)` for the configured primary metric, or `None`
-    /// when the primary names no known metric (ranking is then skipped).
+    /// `Some(lower_is_better)` for the configured primary metric. Always
+    /// resolvable now that direction is data-driven (explicit
+    /// `[metrics].directions`, else a name heuristic), so ranking is never
+    /// skipped for lack of a known name; `Option` is kept for callers.
     pub fn primary_direction(&self) -> Option<bool> {
-        if self.extract_name_known(&self.primary) {
-            Some(self.lower_is_better(&self.primary))
-        } else {
-            None
-        }
+        Some(self.lower_is_better(&self.primary))
     }
 
-    /// Whether a smaller value of `name` ranks better. Error-style metrics
-    /// (mae/rmse/mape/medape/logloss/brier) are lower-better; score-style
-    /// metrics (r2/accuracy/auc/f1) are higher-better. `[metrics].directions`
-    /// overrides per name.
+    /// Whether a smaller value of `name` ranks better. An explicit
+    /// `[metrics].directions` entry wins (matched name-insensitively);
+    /// otherwise error/loss-style metrics are lower-better and score-style
+    /// higher-better — see [`crate::run::metric_lower_is_better_default`].
     pub fn lower_is_better(&self, name: &str) -> bool {
-        if let Some(&b) = self.directions.get(&name.to_lowercase()) {
+        let norm = crate::run::normalize_metric_name(name);
+        if let Some((_, &b)) =
+            self.directions.iter().find(|(k, _)| crate::run::normalize_metric_name(k) == norm)
+        {
             return b;
         }
-        matches!(
-            name.to_lowercase().as_str(),
-            "mae" | "rmse" | "mape" | "medape" | "logloss" | "log_loss" | "brier"
-        )
-    }
-
-    fn extract_name_known(&self, name: &str) -> bool {
-        matches!(
-            name.to_lowercase().as_str(),
-            "mae" | "rmse" | "mape" | "medape" | "r²" | "r2" | "accuracy" | "acc"
-                | "logloss" | "log_loss" | "auc" | "roc_auc" | "macro_auc" | "brier"
-                | "macro_f1" | "f1"
-        )
+        crate::run::metric_lower_is_better_default(name)
     }
 }
 
@@ -504,19 +506,24 @@ impl Domain {
         if !self.metrics.columns.contains(&self.metrics.primary) {
             bail!("[metrics].primary {:?} is not in [metrics].columns", self.metrics.primary);
         }
-        if self.metrics.primary_direction().is_none() {
-            bail!(
-                "[metrics].primary {:?} is not a known metric (mae/rmse/mape/medape/r2/accuracy/logloss/auc/brier/macro_f1)",
-                self.metrics.primary
-            );
-        }
+        // Metric names are open: built-ins resolve from typed fields, anything
+        // else from a predictor's `extra` map. A metric only needs a ranking
+        // direction, which is always derivable ([metrics].directions or the
+        // name heuristic) — so no name is rejected here.
         // Classification targets are class labels, not continuous values:
         // a target transform (e.g. log1p) on a class id is meaningless.
-        if self.target.task != Task::Regression && self.target.transform != TargetTransform::None {
+        // Regression and time_series targets are continuous and may transform.
+        if self.target.task.is_classification() && self.target.transform != TargetTransform::None {
             bail!(
                 "[target].transform must be \"none\" for a {:?} task, not {:?}",
                 self.target.task, self.target.transform
             );
+        }
+        // A time_series target needs a resolvable ordering field: either an
+        // explicit [target].time_field naming a timestamp-role field, or
+        // exactly one timestamp-role field to fall back on.
+        if self.target.task == Task::TimeSeries {
+            self.time_field()?;
         }
         Ok(())
     }
@@ -525,6 +532,34 @@ impl Domain {
 
     pub fn field(&self, name: &str) -> Option<&FieldDesc> {
         self.fields.iter().find(|f| f.name == name)
+    }
+
+    /// The field a `time_series` build orders its chronological split by:
+    /// `[target].time_field` when set (must name a `timestamp`-role field),
+    /// else the domain's sole `timestamp`-role field. `Err` when the choice is
+    /// ambiguous or missing — called from [`Self::validate`] and the builder.
+    pub fn time_field(&self) -> Result<&FieldDesc> {
+        if let Some(name) = &self.target.time_field {
+            return match self.field(name) {
+                Some(f) if f.role == FieldRole::Timestamp => Ok(f),
+                Some(f) => bail!(
+                    "[target].time_field {:?} must have role \"timestamp\", not {:?}",
+                    name, f.role
+                ),
+                None => bail!("[target].time_field {:?} is not declared in [[fields]]", name),
+            };
+        }
+        let ts: Vec<&FieldDesc> =
+            self.fields.iter().filter(|f| f.role == FieldRole::Timestamp).collect();
+        match ts.as_slice() {
+            [f] => Ok(f),
+            [] => bail!(
+                "a time_series target needs a timestamp-role field (or set [target].time_field)"
+            ),
+            _ => bail!(
+                "several timestamp-role fields exist; set [target].time_field to pick the ordering field"
+            ),
+        }
     }
 
     pub fn numeric_fields(&self) -> impl Iterator<Item = &FieldDesc> {
@@ -588,16 +623,13 @@ impl Domain {
             }
             return false;
         }
-        // Legacy flag mapping (pre-domain configs).
-        match (f.name.as_str(), f.group.as_deref(), f.role) {
-            (_, Some("raw_numerics"), _) => cfg.raw_numerics,
-            (_, _, FieldRole::Coordinates) => cfg.coordinates,
-            ("bedrooms", _, _) => cfg.bedrooms,
-            ("propertyType", _, _) => cfg.property_type,
-            ("neighborhood", _, _) => cfg.neighborhood_top_n > 0,
-            ("city", _, _) => cfg.city,
-            ("province", _, _) => cfg.province,
-            ("cluster", _, _) => cfg.cluster,
+        // Fallback for pre-domain configs (empty `fields` map): the generic
+        // mechanism groups still resolve; every other field honors its own
+        // `default_on`. (The old domain's named field flags used to be matched
+        // here — retired now that `fields` is authoritative for every build.)
+        match (f.group.as_deref(), f.role) {
+            (Some("raw_numerics"), _) => cfg.raw_numerics,
+            (_, FieldRole::Coordinates) => cfg.coordinates,
             _ => f.default_on,
         }
     }
@@ -607,9 +639,6 @@ impl Domain {
     pub fn effective_top_n(&self, cfg: &crate::FeatureConfig, f: &FieldDesc) -> Option<usize> {
         if let Some(&n) = cfg.vocab_top_n.get(&f.name) {
             return Some(n);
-        }
-        if cfg.fields.is_empty() && f.name == "neighborhood" && cfg.neighborhood_top_n > 0 {
-            return Some(cfg.neighborhood_top_n);
         }
         f.vocab.top_n()
     }
@@ -641,18 +670,9 @@ impl Domain {
             cfg.coordinate_bounds = Some([b.lat_range, b.lon_range]);
         }
         let on = |name: &str| enabled.iter().any(|(n, e, _)| n == name && *e);
-        cfg.bedrooms = on("bedrooms");
-        cfg.property_type = on("propertyType");
-        cfg.neighborhood_top_n = if on("neighborhood") {
-            self.field("neighborhood")
-                .and_then(|f| self.effective_top_n(cfg, f))
-                .unwrap_or(0)
-        } else {
-            0
-        };
-        cfg.city = on("city");
-        cfg.province = on("province");
-        cfg.cluster = on("cluster");
+        // Sync the domain-generic mechanism toggles from the effective enable
+        // set. (The old domain's named field flags used to be mirrored here
+        // too — retired; `fields` is the single authoritative enable map.)
         cfg.raw_numerics = self
             .fields
             .iter()
@@ -742,6 +762,9 @@ mod tests {
 
     #[test]
     fn metric_extract_and_direction() {
+        let mut extra = std::collections::BTreeMap::new();
+        // an instance-defined metric a predictor emitted (hyphenated name)
+        extra.insert("alarm_pr_auc".to_string(), serde_json::json!(0.83));
         let m = crate::Metrics {
             n_test: 10,
             mae: Some(1.0),
@@ -750,6 +773,7 @@ mod tests {
             mape: Some(0.2),
             medape: Some(0.1),
             auc: Some(0.77),
+            extra,
             ..Default::default()
         };
         let spec = |primary: &str| MetricsSpec {
@@ -770,17 +794,42 @@ mod tests {
         assert!(!spec("R²").lower_is_better("R²"));
         assert_eq!(spec("AUC").extract("auc", &m), Some(0.77));
         assert!(!spec("AUC").lower_is_better("AUC"));
-        // unknown metric → no direction, absent metric → None
-        assert!(spec("ELO").primary_direction().is_none());
+        // instance-defined metric: resolves from `extra`, ranks higher-better,
+        // and now always yields a direction (data-driven, no closed set)
+        assert_eq!(spec("alarm_pr_auc").extract("alarm_pr_auc", &m), Some(0.83));
+        assert!(!spec("alarm_pr_auc").lower_is_better("alarm_pr_auc"));
+        assert!(spec("alarm_pr_auc").primary_direction().is_some());
+        // a *_loss custom name defaults to lower-is-better
+        assert!(spec("val_loss").lower_is_better("val_loss"));
+        // absent metric → None
         assert_eq!(s.extract("logloss", &m), None);
-        // direction override
-        let mut over = spec("AUC");
-        over.directions.insert("auc".into(), true);
-        assert!(over.lower_is_better("AUC"));
-        // embedded domain: known primary, default group size
+        // direction override, matched name-insensitively (hyphen vs underscore)
+        let mut over = spec("ROC-AUC");
+        over.directions.insert("roc_auc".into(), true);
+        assert!(over.lower_is_better("ROC-AUC"));
+        // embedded domain: primary resolves, default group size
         let d = Domain::default();
         assert!(d.metrics.primary_direction().is_some());
         assert_eq!(d.metrics.best_models_size(), 12);
+    }
+
+    #[test]
+    fn time_series_resolves_ordering_field_and_validates() {
+        let mut d = Domain::example();
+        // Flip the worked example to a forecast: continuous target keeps its
+        // transform, and the sole timestamp field orders the split.
+        d.target.task = Task::TimeSeries;
+        assert_eq!(d.time_field().unwrap().name, "createdAt");
+        d.validate().expect("time_series with one timestamp field validates");
+
+        // An explicit but wrong-role time_field is rejected.
+        d.target.time_field = Some("price".into());
+        assert!(d.validate().is_err());
+
+        // A classification target still cannot carry a transform.
+        let mut c = Domain::example();
+        c.target.task = Task::Binary;
+        assert!(c.validate().is_err()); // example uses log1p
     }
 
     #[test]

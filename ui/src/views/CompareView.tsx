@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { Items, Metrics, Prediction, RunMeta } from '../api/types'
+import ConfusionMatrix from '../components/charts/ConfusionMatrix'
 import ErrorHistogram from '../components/charts/ErrorHistogram'
 import ScatterChart, { ScatterDensityLegend } from '../components/charts/ScatterChart'
 import { scatterDensities } from '../components/charts/scatterDensity'
@@ -10,9 +11,17 @@ import ItemMeta from '../components/ItemMeta'
 import ViewHeader from '../components/ViewHeader'
 import { useAsync } from '../hooks/useAsync'
 import { useDomain } from '../lib/DomainContext'
-import type { Domain } from '../lib/domain'
+import { domainTask, isClassification } from '../lib/domain'
 import { loadItems } from '../lib/itemsCache'
-import { fmtTarget, fmtPct, fmtR2, shortRunId } from '../lib/format'
+import { fmtTarget, shortRunId } from '../lib/format'
+import {
+  formatMetric,
+  isPercentMetric,
+  metricColumns,
+  metricLowerIsBetter,
+  metricValue,
+  normalizeMetricName,
+} from '../lib/metrics'
 import { scatterDomain } from '../lib/scale'
 import { suspiciousRowIds } from '../lib/suspicious'
 import './compare.css'
@@ -142,25 +151,8 @@ function SidePicker({
 
 /* ---------------- comparison body ---------------- */
 
-interface MetricRow {
-  key: keyof Metrics
-  label: string
-  /** true when lower values win */
-  lowerWins: boolean
-  /** MAE/RMSE are in target units, so they take the domain; unit-agnostic
-   *  metrics (R², %) simply ignore the second argument. */
-  fmt: (v: number, domain: Domain) => string
-}
-
-const METRIC_ROWS: MetricRow[] = [
-  { key: 'mae', label: 'MAE', lowerWins: true, fmt: fmtTarget },
-  { key: 'rmse', label: 'RMSE', lowerWins: true, fmt: fmtTarget },
-  { key: 'r2', label: 'R²', lowerWins: false, fmt: fmtR2 },
-  { key: 'mape', label: 'MAPE', lowerWins: true, fmt: (v) => fmtPct(v, 0) },
-  { key: 'medape', label: 'medAPE', lowerWins: true, fmt: (v) => fmtPct(v) },
-]
-
 function Comparison({ a, b }: { a: RunMeta; b: RunMeta }) {
+  const cfgDomain = useDomain()
   const predsA = useAsync(() => api.getPredictions(a.run_id), [a.run_id])
   const predsB = useAsync(() => api.getPredictions(b.run_id), [b.run_id])
   const sameDataset = a.dataset_id === b.dataset_id
@@ -184,6 +176,15 @@ function Comparison({ a, b }: { a: RunMeta; b: RunMeta }) {
 
   // Truth over comfort: a side whose predictions fail to load is an error
   // told plainly, never an empty chart pretending the side has no data.
+  const classification = isClassification(cfgDomain)
+  const classLabels = useMemo(() => {
+    if (cfgDomain.target.classes?.length) return cfgDomain.target.classes
+    if (domainTask(cfgDomain) === 'binary') return ['0', '1']
+    const ids = new Set<number>()
+    for (const p of [...(predsA.data ?? []), ...(predsB.data ?? [])]) ids.add(Math.round(p.actual))
+    return [...ids].sort((x, y) => x - y).map(String)
+  }, [cfgDomain, predsA.data, predsB.data])
+
   const predsError = predsA.error ?? predsB.error
   if (predsError) {
     return (
@@ -220,8 +221,8 @@ function Comparison({ a, b }: { a: RunMeta; b: RunMeta }) {
           </tr>
         </thead>
         <tbody>
-          {METRIC_ROWS.map((row) => (
-            <MetricRowEl key={row.key} row={row} ma={a.metrics!} mb={b.metrics!} />
+          {metricColumns(cfgDomain).map((name) => (
+            <MetricRowEl key={name} name={name} ma={a.metrics!} mb={b.metrics!} />
           ))}
         </tbody>
       </table>
@@ -243,6 +244,22 @@ function Comparison({ a, b }: { a: RunMeta; b: RunMeta }) {
       {predsLoading ? (
         <div className="cmp-section">
           <div className="skeleton skeleton-md" />
+        </div>
+      ) : classification ? (
+        // Class labels: a confusion matrix per run, not target-space scatters.
+        <div className="cmp-scatters">
+          <div>
+            <h2 className="panel-title">
+              <span className="series-chip chip-a">A</span> <PredictorRef name={a.predictor} impl />
+            </h2>
+            <ConfusionMatrix predictions={predsA.data ?? []} classes={classLabels} />
+          </div>
+          <div>
+            <h2 className="panel-title">
+              <span className="series-chip chip-b">B</span> <PredictorRef name={b.predictor} impl />
+            </h2>
+            <ConfusionMatrix predictions={predsB.data ?? []} classes={classLabels} />
+          </div>
         </div>
       ) : (
         <>
@@ -285,27 +302,36 @@ function Comparison({ a, b }: { a: RunMeta; b: RunMeta }) {
   )
 }
 
-function MetricRowEl({ row, ma, mb }: { row: MetricRow; ma: Metrics; mb: Metrics }) {
+function MetricRowEl({ name, ma, mb }: { name: string; ma: Metrics; mb: Metrics }) {
   const domain = useDomain()
-  const va = ma[row.key]
-  const vb = mb[row.key]
-  const delta = vb - va
-  const bWins = row.lowerWins ? vb < va : vb > va
-  const tie = va === vb
-  const deltaStr =
-    row.key === 'mae' || row.key === 'rmse'
-      ? `${delta < 0 ? '−' : '+'}${fmtTarget(Math.abs(delta), domain)}`
-      : row.key === 'r2'
-        ? `${delta < 0 ? '−' : '+'}${Math.abs(delta).toFixed(3)}`
-        : `${delta < 0 ? '−' : '+'}${(Math.abs(delta) * 100).toFixed(1)}pp`
+  const va = metricValue(ma, name)
+  const vb = metricValue(mb, name)
+  const both = va !== null && vb !== null
+  const lowerWins = metricLowerIsBetter(domain, name)
+  const tie = both && va === vb
+  const bWins = both ? (lowerWins ? vb! < va! : vb! > va!) : false
+  const norm = normalizeMetricName(name)
+  const delta = both ? vb! - va! : 0
+  const sign = delta < 0 ? '−' : '+'
+  const deltaStr = !both
+    ? '—'
+    : norm === 'mae' || norm === 'rmse'
+      ? `${sign}${fmtTarget(Math.abs(delta), domain)}`
+      : isPercentMetric(domain, name)
+        ? `${sign}${(Math.abs(delta) * 100).toFixed(1)}pp`
+        : `${sign}${Math.abs(delta).toFixed(3)}`
   return (
     <tr>
-      <td>{row.label}</td>
-      <td className={`num-col num${!tie && !bWins ? ' winner' : ''}`}>{row.fmt(va, domain)}</td>
-      <td className={`num-col num${!tie && bWins ? ' winner' : ''}`}>{row.fmt(vb, domain)}</td>
+      <td>{name}</td>
+      <td className={`num-col num${both && !tie && !bWins ? ' winner' : ''}`}>
+        {formatMetric(domain, name, va)}
+      </td>
+      <td className={`num-col num${both && !tie && bWins ? ' winner' : ''}`}>
+        {formatMetric(domain, name, vb)}
+      </td>
       <td className="num-col num">
         {deltaStr}{' '}
-        {!tie && (
+        {both && !tie && (
           <span className={bWins ? 'delta-good' : 'delta-bad'} title={bWins ? 'B improves on A' : 'B is worse than A'}>
             {bWins ? '▲' : '▼'}
           </span>

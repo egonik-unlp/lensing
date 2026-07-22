@@ -475,7 +475,9 @@ pub async fn predict_group(
                     .unwrap_or(0.0);
                 ConsensusPoint { row_id, predicted: argmax, proba: Some(mean), n_models: rows.len() }
             }
-            Task::Regression => {
+            // A forecast is a continuous prediction like regression: consensus
+            // is the median across models.
+            Task::Regression | Task::TimeSeries => {
                 vals.sort_by(|a, b| a.total_cmp(b));
                 let n = vals.len();
                 let predicted = if n % 2 == 1 {

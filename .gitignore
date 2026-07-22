@@ -1,6 +1,7 @@
 .env
 data/
 target/
+.zig-cache/
 node_modules/
 ui/dist/
 predictors/flux-mlp/Manifest.toml

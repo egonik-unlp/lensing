@@ -6,6 +6,7 @@ use chrono::Utc;
 use serde_json::json;
 
 use lensing_core::artifact::{write_f32, write_u32, write_u64};
+use lensing_core::domain::Domain;
 use lensing_core::{
     ColumnDesc, ColumnKind, FeatureConfig, Manifest, PcaInfo, Source, SplitInfo, TargetInfo,
     TargetTransform,
@@ -134,8 +135,13 @@ pub fn build_dataset(
     let n = points.len();
     let k = feature_config.pca_dims;
 
-    progress("splitting train/test");
-    let (train_idx, test_idx) = shuffle::train_test_split(n, cfg.test_ratio, cfg.seed);
+    let (train_idx, test_idx) = if domain.target.task == lensing_core::domain::Task::TimeSeries {
+        progress("splitting train/test (chronological)");
+        temporal_split(&points, domain, cfg.test_ratio)?
+    } else {
+        progress("splitting train/test");
+        shuffle::train_test_split(n, cfg.test_ratio, cfg.seed)
+    };
 
     // Numeric imputation: medians fit on the train split only (the fill
     // values must not leak test information), then applied to all rows so
@@ -191,10 +197,12 @@ pub fn build_dataset(
     // much variance more components would have captured (truncated for size).
     let cumulative_evr: Vec<f32> = spectrum.cumulative_evr().into_iter().take(256).collect();
 
-    // Classification targets are class labels (0..K-1), never log-transformed;
-    // only a regression target honors the log_target flag.
+    // Classification targets are class labels (0..K-1), never log-transformed.
+    // Continuous targets — regression and time_series forecasts — honor the
+    // log_target flag (a positive, heavy-tailed series benefits from log1p).
     let task = domain.target.task;
-    let transform = if task == lensing_core::domain::Task::Regression && cfg.log_target {
+    use lensing_core::domain::Task;
+    let transform = if matches!(task, Task::Regression | Task::TimeSeries) && cfg.log_target {
         TargetTransform::Log1p
     } else {
         TargetTransform::None
@@ -210,7 +218,6 @@ pub fn build_dataset(
     // self-describing (predictors read K + labels without domain.toml). Use the
     // declared `[target].classes` if present, else derive the distinct integer
     // codes present in the target column (sorted). Binary uses {0,1} implicitly.
-    use lensing_core::domain::Task;
     let target_classes: Option<Vec<String>> = if task == Task::Multiclass {
         Some(domain.target.classes.clone().unwrap_or_else(|| {
             let mut codes: Vec<i64> = target.iter().map(|&v| v.round() as i64).collect();
@@ -278,6 +285,7 @@ pub fn build_dataset(
             transform,
             task,
             classes: target_classes,
+            horizon: if task == Task::TimeSeries { domain.target.horizon } else { None },
         },
         split: SplitInfo {
             test_ratio: cfg.test_ratio,
@@ -296,6 +304,57 @@ pub fn build_dataset(
     fs::write(dir.join("manifest.json"), serde_json::to_vec_pretty(&manifest)?)?;
     progress("done");
     Ok(manifest)
+}
+
+/// Chronological train/test split for a `time_series` target. Rows are ordered
+/// by the domain's time field — numerically when every row's value parses as a
+/// number (epoch timestamps), otherwise by the raw string (RFC-3339/ISO dates
+/// sort chronologically) — then the most recent `test_ratio` fraction becomes
+/// the test set (the future) and the earliest rows the train set (the past),
+/// so a model is only ever scored on rows later than everything it saw. When
+/// `[target].horizon` is set, that many rows straddling the cut are dropped
+/// from both sets as an embargo, so the model can't peek within one forecast
+/// step of the boundary. Index lists come back sorted ascending, matching the
+/// random split's contract.
+fn temporal_split(
+    points: &[RawPoint],
+    domain: &Domain,
+    test_ratio: f64,
+) -> Result<(Vec<u32>, Vec<u32>)> {
+    let field = domain.time_field()?.name.clone();
+    let n = points.len();
+    let all_numeric = points.iter().all(|p| p.payload.num_of(&field).is_some());
+    let mut order: Vec<usize> = (0..n).collect();
+    if all_numeric {
+        order.sort_by(|&a, &b| {
+            points[a]
+                .payload
+                .num_of(&field)
+                .unwrap()
+                .total_cmp(&points[b].payload.num_of(&field).unwrap())
+        });
+    } else {
+        order.sort_by(|&a, &b| {
+            points[a].payload.str_of(&field).cmp(&points[b].payload.str_of(&field))
+        });
+    }
+    let n_test = ((n as f64) * test_ratio).round() as usize;
+    ensure!(
+        n_test > 0 && n_test < n,
+        "time_series split needs 0 < test_ratio < 1 and at least a few rows (got n={n}, test_ratio={test_ratio})"
+    );
+    let cut = n - n_test; // first test position in temporal order
+    let embargo = domain.target.horizon.unwrap_or(0) as usize;
+    let train_end = cut.saturating_sub(embargo);
+    let mut train: Vec<u32> = order[..train_end].iter().map(|&i| i as u32).collect();
+    let mut test: Vec<u32> = order[cut..].iter().map(|&i| i as u32).collect();
+    ensure!(
+        !train.is_empty(),
+        "time_series horizon/embargo left no training rows before the test cut"
+    );
+    train.sort_unstable();
+    test.sort_unstable();
+    Ok((train, test))
 }
 
 /// `items.json`: row_id → display payload for the prediction inspector.

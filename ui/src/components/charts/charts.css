@@ -246,3 +246,27 @@ button.catbar-row.is-selected {
     display: none;
   }
 }
+
+/* Confusion matrix (classification runs): rows = true class, cols = predicted;
+   cells shaded by row-normalized share, so the diagonal should dominate. */
+.confusion-matrix {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.confusion-matrix th,
+.confusion-matrix td {
+  padding: 0.35rem 0.6rem;
+  text-align: right;
+  border: 1px solid var(--border, rgba(128, 128, 128, 0.25));
+}
+.confusion-matrix thead th,
+.confusion-matrix tbody th {
+  color: var(--muted, #888);
+  font-weight: 600;
+}
+.confusion-cell {
+  color: var(--fg, inherit);
+}
+.confusion-cell.is-diagonal {
+  font-weight: 700;
+}
