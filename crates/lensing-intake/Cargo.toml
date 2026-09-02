@@ -8,9 +8,17 @@ description = "Config-driven intake pipeline: data origins -> embeddings -> Qdra
 
 [dependencies]
 # The reusable pipeline library (Source/Sink traits, connectors, JobQueue).
-# 0.4.2 is required for QdrantDatabase::connect honouring the configured
+# 0.4.2+ is required for QdrantDatabase::connect honouring the configured
 # Location (per-instance port-partitioning).
-lvv = { version = "0.4.2", features = ["postgres", "sql", "http"] }
+#
+# Pinned exactly (`=`), not caret: lvv is under active API churn, and we depend
+# on an *unversioned, undocumented* behaviour — JobBuilder::collection_name()
+# deriving `{provider}_{model}_{Distance}_{identifier}` (job.rs:41-58), which
+# /bootstrap predicts to know which collection to probe after an intake run. A
+# caret bump could change that string silently and break the handoff. Upgrades
+# are deliberate: bump this, re-check the derivation, then re-verify the
+# bootstrap prediction.
+lvv = { version = "=0.4.3", features = ["postgres", "sql", "http"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
