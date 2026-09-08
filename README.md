@@ -270,7 +270,3 @@ applies or pushes without your explicit approval.
 | [docs/openapi.yaml](docs/openapi.yaml) | machine-readable API — served at `/docs` by a running instance |
 | [`crates/lensing-core/src/example-domain.toml`](crates/lensing-core/src/example-domain.toml) | a fully worked `domain.toml` |
 | [branding/README.md](branding/README.md) | how the mark, the banner and the figures above are generated |
-
-## License
-
-AGPL-3.0-or-later, © 2026 Eduardo Gonik. See [LICENSE](LICENSE).
