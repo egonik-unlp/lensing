@@ -33,6 +33,12 @@ url   = "postgres://user:pw@localhost:5436/app"
 table = "corpus_items"
 
 [[sink]]
-kind = "qdrant"              # vector store (this instance's Qdrant port)
-url  = "http://localhost:6335"
+kind = "qdrant"              # vector store (this instance's Qdrant gRPC port)
+# NOTE: this is the gRPC endpoint (container port 6334), NOT the REST one
+# (6333) that the server, lensing-pipeline and /bootstrap's probing use. The
+# sink reaches Qdrant through lvv -> qdrant-client, which is gRPC-only, so a
+# REST URL here fails at WRITE time — after the source is fetched and every
+# embedding is computed and billed — as "Written: [postgres]; not written:
+# qdrant". Use this instance's LENSING_QDRANT_GRPC_PORT.
+url  = "http://localhost:6334"
 # api_key = "..."            # set only for a remote/cloud Qdrant

@@ -1,6 +1,6 @@
 ---
 name: bootstrap
-description: Initialize this template around a NEW dataset/prediction problem: probe a Qdrant corpus and infer its payload schema, interview the user into a domain.toml (field roles, quality levers, metrics, nouns), render the agent layer, reset the empirical record, decide how manual entries are fetched/presented (ingestion), build the first dataset with tuned quality levers, and set up the starter model definitions for a first evaluation. Use when the user wants to bootstrap, initialize, or adapt this framework to their own data/target variable, or asks "how do I point this at my dataset".
+description: Initialize this template around a NEW dataset/prediction problem: populate a corpus from a raw source (database/file/HTTP API) via the lensing-intake pipeline if one doesn't exist yet, probe the Qdrant corpus and infer its payload schema, interview the user into a domain.toml (field roles, quality levers, metrics, nouns), render the agent layer, reset the empirical record, decide how manual entries are fetched/presented (ingestion), build the first dataset with tuned quality levers, and set up the starter model definitions for a first evaluation. Use when the user wants to bootstrap, initialize, or adapt this framework to their own data/target variable, or asks "how do I point this at my dataset".
 user-invocable: true
 argument-hint: "[probe|configure|reset|ingestion|first-run] "
 allowed-tools:
@@ -13,6 +13,7 @@ allowed-tools:
   - Bash(zig build *)
   - Bash(docker compose *)
   - Bash(cargo test *)
+  - Bash(cargo run -p lensing-intake *)
   - Bash(sleep *)
 ---
 
@@ -55,9 +56,51 @@ Then the Lensing code itself:
 - One-time predictor toolchains as needed: `zig build py-setup` (Python
   venv), `zig build julia-setup` (Flux predictors).
 
-## Phase 0 — Probe the corpus
+## Phase 0a — Infrastructure: endpoints + where the data lives
 
-Qdrant first (default `{{qdrant_url}}`; ask if theirs differs):
+Two things must be settled before any probing, because everything below
+depends on them and `domain.toml` (Phase 1) has not been written yet.
+
+**1. Where does their data live right now?** Ask before touching Qdrant:
+
+- **Already a vector collection** — an existing Qdrant collection with
+  embeddings + JSON payloads. → Phase 0b, existing-collection path.
+- **A raw source, not embedded yet** — a database, a flat file, an HTTP
+  API. → Phase 0b, intake path. This is the common case: real data starts
+  tabular or behind an API, not as vectors.
+
+**2. This instance's own endpoints.** Propose the `[deploy]` defaults and
+have the user confirm or change them; two instances must never share a
+port (D1). Qdrant publishes **two** host ports and they are not
+interchangeable:
+
+| Endpoint | Default | Used by |
+|---|---|---|
+| Qdrant **REST** | `http://localhost:6333` | your `curl` probing below, the server, `lensing-pipeline`; becomes `[corpus] qdrant_url` |
+| Qdrant **gRPC** | `http://localhost:6334` | `lensing-intake`'s `[[sink]]` only |
+| Postgres | `postgres://…@localhost:5433/…` | `lensing-intake`'s Postgres `[[sink]]` (intake path only) |
+
+Ask for the Postgres endpoint only on the intake path. Record all confirmed
+values — Phase 1 writes them into `domain.toml` (`[corpus] qdrant_url` and
+`[deploy]`) rather than asking again or re-defaulting.
+
+> **The two Qdrant ports are the single most common way this phase goes
+> wrong.** `lensing-intake` reaches Qdrant through a gRPC client, while
+> everything else in the framework speaks REST. A REST URL in the sink is
+> accepted by every check and only fails once the pipeline is writing — after
+> it has fetched the source and computed (and billed) every embedding —
+> showing up as the confusing `Written: [postgres]; not written: qdrant`.
+> Never reuse the REST URL for the sink.
+
+## Phase 0b — Probe the corpus
+
+**Intake path only:** populate the corpus first (see "Populate the corpus
+with `lensing-intake`" below), then continue here as if the collection had
+existed all along — the rest of this phase and all of Phase 1 are identical
+for both paths.
+
+Qdrant first (the REST endpoint confirmed in Phase 0a; default
+`{{qdrant_url}}`):
 
 ```sh
 curl -s <qdrant>/collections                                   # what exists
@@ -82,9 +125,92 @@ Also: where the metadata
 nests (`metadata_root`), which key holds the embedded text
 (`content_field`), the embedding dim (scroll once with
 `"with_vector": true, "limit": 1`), and a candidate corpus filter. If they
-have no corpus yet, explain the requirement (vectors + JSON payloads) and
-offer `docker compose --profile qdrant up -d` plus their own embedding
-pipeline — this skill does not embed documents.
+have no corpus yet, take the intake path below.
+
+### Populate the corpus with `lensing-intake` (intake path)
+
+The framework ships `lensing-intake`, a config-driven pipeline that reads a
+source, embeds each record, and dual-writes to this instance's Postgres
+(authoritative) and Qdrant (derived index). Drive it — do not ask the user to
+hand-build this.
+
+**Interview for the config** (`crates/lensing-intake/src/config.rs` is the
+authoritative field list). Propose defaults for everything and have the user
+confirm; the embedding choice is target-affecting, so never pick it silently:
+
+1. **Source `kind`** and its fields:
+   - `postgres` / `sql-mysql` → `url`, `query`, `identifier`
+   - `sql-sqlite` → `path`, `query`, `identifier`
+   - `file` → `path`, `identifier`, optional `format` (`csv`|`json`|`jsonl`)
+   - `http` → `url`, `identifier`, optional `pointer`, `page_param`
+2. **`[embedding]`** — `provider` (`ollama`|`openai`), `model`, `dims`,
+   `distance` (`cosine`|`euclid`|`dot`|`manhattan`). Propose a default, show
+   it, and ask for confirmation before writing.
+3. Leave **`batch_size` at 0** (the default). A non-zero value splits the
+   source into `<identifier>_0`, `<identifier>_1`, … — several collections
+   instead of one, and nothing for Phase 1 to probe.
+
+**The embedding model is a three-way contract.** Whatever you choose here
+must match `LENSING_EMBEDDING_MODEL` (and its dimensionality) wherever the
+server runs, or the server will reject the corpus you just built. Say this to
+the user and carry the choice into Phase 1's `[corpus] embedding_dim`.
+
+**Write `pipeline.toml`** at the repo root, copying
+`crates/lensing-intake/pipeline.example.toml` and filling in the answers:
+
+- `[[sink]]` **Postgres first, then Qdrant** — sinks are written in listed
+  order and the authoritative store must lead, which is what makes a partial
+  failure legible.
+- The Qdrant sink's `url` is the **gRPC** endpoint from Phase 0a. The
+  Postgres sink's `url` is this instance's Postgres.
+- `pipeline.toml` holds plaintext credentials — it is gitignored; never
+  commit it, and never echo the full file back with secrets in it.
+
+**Check the gRPC endpoint before running anything.** Cheap now, expensive
+later:
+
+```sh
+curl -s -o /dev/null -w '%{http_code}\n' <qdrant-grpc-url>   # expect 000/501, i.e. listening but not HTTP
+```
+
+If nothing is listening, stop and fix it here — do not run the pipeline. If
+the user gave the REST port by mistake (it answers a normal HTTP `200` on
+`/collections`), say so plainly and ask for the gRPC one.
+
+**Predict the collection name.** `lensing-intake` derives it rather than
+letting you name it:
+
+```
+<provider>_<model>_<Distance>_<identifier>
+```
+
+`<provider>` is `ollama`/`openai`, `<model>` has every `:` replaced by `_`,
+`<Distance>` is capitalized (`Cosine`/`Euclid`/`Dot`/`Manhattan`), and
+`<identifier>` is the source's. E.g. `openai_text-embedding-3-small_Cosine_listings`.
+Compute it from the answers above and tell the user what to expect.
+
+**Run it**, then verify:
+
+```sh
+cargo run -p lensing-intake -- --config pipeline.toml
+curl -s <qdrant-rest-url>/collections        # the predicted name should be here
+```
+
+- **Success** (all sinks written) → continue with the probing above against
+  the new collection. Phase 1 does not care which path created it.
+- **Partial or total failure** (e.g. `Written: [postgres]; not written:
+  qdrant`) → **stop.** Show the error verbatim, name the likely cause (a
+  REST URL in the sink is the usual one), and offer to re-run once fixed —
+  re-running is safe, both sinks upsert idempotently. Never proceed to schema
+  inference against an incomplete corpus.
+
+### If `lensing-intake` doesn't fit
+
+For a source or an embedding process its connectors don't cover, the
+self-managed route stands: explain the requirement (vectors + JSON payloads),
+offer `docker compose --profile qdrant up -d`, and let them populate the
+collection with their own pipeline — this skill does not embed documents
+itself. Come back to the probing above once a collection exists.
 
 ## Phase 1 — Interview → domain.toml
 
@@ -122,6 +248,16 @@ should the models predict?") with no pre-selected suggestion:
 6. **Metrics**: primary + columns + % metrics + value unit.
 7. **[agents]**: API port, naming convention, `ingestion` on/off (decided
    properly in Phase 3).
+8. **Endpoints — record, don't re-ask.** `[corpus] qdrant_url` takes the
+   **REST** endpoint confirmed in Phase 0a, and `[deploy]` takes the ports
+   behind it: `qdrant_port` (REST), `qdrant_grpc_port` (gRPC) and `db_port`.
+   These were already settled; carrying them over is what keeps the instance
+   port-partitioned (D1) and keeps `pipeline.toml` and `domain.toml`
+   pointing at the same Qdrant. `scripts/render-deploy-env.py --write`
+   derives the container env from `[deploy]`, so a value dropped here
+   silently reverts that instance to the shared defaults.
+   If the corpus came from the intake path, `[corpus] embedding_dim` must
+   match the `[embedding] dims` used to build it.
 
 Then: write `domain.toml`, validate via `cargo test -p lensing-core` (the
 embedded-domain tests re-read it) — fix anything it rejects, and run

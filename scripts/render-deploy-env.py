@@ -23,7 +23,19 @@ DOMAIN = ROOT / "domain.toml"
 ENV = ROOT / ".env"
 
 # Keys this script owns (upserted on --write, in this order).
-OWNED = ["COMPOSE_PROJECT_NAME", "LENSING_HUB_PORT", "LENSING_INFER_PORT", "LENSING_DB_PORT"]
+OWNED = [
+    "COMPOSE_PROJECT_NAME",
+    "LENSING_HUB_PORT",
+    "LENSING_INFER_PORT",
+    "LENSING_DB_PORT",
+    # Qdrant publishes two host ports: REST (the server, the pipeline and
+    # /bootstrap's probing all talk REST) and gRPC (lensing-intake reaches
+    # Qdrant through lvv -> qdrant-client, which is gRPC-only). Both are
+    # partitioned per instance, or two instances running `--profile qdrant`
+    # collide on 6333/6334.
+    "LENSING_QDRANT_PORT",
+    "LENSING_QDRANT_GRPC_PORT",
+]
 
 
 def slugify(name: str) -> str:
@@ -48,6 +60,8 @@ def derive() -> dict[str, str]:
         "LENSING_HUB_PORT": str(deploy.get("hub_port", 8080)),
         "LENSING_INFER_PORT": str(deploy.get("infer_port", 8090)),
         "LENSING_DB_PORT": str(deploy.get("db_port", 5433)),
+        "LENSING_QDRANT_PORT": str(deploy.get("qdrant_port", 6333)),
+        "LENSING_QDRANT_GRPC_PORT": str(deploy.get("qdrant_grpc_port", 6334)),
     }
 
 

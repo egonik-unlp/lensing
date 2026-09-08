@@ -58,10 +58,36 @@ Day-1 checklist for a new project (e.g. used-car prices, salaries):
    and trim `docs/figures/make_figures.py` to the style header (the
    report-curator agent grows it back from your reports).
 
-5. **Point at your corpus** — an existing Qdrant collection (embeddings +
-   payloads matching your `[[fields]]`), or start a local one:
-   `docker compose --profile qdrant up -d`. Validate the shape:
+5. **Point at your corpus** — two ways in, depending on what you have:
+
+   *Already a Qdrant collection* (embeddings + payloads matching your
+   `[[fields]]`)? Point at it and validate the shape:
    `POST /api/collections/validate`.
+
+   *Data still at the source* — a database, a flat file, an HTTP API? Build
+   the collection with the intake pipeline: `cp
+   crates/lensing-intake/pipeline.example.toml pipeline.toml`, fill in the
+   `[source]`, `[embedding]` and `[[sink]]` blocks, then `cargo run -p
+   lensing-intake -- --config pipeline.toml`. It embeds each record and
+   dual-writes to this instance's Postgres (authoritative) and Qdrant
+   (derived index). `/bootstrap` runs this interview for you.
+
+   Three things to get right, all of them easy to get wrong:
+   - The Qdrant `[[sink]]` takes the **gRPC** port (6334), not the REST port
+     (6333) the server and `[corpus] qdrant_url` use. A REST URL here fails
+     only once the pipeline is writing — after you have paid for every
+     embedding.
+   - List **Postgres before Qdrant**: sinks are written in order and the
+     authoritative store leads.
+   - You don't choose the collection name; it is derived as
+     `<provider>_<model>_<Distance>_<identifier>` (e.g.
+     `openai_text-embedding-3-small_Cosine_listings`).
+
+   `pipeline.toml` holds plaintext credentials and is gitignored. Re-running
+   is safe — both sinks upsert idempotently.
+
+   *Neither fits?* Start an empty local Qdrant with `docker compose --profile
+   qdrant up -d` and populate it with your own embedding pipeline.
 
 6. **Start the stack** — `zig build serve` (starts Postgres via compose,
    runs schema migrations, backfills any existing file state, serves the

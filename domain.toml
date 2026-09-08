@@ -148,6 +148,13 @@ compose_project = ""
 hub_port = 8080
 infer_port = 8090
 db_port = 5433
+# Qdrant publishes two host ports. REST (6333) is what the server, the
+# pipeline and /bootstrap's probing use, and what [corpus] qdrant_url points
+# at; gRPC (6334) is what lensing-intake's [[sink]] needs, since it reaches
+# Qdrant through lvv -> qdrant-client, which is gRPC-only. Give each instance
+# its own pair or they collide when both run `--profile qdrant`.
+qdrant_port = 6333
+qdrant_grpc_port = 6334
 
 [quality.rule_labels]
 "nonpositive-price" = "target ≤ 0"
