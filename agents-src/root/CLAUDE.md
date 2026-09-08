@@ -47,6 +47,35 @@ runs, promoted models and predictions behind a React UI.
 - Never hand-edit `models.toml` while the server runs (it is rewritten on
   every mutation).
 - Talk to the system through the API, not the filesystem.
+- **Experiments go through the agents, never ad hoc.** Any exploration,
+  scan, sweep, ablation or "let's try a few configs" is designed by the
+  **experiment-designer** agent with the user, and executed by the
+  **experiment-runner** agent from the approved design. The runner is what
+  writes the `{{report_dir}}/` report and reconciles `{{facts_file}}` — a
+  campaign run outside that path leaves the empirical record un-extended,
+  which is the whole point of keeping one. Dataset builds belong to
+  **dataset-architect** (via the dataset-design skill) for the same reason.
+
+## The instantiation guard
+
+`tools/lensing_guard.py` holds the instantiation invariants and the hooks in
+`.claude/settings.json` enforce them; `zig build bootstrap-check` prints the
+verdict.
+
+Post-bootstrap it enforces exactly one thing: **`POST /api/runs` and
+`POST /api/datasets` require an open run ticket.** Polling, stopping runs and
+every other endpoint are untouched.
+
+| situation | what to do |
+|---|---|
+| experiment-runner executing an approved design | `python3 tools/lensing_guard.py ticket issue --kind campaign --design <slug> --report {{report_dir}}/<date>-<slug>.md --allowance <N runs + datasets>` |
+| campaign finished, report written, `{{facts_file}}` reconciled | `python3 tools/lensing_guard.py ticket close` |
+| the user explicitly asked for ONE ad-hoc run | `python3 tools/lensing_guard.py ticket issue --kind oneshot --reason "<what they asked for>"` |
+
+The one-shot ticket is the escape hatch for a genuine single run the user
+asked for by name — never for a scan, a sweep, or "a couple of configs to
+see". Issuing one is logged to `.lensing/tickets.log`. The Stop hook refuses
+to end a session that spent a campaign ticket without writing its report.
 
 ## Build entry points
 

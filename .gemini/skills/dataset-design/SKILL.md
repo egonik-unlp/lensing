@@ -6,6 +6,7 @@ argument-hint: "[preflight|analyze|build|inspect|rename] [id]"
 allowed-tools:
   - Read
   - Bash(curl *)
+  - Bash(python3 tools/lensing_guard.py *)
   - Bash(sleep *)
 ---
 <!-- GENERATED from agents-src/skills/dataset-design/SKILL.md by agents-src/render.py — edit the template (and domain.toml), not this file; then run `zig build render-agents`. -->

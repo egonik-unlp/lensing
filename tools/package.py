@@ -17,7 +17,9 @@ record instead of this project's history:
                                   it once domain.toml describes the new domain)
 
 Excluded entirely: data/ (binary artifacts), target/, ui/node_modules,
-ui/dist, .git, docker volumes, personal settings. The consumer unpacks,
+ui/dist, .git, docker volumes, personal settings, and `.lensing-mother` (the
+marker that identifies THIS checkout as the framework — an instance carrying
+it would disable its own instantiation guard). The consumer unpacks,
 runs `/bootstrap` (or follows BOOTSTRAP.md), and owns their own history.
 
 The package also carries `.lensing-upstream.json`: a provenance manifest
@@ -252,6 +254,34 @@ Until bootstrap completes:
   project instructions here.
 - The empirical record (models.toml, experiments/PROJECT-FACTS.md, docs
   skeletons) is seeded empty; the first campaign writes it.
+
+## The instantiation rules (enforced, not advisory)
+
+`tools/lensing_guard.py` decides whether this tree is a valid, finished
+instance; the hooks in `.claude/settings.json` enforce its verdict. Run
+`zig build bootstrap-check` (or `python3 tools/lensing_guard.py check`)
+to see it at any time.
+
+1. **This instance owns its folder.** It must be a full copy produced by
+   `zig build package` and unpacked somewhere of its own — never the
+   lensing framework checkout, never a subdirectory of it, never a
+   partial tree. The provenance manifest `.lensing-upstream.json` is what
+   proves it, and every framework file it lists must exist. A tree that
+   fails this is `INVALID` and no work may proceed in it.
+2. **Bootstrap always finishes.** While the instance is unbootstrapped,
+   `/bootstrap` is the only work permitted: writes outside bootstrap's own
+   files are denied, and so is every API mutation. Once bootstrap starts
+   (`python3 tools/lensing_guard.py bootstrap start`) the session may not
+   end until the invariants pass — or until the user's decision to stop is
+   recorded with `bootstrap abort --reason "<why>"`. Do not improvise on
+   the placeholder domain, and do not read another lensing project's
+   corpus, datasets, server or experiment record to fill the gaps.
+3. **Explorations go through the agents.** After bootstrap, run launches
+   and dataset builds require a run ticket, so an experiment cannot be
+   started outside the experiment-designer → experiment-runner path that
+   writes the report and reconciles experiments/PROJECT-FACTS.md. A single
+   ad-hoc run the user explicitly asked for is the one exception
+   (`ticket issue --kind oneshot --reason "<what they asked for>"`).
 """
 )
 
@@ -403,6 +433,27 @@ def main() -> None:
     (pkg / "data").mkdir(exist_ok=True)
     (pkg / "data/.gitkeep").write_text("")
     (pkg / ".lensing-upstream.json").write_text(json.dumps(manifest, indent=2) + "\n")
+
+    # The instantiation guard reads these two paths to tell an instance from
+    # the framework checkout. Ship neither wrong: .lensing-mother must stay
+    # behind (it is not in INCLUDE, but a stray copy would make the instance
+    # think it IS the framework and disable every gate), and the hook wiring
+    # must travel (without it the invariants are documentation again).
+    if (pkg / ".lensing-mother").exists():
+        print(
+            "package.py: error: .lensing-mother leaked into the package — an instance "
+            "carrying it would disable the instantiation guard",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    settings = pkg / ".claude" / "settings.json"
+    if not settings.exists() or "lensing_guard.py" not in settings.read_text():
+        print(
+            "package.py: error: .claude/settings.json is missing or does not wire "
+            "tools/lensing_guard.py — the packaged instance would be unguarded",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     tarball = out_root / f"{name}.tar.gz"
     with tarfile.open(tarball, "w:gz") as tf:

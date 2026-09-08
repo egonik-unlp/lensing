@@ -6,6 +6,7 @@ argument-hint: "[preflight|analyze|build|inspect|rename] [id]"
 allowed-tools:
   - Read
   - Bash(curl *)
+  - Bash(python3 tools/lensing_guard.py *)
   - Bash(sleep *)
 ---
 

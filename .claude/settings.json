@@ -1,0 +1,46 @@
+{
+  "$comment": "Instantiation guard. tools/lensing_guard.py is the single source of truth for the three bootstrap invariants; these hooks are how they are enforced rather than merely documented. In the framework checkout (.lensing-mother present) every hook is a no-op.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/lensing_guard.py\" hook SessionStart"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/lensing_guard.py\" hook PreToolUse"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/lensing_guard.py\" hook Stop"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/tools/lensing_guard.py\" hook SubagentStop"
+          }
+        ]
+      }
+    ]
+  }
+}

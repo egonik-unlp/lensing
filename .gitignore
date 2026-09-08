@@ -14,3 +14,7 @@ docs/figures/*.pdf
 docs/experiments.pdf
 docs/api.pdf
 dist/
+
+# Instance-local guard state (bootstrap lifecycle, run tickets, audit log).
+# tools/lensing_guard.py owns it; it is per-checkout, never shared.
+.lensing/

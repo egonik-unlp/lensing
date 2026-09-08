@@ -9,6 +9,7 @@ allowed-tools:
   - Write
   - Bash(curl *)
   - Bash(git *)
+  - Bash(python3 tools/lensing_guard.py *)
   - Bash(sleep *)
 ---
 
@@ -81,14 +82,25 @@ defaults, so they stay launch-ready.
 
 ### Launch a run from a definition
 
+A single run the user asked for by name is the one launch that doesn't need a
+campaign behind it — take a one-shot ticket for it (the guard denies
+`POST /api/runs` otherwise, and a one-shot is spent after exactly one call):
+
 ```sh
+python3 tools/lensing_guard.py ticket issue --kind oneshot \
+  --reason "<what the user asked for>"
 curl -s {{api_host}}/api/runs -H content-type:application/json \
   -d '{"definition":"<name>","dataset_id":"<ds-id>"}'
 ```
+
 Any existing dataset works (`GET /api/datasets` to list). Optional `hyperparams`
 overlay the definition's for a one-off tweak (the definition itself is not
 modified). The run's meta records `from_definition`; watch progress at
 `GET /api/runs/<run_id>/events` (SSE) or in the UI at `/runs/<run_id>`.
+
+Reach for the one-shot only for a genuine one-off. Two or more runs meant to
+be compared is a scan — that goes to the experiment-designer /
+experiment-runner agents, not to a string of one-shot tickets.
 
 ### Promote a run / the best-models group
 
@@ -127,12 +139,28 @@ as a dated report in `{{report_dir}}/`. Datasets must already exist — if the a
 is dataset-level (PCA dims, quality filters, features), build them first with
 the **dataset-design** skill.
 
+> **Route it, don't run it.** Any scan, sweep, ablation or exploration — more
+> than one run, or any run whose point is to compare configurations — belongs
+> to the **experiment-designer** agent (design it with the user) handing off
+> to the **experiment-runner** agent (execute, report, reconcile
+> `{{facts_file}}`). That pair is what guarantees the campaign lands in the
+> empirical record instead of scrolling past in a transcript, and
+> `tools/lensing_guard.py` enforces it: `POST /api/runs` without an open run
+> ticket is denied. Do not hand-roll a scan here to avoid spawning the
+> agents.
+>
+> The steps below are the mechanics the runner executes — read them to
+> understand what it does, or follow them when you ARE the runner working
+> from an approved design.
+
 1. **Design.** Read `{{facts_file}}` for the current
    best-on-record, noise bands and known pitfalls, then the underlying
    `{{report_dir}}/*.md` reports for detail (the reports are primary; newest
    wins). Agree the scan with the user before launching: the fixed baseline
    (dataset id, reference definition or champion run, seed), the axis/axes
-   to probe, and the concrete configs (~5–10).
+   to probe, and the concrete configs (~5–10). Open the run ticket only once
+   that design is approved:
+   `python3 tools/lensing_guard.py ticket issue --kind campaign --design <slug> --report {{report_dir}}/<date>-<slug>.md --allowance <N>`.
 2. **Launch.** One `POST /api/runs` per config — overlay on a baseline
    definition (`{"definition":"<base>","dataset_id":"<ds>","hyperparams":{<axis deltas>}}`,
    the definition is not modified) or bare `{"predictor":...,"hyperparams":{...}}`.
@@ -155,7 +183,10 @@ the **dataset-design** skill.
    dataset (automatic if a confirming run is launched from the definition,
    otherwise PATCH `dataset_tags`). Then write the report — and reconcile
    `{{facts_file}}` (leaderboard row, new pitfalls, dataset
-   lineage, the "Last updated" header) as part of it.
+   lineage, the "Last updated" header) as part of it. Close the ticket last:
+   `python3 tools/lensing_guard.py ticket close` verifies the report exists
+   and that the facts file was touched, so a refusal means the record has not
+   actually been extended yet.
 
 {{> report-format}}
 

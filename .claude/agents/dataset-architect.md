@@ -176,6 +176,29 @@ approval — or hand these bodies to the experiment-runner agent as its
 
 1. **Pre-flight.** `GET localhost:8080/api/health` must succeed; if not, report
    and stop.
+
+   `POST /api/datasets` is gated by `tools/lensing_guard.py` — it needs an
+   open run ticket, the same mechanism that keeps run launches attached to a
+   campaign. Check first:
+
+   ```sh
+   python3 tools/lensing_guard.py ticket status
+   ```
+
+   If a campaign ticket is already open (you were spawned inside an
+   experiment-runner campaign, the usual case), spend from it — do not issue
+   your own. If nothing is open, take one covering exactly the approved
+   builds and close it when you are done:
+
+   ```sh
+   python3 tools/lensing_guard.py ticket issue --kind campaign \
+     --design <slug> --report experiments/<YYYY-MM-DD>-<slug>.md \
+     --allowance <N builds>
+   ```
+
+   For a standalone dataset build the user asked for directly — no campaign
+   behind it — a one-shot ticket per build is the right instrument:
+   `ticket issue --kind oneshot --reason "<what the user asked for>"`.
 2. **Build sequentially** — builds are serialized server-side, so submit one
    `POST localhost:8080/api/datasets` at a time and poll
    `GET /api/builds/<build_id>` (`sleep` between rounds):

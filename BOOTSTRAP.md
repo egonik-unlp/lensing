@@ -12,7 +12,43 @@ real-estate sale prices, exercising every lever including `[currency]`,
 `crates/lensing-core/src/example-domain.toml` — read it for reference,
 never as a default.
 
-Day-1 checklist for a new project (e.g. used-car prices, salaries):
+## Day 0 — instantiate into a folder of its own
+
+A new project is a **full copy of the framework in its own directory**, never
+the framework checkout itself and never a subdirectory of it. From the lensing
+framework repo:
+
+```sh
+zig build package                              # -> dist/lensing.tar.gz
+tar xzf dist/lensing.tar.gz -C ~/projects
+mv ~/projects/lensing ~/projects/<your-project>
+cd ~/projects/<your-project> && zig build bootstrap-check
+```
+
+The package carries `.lensing-upstream.json` (a provenance manifest listing
+every framework file) and omits `.lensing-mother`; together those are how the
+instance knows what it is. `zig build bootstrap-check` — or
+`python3 tools/lensing_guard.py check` — prints the verdict:
+
+| verdict | meaning |
+|---|---|
+| `FRAMEWORK` | you are still in the framework checkout; bootstrap refuses to run here |
+| `INVALID` | not a complete packaged copy (no manifest, missing framework files, or nested inside the framework) — re-instantiate rather than patching |
+| `INCOMPLETE` | a real instance, ready to bootstrap |
+| `READY` | bootstrap is finished |
+
+`git clone` of the framework is not an instantiation path: the clone carries
+`.lensing-mother` and no manifest, and the guard treats it as the framework.
+
+The same guard backs three rules that hooks in `.claude/settings.json`
+enforce for agent sessions, so they hold whether or not anyone reads this
+file: work outside bootstrap is blocked until the instance is configured, a
+started bootstrap has to finish (or be explicitly aborted with
+`python3 tools/lensing_guard.py bootstrap abort --reason "…"`), and run
+launches / dataset builds need a run ticket so experiments stay attached to a
+campaign report. See §Guard rails below.
+
+## Day 1 — checklist for a new project (e.g. used-car prices, salaries)
 
 1. **Write `domain.toml`** — the single source of domain truth:
    - `[project]`: name, title, entity/target nouns (drive UI copy + agents).
@@ -107,10 +143,13 @@ Day-1 checklist for a new project (e.g. used-car prices, salaries):
    `baseline-median` (the floor) plus one real family (xgboost is the
    low-drama default).
 
-9. **First campaign** — `/model-definitions experiment`, or the
-   experiment-designer agent (design) handing off to the experiment-runner
-   agent (execution). The report the runner writes seeds the first
-   PROJECT-FACTS leaderboard row.
+9. **First campaign** — the **experiment-designer** agent designs it with
+   you, the **experiment-runner** agent executes the approved design. That
+   pair, not an ad-hoc string of runs, is the path: the runner is what writes
+   the report and reconciles PROJECT-FACTS.md, and the guard denies
+   `POST /api/runs` without a run ticket precisely so a scan cannot happen
+   outside it. (`/model-definitions experiment` documents the mechanics the
+   runner follows.)
 
 10. **First report sync** — `/report-curator sync` folds the report into
     the PDF.
@@ -123,3 +162,24 @@ regressors over the artifact format), the UI (renders from `GET
 quality rule the built-in set lacks, add a rule evaluator in
 `crates/lensing-pipeline/src/quality.rs` (keys are stable identifiers; bind +
 label via domain.toml).
+
+
+## Guard rails
+
+`tools/lensing_guard.py` holds the instantiation invariants; the hooks in
+`.claude/settings.json` enforce them in agent sessions. In the framework
+checkout every hook is a no-op — this is instance machinery.
+
+| command | what it does |
+|---|---|
+| `zig build bootstrap-check` | print the verdict (also `python3 tools/lensing_guard.py check`; exit 0 ready / 1 incomplete / 2 invalid) |
+| `… bootstrap start` | mark a bootstrap in flight — the Stop hook then refuses to end a session while the invariants are unmet |
+| `… bootstrap abort --reason "…"` | record the user's decision to stop, releasing that gate |
+| `… ticket issue --kind campaign --design <slug> --report experiments/<date>-<slug>.md --allowance <N>` | authorize N gated API calls for one campaign |
+| `… ticket issue --kind oneshot --reason "…"` | authorize exactly one ad-hoc run the user asked for by name |
+| `… ticket status` / `… ticket close` | inspect / close; `close` refuses until the report exists and PROJECT-FACTS.md has been touched |
+
+What is gated, and nothing else: `POST /api/runs` and `POST /api/datasets`.
+Polling, stopping runs, promotions, preflight and analysis are untouched.
+Before bootstrap completes, writes outside bootstrap's own files are denied
+too. Every ticket action is appended to `.lensing/tickets.log`.

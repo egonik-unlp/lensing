@@ -1,0 +1,16 @@
+This file marks the lensing FRAMEWORK checkout (the "mother" repo).
+
+tools/package.py never ships it, so its presence means: you are in the
+framework, not in an instance. tools/lensing_guard.py reads it to
+(a) disable the instance gates here, so framework development is unimpeded,
+and (b) refuse `/bootstrap` in place.
+
+A new project is instantiated as its OWN folder holding a full copy:
+
+    zig build package                 # -> dist/lensing.tar.gz
+    tar xzf dist/lensing.tar.gz -C /path/to/projects
+    cd /path/to/projects/lensing      # rename it; then /bootstrap
+
+Cloning this repository is NOT an instantiation path: the clone carries this
+marker, has no .lensing-upstream.json provenance manifest, and bootstrap will
+refuse to run in it.

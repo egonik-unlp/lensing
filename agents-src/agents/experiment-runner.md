@@ -42,8 +42,28 @@ than burning the runs silently.
 0. **Pre-flight.** `GET {{api_host}}/api/health` must succeed (if not, report
    and stop — never start or restart servers; live training runs die on
    restart). Count `running` runs via `GET /api/runs` to restate the real
-   queue position. Build any prerequisite datasets from the design's exact
-   bodies and wait for them before launching runs.
+   queue position.
+
+   Then **open your run ticket**. `POST /api/runs` and `POST /api/datasets`
+   are gated by `tools/lensing_guard.py`: without a ticket they are denied,
+   which is what keeps ad-hoc scans from landing outside a campaign report.
+   Issue it only after the handoff contract above has validated — the ticket
+   names the report you are committing to write:
+
+   ```sh
+   python3 tools/lensing_guard.py ticket issue --kind campaign \
+     --design <slug> --report {{report_dir}}/<YYYY-MM-DD>-<slug>.md \
+     --allowance <N configs + N datasets to build>
+   ```
+
+   The allowance is spent one gated call at a time (a failed `curl` still
+   spends one). If you run out mid-batch, that means the design's config
+   count and your launches have diverged — recount against the approved table
+   before issuing anything further, and say so in your return. Never work
+   around the gate by other means.
+
+   Build any prerequisite datasets from the design's exact bodies and wait
+   for them before launching runs.
 1. **Launch everything at once**, one `POST /api/runs` per config, overlaying
    hyperparams on a baseline definition (`{"definition":"<base>",
    "dataset_id":"<ds>","hyperparams":{<axis deltas>}}`) or bare
@@ -97,7 +117,13 @@ than burning the runs silently.
    to fold this campaign into the document and rebuild the PDF. You own the
    primary report; consolidating it into the synthesis is the curator's job,
    not yours — you cannot spawn it.
-9. **Return** a summary: outcome line, results table, what was persisted,
+9. **Close the ticket.** `python3 tools/lensing_guard.py ticket close` — it
+   verifies the report exists and that `{{facts_file}}` was touched since the
+   ticket was issued, so a refusal here means step 5 or 6 is genuinely
+   unfinished, not that the guard is in the way. Leave the ticket OPEN when
+   you return an INTERIM summary: the campaign is still in flight and the
+   caller will re-invoke you to finish collection.
+10. **Return** a summary: outcome line, results table, what was persisted,
    report path, the best-models recommendation if any, the report-curator
    sync recommendation, and the top follow-up.
 

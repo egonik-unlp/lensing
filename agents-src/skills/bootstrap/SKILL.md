@@ -28,6 +28,54 @@ confirming before you write anything. Resume at whatever phase the argument
 names or the repo state implies (e.g. domain.toml already customized → skip
 to ingestion/first-run).
 
+## Phase −2 — Instantiation gate (do this FIRST, every time)
+
+Two rules are enforced by `tools/lensing_guard.py` and the hooks in
+`.claude/settings.json`, not merely documented. Start here:
+
+```sh
+python3 tools/lensing_guard.py check      # or: zig build bootstrap-check
+```
+
+**Rule: the instance owns its folder.** A new project is a full copy of the
+framework living in a directory of its own. The verdict tells you where you
+are:
+
+| verdict | meaning | what to do |
+|---|---|---|
+| `FRAMEWORK` | you are in the lensing framework checkout (`.lensing-mother` present) | **STOP — do not bootstrap here.** Instantiate properly: `zig build package`, then `tar xzf dist/lensing.tar.gz -C <projects-dir>`, rename the folder, and open a session there. Tell the user this and hand them the commands; `bootstrap start` refuses in place. |
+| `INVALID` | a partial or improvised tree — no provenance manifest, missing framework files, or nested inside the framework checkout | **STOP.** Report the failing invariants verbatim. A tree that isn't a complete packaged copy cannot be bootstrapped into a sound instance; re-instantiate from a package. |
+| `INCOMPLETE` | a real instance, not yet bootstrapped | proceed to Phase −1 |
+| `READY` | already bootstrapped | nothing to do — say so, and route the user to the work they actually want |
+
+Never "fix" an INVALID tree by copying files in from another lensing project.
+This instance is fully independent: it must never read from or write to
+another project's corpus, datasets, server or experiment record.
+
+**Rule: bootstrap always finishes.** Once the user has agreed to bootstrap,
+mark it in flight:
+
+```sh
+python3 tools/lensing_guard.py bootstrap start
+```
+
+From that point the Stop hook refuses to end the session while the invariants
+are unmet — you carry the run to a real `domain.toml` and a rendered
+`CLAUDE.md`, resuming at whatever phase the repo state implies. If the user
+decides to stop partway, that is their call and it is recorded, not silently
+dropped:
+
+```sh
+python3 tools/lensing_guard.py bootstrap abort --reason "<what the user said>"
+```
+
+While the instance is unbootstrapped the guard also denies writes outside
+bootstrap's own files (`domain.toml`, `CLAUDE.md`, `PRODUCT.md`,
+`pipeline.toml`, `models.toml`, `experiments/`, `docs/`, `branding/`,
+`agents-src/`, `.env`) and every API mutation. If you are denied, that is the
+signal you have wandered off bootstrap — come back to it rather than working
+around the gate.
+
 ## Phase −1 — Environment & toolchain
 
 Check what's installed before anything else; install only with the user's
@@ -268,6 +316,11 @@ stub until it is deleted — hence the `rm`. Never leave the stub or
 another project's CLAUDE.md in place.) `zig build check` must pass
 before moving on.
 
+This is where the instance stops being unbootstrapped. Confirm it
+mechanically before continuing — `python3 tools/lensing_guard.py check` must
+now read `READY`; if it does not, the reason it prints is a real gap in the
+domain config, not noise to route around.
+
 ## Phase 2 — Reset the empirical record (DESTRUCTIVE — explicit confirmation)
 
 The repo ships the original project's history. Confirm each, then:
@@ -338,11 +391,39 @@ These are starting baselines for a first read, not commitments — confirm the
 slate with the user before creating definitions (via the
 **model-definitions** skill). Launch one run each on the first dataset, watch
 them complete, then seed `{{facts_file}}`'s leaderboard with the results.
-Hand the user off to the **experiment-designer** agent to design the first
-real campaign (the **experiment-runner** agent executes the approved design).
+
+These baseline launches are gated like every other run — take one campaign
+ticket for the slate and close it once the leaderboard is seeded:
+
+```sh
+python3 tools/lensing_guard.py ticket issue --kind campaign \
+  --design bootstrap-baselines --report {{report_dir}}/<date>-baselines.md \
+  --allowance <N runs + the first dataset build>
+# ... build the dataset, launch the slate, write the short baseline report ...
+python3 tools/lensing_guard.py ticket close
+```
+
+Then hand the user off to the **experiment-designer** agent to design the
+first real campaign (the **experiment-runner** agent executes the approved
+design). From here on, every scan goes through that pair — bootstrap does not
+run experiments of its own.
 
 ## Ground rules
 
+- **Phase −2 first, always.** Never bootstrap in the framework checkout or in
+  a partial tree; never patch a broken instance with another project's files.
+  `python3 tools/lensing_guard.py check` must read `INCOMPLETE` before you
+  start and `READY` when you finish — if it still reports failing invariants,
+  bootstrap is not done, whatever the conversation feels like.
+- **Bootstrap always finishes.** `bootstrap start` at the top, and either the
+  invariants pass or `bootstrap abort --reason "<why>"` records the user's
+  decision to stop. Half-bootstrapped instances are the failure this skill
+  exists to prevent — do not leave one behind, and do not start improvising
+  domain facts to paper over a phase you could not complete. If you are
+  blocked, say what is missing and ask.
+- **Do not hand off to the experiment agents until READY.** Phase 5 ends by
+  routing to experiment-designer → experiment-runner; the guard denies run
+  launches before that anyway.
 - Every file write and every destructive step is announced and confirmed
   first. Phase 2 doubly so.
 - **No default target, no default transform, no assumed model recipe.** The

@@ -30,6 +30,8 @@
 //!   migrate-data  → backend, db-up, then lensing-server migrate-data (idempotent
 //!                   file→postgres backfill + consistency report)
 //!   check         → test, lint, py-check
+//!   bootstrap-check → tools/lensing_guard.py check: instantiation invariants
+//!                   (own folder, complete copy, bootstrap finished)
 //!   docker-build  → docker compose build (multi-stage: builder stages compile, runtime images stay slim)
 //!   docker-up     → deploy-env, then docker compose --profile <docker-profile> up -d --build --wait
 //!   deploy-env    → seed .env deploy identity/ports from domain.toml [deploy]
@@ -265,6 +267,21 @@ pub fn build(b: *std.Build) void {
     check.dependOn(lint);
     check.dependOn(py_check);
     check.dependOn(&render_check.step);
+
+    // ---------------- bootstrap-check: the instantiation invariants ----------------
+    // tools/lensing_guard.py is the single source of truth for "is this a
+    // valid, fully bootstrapped instance". The Claude hooks in
+    // .claude/settings.json call the same code path; this step is the human
+    // entry point. Deliberately NOT part of `check`: in the framework
+    // checkout it is a no-op, and in a fresh instance it is expected to fail
+    // until /bootstrap finishes.
+    const bootstrap_check_cmd = b.addSystemCommand(&.{ "python3", "tools/lensing_guard.py", "check" });
+    bootstrap_check_cmd.setCwd(b.path("."));
+    bootstrap_check_cmd.stdio = .inherit;
+    bootstrap_check_cmd.has_side_effects = true;
+
+    const bootstrap_check = b.step("bootstrap-check", "Verify the instantiation invariants (own folder, complete copy, bootstrap finished)");
+    bootstrap_check.dependOn(&bootstrap_check_cmd.step);
 
     // ---------------- package: distributable template ----------------
     // Copies the framework into dist/<name>-template (+ tarball) with the

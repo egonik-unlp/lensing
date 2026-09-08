@@ -5,8 +5,15 @@
 Point lensing at a Qdrant corpus of embedded documents, declare your target
 and fields in `domain.toml`, and the whole lab bends to fit: the dataset
 levers, model registry, experiment agents, UI, and distributed
-training/inference all take your domain's shape. Run `/bootstrap` (or follow
-BOOTSTRAP.md) to begin.
+training/inference all take your domain's shape.
+
+A new project is a **full copy of the framework in a folder of its own** —
+`zig build package`, unpack the tarball elsewhere, then run `/bootstrap`
+there (or follow BOOTSTRAP.md). Bootstrapping in this checkout is refused:
+`tools/lensing_guard.py` tells an instance from the framework and the hooks
+in `.claude/settings.json` enforce it, along with "bootstrap always
+finishes" and "experiments go through the experiment-designer /
+experiment-runner agents". See BOOTSTRAP.md §Day 0 and §Guard rails.
 
 <p align="center"><img src="assets/lattice.svg" width="540" alt="A regular grid curving around the mass of a dataset at its center, an Einstein ring lit where the deflection peaks: a generic framework taking the shape of your data the way mass curves spacetime"></p>
 
