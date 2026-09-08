@@ -1,4 +1,4 @@
-<p align="center"><img src="assets/logo.svg" width="760" alt="lensing: a prediction lab that bends to fit your data"></p>
+<p align="center"><img src="assets/logo.svg" width="760" alt="lensing: one corpus, one target, one lab"></p>
 
 <p align="center">
 <b>A prediction lab you operate by talking to it.</b><br>
@@ -273,18 +273,4 @@ applies or pushes without your explicit approval.
 
 ## License
 
-Copyright (C) 2026 Eduardo Gonik
-
-This program is free software: you can redistribute it and/or modify it
-under the terms of the GNU Affero General Public License as published by
-the Free Software Foundation, either version 3 of the License, or (at
-your option) any later version.
-
-This program is distributed in the hope that it will be useful, but
-WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero
-General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program (see [LICENSE](LICENSE)). If not, see
-<https://www.gnu.org/licenses/>.
+AGPL-3.0-or-later, © 2026 Eduardo Gonik. See [LICENSE](LICENSE).
