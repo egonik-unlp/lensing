@@ -19,7 +19,7 @@ use std::sync::Arc;
 use anyhow::{bail, ensure, Context, Result};
 use chrono::Utc;
 use lensing_core::{
-    Contract, InferencePrediction, InputFields, Manifest, ModelRecord, RunStatus,
+    Contract, InferencePrediction, InputFields, Manifest, ModelRecord, RunMeta, RunStatus,
     CONTRACT_VERSION,
 };
 use lensing_pipeline::features::{ColumnPlan, Encoder};
@@ -107,14 +107,12 @@ pub fn promote(
     );
 
     let dataset_dir = state.datasets_dir().join(&meta.dataset_id);
-    let manifest: Manifest = serde_json::from_str(
-        &std::fs::read_to_string(dataset_dir.join("manifest.json")).with_context(|| {
-            format!(
-                "training dataset {} is gone; promotion snapshots its manifest",
-                meta.dataset_id
-            )
-        })?,
-    )?;
+    // Sequence/ranking datasets carry a `sequence-manifest.json` (+ item
+    // latents + session arrays) instead of the pointwise `manifest.json`;
+    // promotion snapshots that whole artifact so the served model reconstructs
+    // its exact vocab + train-only statistics. The pointwise contract build is
+    // skipped for these.
+    let is_ranking = dataset_dir.join("sequence-manifest.json").exists();
 
     let model_dir = state.models_dir().join(name);
     // create_dir (not create_dir_all) doubles as the atomic name-taken check.
@@ -122,6 +120,20 @@ pub fn promote(
         .map_err(|_| anyhow::anyhow!("model name {name:?} is already taken"))?;
 
     let result = (|| -> Result<ModelRecord> {
+        if is_ranking {
+            return promote_ranking(
+                &dataset_dir, &run_dir, &model_dir, name, run_id, notes.clone(), &meta,
+            );
+        }
+        // ---- pointwise (regression/classification) contract snapshot ----
+        let manifest: Manifest = serde_json::from_str(
+            &std::fs::read_to_string(dataset_dir.join("manifest.json")).with_context(|| {
+                format!(
+                    "training dataset {} is gone; promotion snapshots its manifest",
+                    meta.dataset_id
+                )
+            })?,
+        )?;
         // Contract: the frozen featurization spec.
         let encoder = Encoder::from_columns(&manifest.columns)?;
         let contract = Contract {
@@ -192,6 +204,61 @@ pub fn promote(
         }
     }
     result
+}
+
+/// Snapshot a ranking (sequence / next-item) run into a promoted model dir.
+///
+/// Unlike the pointwise path there is no PCA/column contract: the served model
+/// ranks a caller-supplied session prefix over the training vocabulary, so we
+/// bake the dataset's sequence artifact (item latents + item metadata + the
+/// train session arrays the train-only legs rebuild from) alongside the run's
+/// checkpoint. `load_artifact(model_dir)` in the Python predictor then
+/// reconstructs the exact vocab + statistics the model was evaluated on.
+fn promote_ranking(
+    dataset_dir: &Path,
+    run_dir: &Path,
+    model_dir: &Path,
+    name: &str,
+    run_id: &str,
+    notes: Option<String>,
+    meta: &RunMeta,
+) -> Result<ModelRecord> {
+    // The sequence artifact files (see SequenceDataset). All required.
+    const SEQ_FILES: &[&str] = &[
+        "sequence-manifest.json",
+        "item_latents.f32",
+        "items.json",
+        "sessions.u32",
+        "offsets.u32",
+        "train_sessions.u32",
+        "test_sessions.u32",
+    ];
+    for file in SEQ_FILES {
+        std::fs::copy(dataset_dir.join(file), model_dir.join(file)).with_context(|| {
+            format!(
+                "training dataset {} is gone or incomplete; ranking promotion \
+                 snapshots its sequence artifact (missing {file})",
+                meta.dataset_id
+            )
+        })?;
+    }
+    // The run's checkpoint + hyperparams. Learned predictors reload their
+    // checkpoint; train-only baselines (e.g. popularity / Markov) carry none and
+    // rebuild purely from the baked sequence artifact — so, unlike the pointwise
+    // path, a missing checkpoint is NOT fatal here; only "no run files" is.
+    let copied = copy_predictor_files(run_dir, model_dir, true)?;
+    ensure!(copied > 0, "run {run_id} has no run files to promote");
+
+    let record = ModelRecord {
+        name: name.to_string(),
+        run_id: run_id.to_string(),
+        predictor: meta.predictor.clone(),
+        dataset_id: meta.dataset_id.clone(),
+        created_at: Utc::now().to_rfc3339(),
+        notes,
+    };
+    std::fs::write(model_dir.join("record.json"), serde_json::to_vec_pretty(&record)?)?;
+    Ok(record)
 }
 
 /// Every file under `dir` as (relative path, bytes).
@@ -603,19 +670,69 @@ fn list_bundle_files(stage: &Path) -> Result<Vec<String>> {
     Ok(out)
 }
 
-/// One predict request: raw items and/or Qdrant point ids.
+/// One predict request. Pointwise models score `items` and/or `point_ids`.
+/// Ranking (sequence / next-item) models instead consume `prefix` — an
+/// ordered session of item identity tokens / ids / vocab indices — and
+/// return the ranked next-item candidates.
 #[derive(Debug, serde::Deserialize)]
 pub struct PredictRequest {
     #[serde(default)]
     pub items: Vec<serde_json::Value>,
-    #[serde(default)]
+    /// Corpus point ids. Accepts JSON numbers OR strings: ids can exceed
+    /// 2^53, so a browser client must send them as strings to avoid rounding.
+    #[serde(default, deserialize_with = "de_u64_vec")]
     pub point_ids: Vec<u64>,
+    /// Ranking models only: the ordered session prefix (item identity tokens,
+    /// bare ids, or integer vocab indices). Unknown (cold) tokens are dropped.
+    #[serde(default)]
+    pub prefix: Vec<serde_json::Value>,
+    /// Ranking models only: how many candidates to return (default = the
+    /// model's trained k).
+    #[serde(default)]
+    pub k: Option<usize>,
+}
+
+/// Deserialize `Vec<u64>` from an array whose elements may be JSON numbers or
+/// decimal strings (the latter preserves ids past JavaScript's 2^53 limit).
+pub fn de_u64_vec<'de, D>(d: D) -> Result<Vec<u64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(serde::Deserialize)]
+    #[serde(untagged)]
+    enum NumOrStr {
+        N(u64),
+        S(String),
+    }
+    <Vec<NumOrStr> as serde::Deserialize>::deserialize(d)?
+        .into_iter()
+        .map(|x| match x {
+            NumOrStr::N(n) => Ok(n),
+            NumOrStr::S(s) => s.trim().parse::<u64>().map_err(serde::de::Error::custom),
+        })
+        .collect()
 }
 
 #[derive(Debug, serde::Serialize)]
 pub struct PredictResponse {
     pub predictions: Vec<InferencePrediction>,
     pub warnings: Vec<String>,
+    /// Ranking models only: `predictions[0].top_k_ids` resolved to item
+    /// identity via the model's baked `items.json`, best-first. The framework
+    /// does not interpret the identity payload. Empty for pointwise models.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ranked: Vec<RankedItem>,
+}
+
+/// One enriched ranking result — a candidate next item. `identity` is the
+/// item's full `items.json` entry echoed opaquely (its fields are domain-
+/// defined; the framework hardcodes none).
+#[derive(Debug, serde::Serialize)]
+pub struct RankedItem {
+    pub rank: usize,
+    pub item_index: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub identity: Option<serde_json::Value>,
 }
 
 /// Predict failures, separated so the API layer can map status codes.
@@ -654,6 +771,13 @@ pub async fn predict(
         .predict_invocation()
         .with_context(|| format!("predictor {} is train-only", record.predictor))?;
     let (command, args_template) = (command.to_string(), args_template.to_vec());
+
+    // Ranking (sequence / next-item) models carry a baked sequence artifact
+    // rather than a pointwise contract: forward the ordered session prefix and
+    // enrich the returned top_k_ids with item identity.
+    if model_dir.join("sequence-manifest.json").exists() {
+        return predict_ranking(&state, &command, &args_template, &model_dir, req).await;
+    }
 
     if req.items.is_empty() && req.point_ids.is_empty() {
         return Err(PredictError::BadInput("request must contain items and/or point_ids".into()));
@@ -727,7 +851,80 @@ pub async fn predict(
     let result = run_predict_process(&state, &command, &args_template, &model_dir, &input_dir).await;
     let _ = std::fs::remove_dir_all(&input_dir);
 
-    Ok(PredictResponse { predictions: result?, warnings })
+    Ok(PredictResponse { predictions: result?, warnings, ranked: Vec::new() })
+}
+
+/// Serving-time predict for a ranking (sequence / next-item) model. Writes the
+/// caller's ordered prefix (+ the domain's identity-field name) to a
+/// `prefix.json` the predictor reads, invokes the predictor's `predict`, and
+/// resolves the returned `top_k_ids` (vocab indices) to item identity via the
+/// model's baked `items.json`.
+async fn predict_ranking(
+    state: &Arc<AppState>,
+    command: &str,
+    args_template: &[String],
+    model_dir: &Path,
+    req: PredictRequest,
+) -> Result<PredictResponse, PredictError> {
+    if req.prefix.is_empty() {
+        return Err(PredictError::BadInput(
+            "ranking model: request must contain a non-empty `prefix` (ordered \
+             session of item identity tokens / ids / vocab indices)"
+                .into(),
+        ));
+    }
+
+    // The item-identity field the predictor matches prefix tokens against
+    // comes from the domain ([sequence].identity_field); routed in via the
+    // request file so the predictor needs no domain access.
+    let identity_field = state
+        .domain
+        .sequence
+        .as_ref()
+        .map(|seq| seq.identity_field.clone());
+
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let input_dir = model_dir.join("tmp").join(format!("in-{nanos:x}"));
+    std::fs::create_dir_all(&input_dir).map_err(|e| PredictError::Internal(e.into()))?;
+    let prefix_req =
+        serde_json::json!({ "prefix": req.prefix, "k": req.k, "identity_field": identity_field });
+    std::fs::write(
+        input_dir.join("prefix.json"),
+        serde_json::to_vec(&prefix_req).map_err(|e| PredictError::Internal(e.into()))?,
+    )
+    .map_err(|e| PredictError::Internal(e.into()))?;
+
+    let result = run_predict_process(state, command, args_template, model_dir, &input_dir).await;
+    let _ = std::fs::remove_dir_all(&input_dir);
+    let predictions = result?;
+
+    let ranked = enrich_ranking(model_dir, &predictions).unwrap_or_default();
+    Ok(PredictResponse { predictions, warnings: Vec::new(), ranked })
+}
+
+/// Resolve `predictions[0].top_k_ids` (vocab indices) to `RankedItem`s using
+/// the model's baked `items.json` (`{"<index>": { ...opaque identity... }}`).
+fn enrich_ranking(model_dir: &Path, predictions: &[InferencePrediction]) -> Result<Vec<RankedItem>> {
+    let Some(pred) = predictions.first() else {
+        return Ok(Vec::new());
+    };
+    let Some(top_k) = &pred.top_k_ids else {
+        return Ok(Vec::new());
+    };
+    let items: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(model_dir.join("items.json"))?)?;
+    Ok(top_k
+        .iter()
+        .enumerate()
+        .map(|(rank, &idx)| RankedItem {
+            rank: rank + 1,
+            item_index: idx,
+            identity: items.get(idx.to_string()).cloned(),
+        })
+        .collect())
 }
 
 async fn run_predict_process(

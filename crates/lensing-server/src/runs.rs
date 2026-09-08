@@ -92,8 +92,9 @@ pub async fn enqueue_run(
         "unknown predictor {predictor_name}"
     );
     // The dataset must exist on the hub — the worker downloads it from here.
+    // Pointwise datasets carry manifest.json; sequence datasets sequence-manifest.json.
     anyhow::ensure!(
-        state.datasets_dir().join(&dataset_id).join("manifest.json").is_file(),
+        dataset_dir_exists(&state.datasets_dir().join(&dataset_id)),
         "dataset {dataset_id} not found"
     );
     let run_id = new_run_id(&predictor_name);
@@ -159,7 +160,7 @@ pub fn start_run(
         .clone();
     let dataset_dir = state.datasets_dir().join(&dataset_id);
     anyhow::ensure!(
-        dataset_dir.join("manifest.json").is_file(),
+        dataset_dir_exists(&dataset_dir),
         "dataset {dataset_id} not found"
     );
 
@@ -409,4 +410,10 @@ pub fn read_progress(run_dir: &PathBuf) -> Vec<String> {
     std::fs::read_to_string(run_dir.join("progress.jsonl"))
         .map(|t| t.lines().map(str::to_string).collect())
         .unwrap_or_default()
+}
+
+/// A dataset directory is launchable if it carries either a pointwise
+/// `manifest.json` or a `sequence-manifest.json` (next-item/ranking family).
+fn dataset_dir_exists(dir: &std::path::Path) -> bool {
+    dir.join("manifest.json").is_file() || dir.join("sequence-manifest.json").is_file()
 }

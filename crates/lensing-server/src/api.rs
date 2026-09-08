@@ -118,29 +118,64 @@ fn load_manifest(state: &AppState, id: &str) -> Option<Manifest> {
     serde_json::from_str(&text).ok()
 }
 
+/// Dataset summary as JSON, handling both pointwise datasets (`manifest.json`)
+/// and SEQUENCE datasets (`sequence-manifest.json`, a next-item/ranking family
+/// with no flat feature matrix). Sequence datasets carry `"kind":"sequence"`;
+/// pointwise ones keep their full manifest shape.
+fn dataset_summary(state: &AppState, id: &str) -> Option<serde_json::Value> {
+    if let Some(m) = load_manifest(state, id) {
+        return serde_json::to_value(manifest_for_api(m)).ok();
+    }
+    let dir = state.datasets_dir().join(id);
+    let text = std::fs::read_to_string(dir.join("sequence-manifest.json")).ok()?;
+    let sm: lensing_core::manifest::SequenceManifest = serde_json::from_str(&text).ok()?;
+    // Shaped like a Manifest so the pointwise UI (which iterates `columns`,
+    // `pca.explained_variance_ratio`, and reads `split.{test_ratio,n_train,n_test}`)
+    // renders a sequence dataset without crashing. `columns` is empty (no flat
+    // feature matrix); the `kind`/`sequence` fields carry the real shape.
+    let total = (sm.split.n_train_sessions + sm.split.n_test_sessions).max(1);
+    Some(json!({
+        "dataset_id": sm.dataset_id,
+        "created_at": sm.created_at,
+        "kind": "sequence",
+        "n_rows": sm.n_sessions,
+        "n_cols": sm.latent_dim,
+        "columns": [],
+        "pca": { "dims": sm.latent_dim, "explained_variance_ratio": [], "mean": [] },
+        "target": { "task": "ranking", "field": "next_item", "transform": "none" },
+        "split": {
+            "strategy": sm.split.strategy,
+            "seed": 0,
+            "test_ratio": sm.split.n_test_sessions as f64 / total as f64,
+            "n_train": sm.split.n_train_sessions,
+            "n_test": sm.split.n_test_sessions,
+        },
+        "sequence": { "n_items": sm.n_items, "latent_source": sm.latent_source },
+    }))
+}
+
 pub async fn list_datasets(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
-    let mut manifests: Vec<Manifest> = Vec::new();
+    let mut datasets: Vec<serde_json::Value> = Vec::new();
     if let Ok(entries) = std::fs::read_dir(state.datasets_dir()) {
         for e in entries.flatten() {
             if let Some(id) = e.file_name().to_str() {
-                if let Some(m) = load_manifest(&state, id) {
-                    manifests.push(manifest_for_api(m));
+                if let Some(v) = dataset_summary(&state, id) {
+                    datasets.push(v);
                 }
             }
         }
     }
-    manifests.sort_by(|a, b| b.created_at.cmp(&a.created_at));
-    Json(json!({ "datasets": manifests }))
+    datasets.sort_by(|a, b| {
+        b["created_at"].as_str().unwrap_or("").cmp(a["created_at"].as_str().unwrap_or(""))
+    });
+    Json(json!({ "datasets": datasets }))
 }
 
 pub async fn get_dataset(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-) -> Result<Json<Manifest>, ApiError> {
-    load_manifest(&state, &id)
-        .map(manifest_for_api)
-        .map(Json)
-        .ok_or_else(|| not_found("dataset"))
+) -> Result<Json<serde_json::Value>, ApiError> {
+    dataset_summary(&state, &id).map(Json).ok_or_else(|| not_found("dataset"))
 }
 
 pub async fn get_dataset_items(

@@ -638,6 +638,7 @@ fn train(dataset_dir: PathBuf, run_dir: PathBuf, hp_path: PathBuf) -> Result<()>
             predicted,
             // Binary: the blended scalar is P(class==1); surface [p0, p1].
             proba: if binary { Some(vec![1.0 - predicted, predicted]) } else { None },
+            top_k_ids: None,
         })
         .collect();
     std::fs::write(run_dir.join("predictions.json"), serde_json::to_vec(&predictions)?)?;
@@ -772,7 +773,7 @@ fn predict(model_dir: PathBuf, input_dir: PathBuf, output: PathBuf) -> Result<()
             .row_ids
             .iter()
             .zip(blended)
-            .map(|(&row_id, predicted)| InferencePrediction { row_id, predicted, proba: None })
+            .map(|(&row_id, predicted)| InferencePrediction { row_id, predicted, proba: None, top_k_ids: None })
             .collect())
     })();
     let _ = std::fs::remove_dir_all(&tmp_base);

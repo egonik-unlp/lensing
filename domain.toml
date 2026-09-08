@@ -165,3 +165,26 @@ qdrant_grpc_port = 6334
 "duplicate-content" = "duplicate content"
 "short-content" = "thin content"
 "foreign-currency" = "foreign currency"
+
+# ---- Ranking / next-item task (OPTIONAL) ----
+# To make this a next-item RANKING instance instead of pointwise regression,
+# set [target].task = "ranking" and add a [sequence] block. Absent ⇒ pointwise.
+# The dataset is built by an external sequences producer as ordered per-session
+# item sequences (sequence-manifest.json + item_latents.f32 + items.json + the
+# session arrays); a ranking predictor exposes a `predict` subcommand and reuses
+# predictors/ranking_serve.py. Example:
+#
+# [target]
+# task = "ranking"
+#
+# [sequence]
+# session_field = "session_id"   # payload field grouping events into a session
+# order_field   = "ts"           # intra-session order (a timestamp field)
+# gap_minutes   = 30
+# latent_source = "my_item_latents"   # Qdrant collection of per-item latents
+# identity_field = "id"          # items.json field a serving prefix token matches
+# relevance_fields = []          # optional graded-relevance item fields (<field>@k)
+#
+# [metrics]
+# primary = "recall@10"
+# columns = ["recall@10", "mrr", "hit@10"]
