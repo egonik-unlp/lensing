@@ -52,6 +52,33 @@ python3 branding/make_lattice.py   # assets/lattice.svg, assets/lattice-data.svg
 the lattice well (mass present / implied / off-center), the Einstein-ring
 alignment sweep, and the lensed-data-row candidates.
 
+## The animated README figures
+
+`make_animations.py` generates the three moving figures the README opens with.
+They are outlined and declarative for the same reason the banner is: GitHub
+renders README SVGs through an `<img>` sandbox that loads no web fonts and runs
+no scripts, so every glyph is a path and all motion is CSS keyframes plus SMIL
+`animateMotion`. Each figure also carries a `prefers-reduced-motion` block that
+pins it to a readable end state.
+
+```sh
+python3 branding/make_animations.py            # all three into assets/
+python3 branding/make_animations.py --only loop.svg
+python3 branding/make_animations.py --freeze 13 --outdir /tmp/f  # debug a frame
+```
+
+- `assets/session.svg` — a session start to finish: two plain-language
+  requests, a preflight, a six-run scan with a live val-loss trace, and the
+  report the campaign leaves behind. The 26 s loop.
+- `assets/harnesses.svg` — Claude Code / Gemini CLI / Codex reading the same
+  rendered skill layer and driving the same server. 9.6 s.
+- `assets/loop.svg` — corpus → dataset → runs → model → record, and the dashed
+  return edge that makes the record the next design's input. 12 s.
+
+The generator needs the shipped font faces on disk (`zig build ui`, or
+`npm install` in `ui/`) and honors the Live-or-Primary rule: orange marks the
+runs while they are live and goes graphite the moment they are not.
+
 ## Design record
 
 `index.html` is the candidate showcase from the exploration that led here

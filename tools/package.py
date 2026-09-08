@@ -63,6 +63,7 @@ INCLUDE: list[tuple[str, tuple[str, ...]]] = [
     ("Cargo.lock", ()),
     ("assets", ()),
     ("docs/DEPLOY.md", ()),
+    ("docs/REFERENCE.md", ()),
     # The server serves this from disk at /api/openapi.yaml (and Swagger UI
     # at /docs reads it) — instances need it shipped or both 404.
     ("docs/openapi.yaml", ()),
