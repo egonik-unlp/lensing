@@ -132,17 +132,27 @@ whichever data you put at the middle of it.
 
 So a project is not a config file inside a shared repo. **A project is its own
 full copy of the framework**, in its own folder, with its own corpus, server,
-models and experimental record:
+models and experimental record. Starting one is therefore a copy — clone this
+repo, open it in your agent, and ask for it:
+
+> make me a new lensing instance at ~/projects/used-car-prices
+
+The checkout's `.lensing-mother` file spells out that path, so the agent has
+what it needs. Then open the new folder and say `/bootstrap`.
+
+<details>
+<summary>the same thing by hand</summary>
 
 ```sh
 zig build package                       # -> dist/lensing.tar.gz
 tar xzf dist/lensing.tar.gz -C ~/projects
 mv ~/projects/lensing ~/projects/used-car-prices
-cd ~/projects/used-car-prices           # then, in your agent: /bootstrap
 ```
 
+</details>
+
 Bootstrapping *this* checkout is refused on purpose — the framework repo
-carries a `.lensing-mother` marker and no provenance manifest.
+carries the `.lensing-mother` marker and no provenance manifest.
 
 `/bootstrap` interviews you into `domain.toml` — the single source of domain
 truth — and everything else follows from it: dataset levers, metric columns,
